@@ -247,9 +247,8 @@ llvm::Value* EmitFunctionContext::coerceAddressToPointer(llvm::Value* boundedAdd
 														 llvm::Type* memoryType,
 														 Uptr memoryIndex)
 {
-	auto& meminfo{memoryInfos[memoryIndex]};
 	llvm::Value* memoryBasePointer = ::WAVM::LLVMJIT::wavmCreateLoad(
-		irBuilder, llvmContext.i8PtrType, meminfo.basePointerVariable);
+		irBuilder, llvmContext.i8PtrType, memoryInfos[memoryIndex].basePointerVariable);
 	llvm::Value* bytePointer = ::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
 		irBuilder, llvmContext.i8Type, memoryBasePointer, boundedAddress);
 
