@@ -45,12 +45,6 @@ static inline Uptr getPlatformPagesPerWebAssemblyPageLog2()
 	return IR::numBytesPerPageLog2 - v;
 }
 
-static inline Uptr getPlatformPagesPerWebAssemblyPageLog2Tagged()
-{
-	auto log2taggedv = getPlatformPagesPerWebAssemblyPageLog2();
-	return log2taggedv - 4u;
-}
-
 static inline void wavm_random_tag_fill_buffer_function(void* ptr) noexcept
 {
 	try
