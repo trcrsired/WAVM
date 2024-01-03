@@ -143,6 +143,33 @@ namespace WAVM { namespace LLVMJIT {
 																 {memoryNumReservedBytesOffset}),
 															 memoryOffset->getType()),
 									  memoryInfo.endAddressVariable);
+
+				if(ismemtagged)
+				{
+					::llvm::Value* memoryTagPointerBaseOffset = ::llvm::ConstantExpr::getAdd(
+						memoryOffset,
+						emitLiteralIptr(offsetof(Runtime::MemoryRuntimeData, memtagBase),
+										memoryOffset->getType()));
+					irBuilder.CreateStore(
+						loadFromUntypedPointer(
+							::WAVM::LLVMJIT::wavmCreateInBoundsGEP(irBuilder,
+																   llvmContext.i8Type,
+																   compartmentAddress,
+																   {memoryTagPointerBaseOffset}),
+							memoryOffset->getType()),
+						memoryInfo.memtagBasePointerVariable);
+
+					::llvm::Value* memtagRandomBufferOffset = ::llvm::ConstantExpr::getAdd(
+						memoryOffset,
+						emitLiteralIptr(offsetof(Runtime::MemoryRuntimeData, memtagRandomBuffer),
+										memoryOffset->getType()));
+					irBuilder.CreateStore(
+						::WAVM::LLVMJIT::wavmCreateInBoundsGEP(irBuilder,
+															   llvmContext.i8Type,
+															   compartmentAddress,
+															   {memtagRandomBufferOffset}),
+						memoryInfo.memtagRandomBufferVariable);
+				}
 			}
 		}
 
