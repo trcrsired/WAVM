@@ -16,5 +16,4 @@ namespace WAVM { namespace WASI {
 #if UINT32_MAX < SIZE_MAX
 #include "DefineIntrinsicsI64.h"
 #include "WASIArgsEnvs.h"
-#include "WASIDefineIntrinsicsI64.h"
 #endif
