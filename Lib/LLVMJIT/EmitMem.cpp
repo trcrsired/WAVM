@@ -64,6 +64,15 @@ static llvm::Value* getMemoryNumBytes(EmitFunctionContext& functionContext, Uptr
 		emitLiteralIptr(IR::numBytesPerPage, functionContext.moduleContext.iptrType));
 }
 
+#if 0
+static void debugi64(EmitFunctionContext& functionContext,::llvm::Value *val)
+{
+	functionContext.emitRuntimeIntrinsic(
+		"memoryTagDebugging",
+		FunctionType({}, TypeTuple{ValueType::i64}, IR::CallingConvention::intrinsic),
+		{val});
+}
+#endif
 // Bounds checks a sandboxed memory address + offset, and returns an offset relative to the memory
 // base address that is guaranteed to be within the virtual address space allocated for the linear
 // memory object.
@@ -81,6 +90,7 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 		= memoryType.indexType == IndexType::i32
 		  && functionContext.moduleContext.iptrValueType == ValueType::i64;
 
+	auto addressbackup{address};
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
 	auto& meminfo{functionContext.memoryInfos[memoryIndex]};
 
@@ -221,16 +231,21 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 			irBuilder, functionContext.llvmContext.i8Type, tagbytePointer);
 		functionContext.emitConditionalTrapIntrinsic(
 			irBuilder.CreateICmpNE(taggedval, taginmem),
-			"memoryTagFails",
-#if 0
+#if 1
+			"memoryTagFailsMore",
 			FunctionType(TypeTuple{},
 						 TypeTuple{functionContext.moduleContext.iptrValueType,
-						 	functionContext.moduleContext.iptrValueType,
+								   functionContext.moduleContext.iptrValueType,
 								   IR::ValueType::i32,
 								   IR::ValueType::i32},
 						 IR::CallingConvention::intrinsic),
-			{irBuilder.CreatePtrToInt(tagbaseptrval,irBuilder.getInt64Ty()),addressrshift,irBuilder.CreateZExt(taggedval,irBuilder.getInt32Ty()),irBuilder.CreateZExt(taginmem,irBuilder.getInt32Ty())}
+			{
+				addressbackup, addressrshift,
+					irBuilder.CreateZExt(taggedval, irBuilder.getInt32Ty()),
+					irBuilder.CreateZExt(taginmem, irBuilder.getInt32Ty())
+			}
 #else
+			"memoryTagFails",
 			FunctionType(TypeTuple{}, TypeTuple{}, IR::CallingConvention::intrinsic),
 			{}
 #endif
