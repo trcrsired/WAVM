@@ -143,7 +143,6 @@ namespace WAVM { namespace LLVMJIT {
 																 {memoryNumReservedBytesOffset}),
 															 memoryOffset->getType()),
 									  memoryInfo.endAddressVariable);
-<<<<<<< HEAD
 
 				if(ismemtagged)
 				{
@@ -171,8 +170,6 @@ namespace WAVM { namespace LLVMJIT {
 															   {memtagRandomBufferOffset}),
 						memoryInfo.memtagRandomBufferVariable);
 				}
-=======
->>>>>>> main
 			}
 		}
 
