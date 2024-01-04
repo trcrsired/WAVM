@@ -40,10 +40,10 @@
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #define WAVM_UNREACHABLE()                                                                         \
-	__debugbreak();                                                                            \
+	__debugbreak();                                                                                \
 	__assume(0)
 #else
 #define WAVM_UNREACHABLE()                                                                         \
-	WAVM_DEBUG_TRAP();                                                                         \
+	WAVM_DEBUG_TRAP();                                                                             \
 	__builtin_unreachable()
 #endif
