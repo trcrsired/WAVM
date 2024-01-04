@@ -75,7 +75,7 @@ set(WAVM_CXX_STANDARD_VERSION 14)
 endif()
 
 if(NOT DEFINED WAVM_LIB_CXX_STANDARD_VERSION)
-set(WAVM_CXX_STANDARD_VERSION 11)
+set(WAVM_LIB_CXX_STANDARD_VERSION 11)
 endif()
 
 set(WAVM_ENABLE_LTO "OFF" CACHE STRING "enable link-time optimization (off, on, or thin)")
