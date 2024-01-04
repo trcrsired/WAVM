@@ -4,6 +4,9 @@
 #include <cstddef>
 #include <new>
 #include <type_traits>
+#if __has_include(<version>)
+#include <version>
+#endif
 #include "WAVM/Inline/BasicTypes.h"
 
 namespace WAVM {
@@ -21,7 +24,7 @@ namespace WAVM {
 
 		void destruct() { get().~Contents(); }
 
-#if __cplusplus >= 201703L
+#ifdef __cpp_lib_launder
 		Contents& get() { return *std::launder(reinterpret_cast<Contents*>(&contents)); }
 		const Contents& get() const
 		{
@@ -33,7 +36,7 @@ namespace WAVM {
 #endif
 
 	private:
-		alignas(alignof(Contents))::std::array<::std::byte, sizeof(Contents)> contents;
+		alignas(alignof(Contents))::std::array<char unsigned, sizeof(Contents)> contents;
 	};
 
 	// Partial specialization for types with trivial destructors.
@@ -46,7 +49,7 @@ namespace WAVM {
 
 		void destruct() {}
 
-#if __cplusplus >= 201703L
+#ifdef __cpp_lib_launder
 		Contents& get() { return *std::launder(reinterpret_cast<Contents*>(&contents)); }
 		const Contents& get() const
 		{
@@ -58,7 +61,7 @@ namespace WAVM {
 #endif
 
 	private:
-		alignas(alignof(Contents))::std::array<::std::byte, sizeof(Contents)> contents;
+		alignas(alignof(Contents))::std::array<char unsigned, sizeof(Contents)> contents;
 	};
 
 	namespace OptionalStorageAssertions {
