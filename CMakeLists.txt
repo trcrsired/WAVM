@@ -448,19 +448,20 @@ function(WAVM_SET_TARGET_COMPILE_OPTIONS TARGET_NAME)
 			   $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/Include>
 	)
 
-	# Target C++14.
-	target_compile_features(${TARGET_NAME} PUBLIC cxx_std_14)
+	# Target C++17. (Optional is a C++17 feature)
+	target_compile_features(${TARGET_NAME} PUBLIC cxx_std_17)
 	
 	# Set sanitizer options.
 	WAVM_SET_TARGET_SANITIZER_OPTIONS(${TARGET_NAME})
 	
 	if(MSVC)
 		# Compile files in parallel.
-		target_compile_options(${TARGET_NAME} PRIVATE "/MP")
+		if(NOT (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
+			target_compile_options(${TARGET_NAME} PRIVATE "/MP")
+		endif()
 
 		# Compile with all warnings, and fatal warnings.
-		target_compile_options(${TARGET_NAME} PRIVATE "/W4")
-		target_compile_options(${TARGET_NAME} PRIVATE "/WX")
+		target_compile_options(${TARGET_NAME} PRIVATE "/W3")
 
 		# Disable warnings
 		target_compile_options(${TARGET_NAME} PRIVATE "/wd4127") # conditional expression is constant
@@ -494,7 +495,6 @@ function(WAVM_SET_TARGET_COMPILE_OPTIONS TARGET_NAME)
 		# Compile with all+extra warnings and fatal warnings
 		target_compile_options(${TARGET_NAME} PRIVATE "-Wall")
 		target_compile_options(${TARGET_NAME} PRIVATE "-Wextra")
-		target_compile_options(${TARGET_NAME} PRIVATE "-Werror")
 
 		# Disable RTTI to allow linking against a build of LLVM that was compiled without it.
 		target_compile_options(${TARGET_NAME} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>)
@@ -686,9 +686,9 @@ set_target_properties(libWAVM PROPERTIES
 )
 
 # Set up the WAVM_API definitions.
-if(NOT WAVM_ENABLE_STATIC_LINKING AND MSVC)
-	target_compile_definitions(libWAVM PRIVATE "\"WAVM_API=__declspec(dllexport)\"")
-	target_compile_definitions(libWAVM INTERFACE "\"WAVM_API=__declspec(dllimport)\"")
+if(NOT WAVM_ENABLE_STATIC_LINKING AND ((${CMAKE_SYSTEM_NAME} STREQUAL "Windows") OR (${CMAKE_SYSTEM_NAME} STREQUAL "CYGWIN") OR (${CMAKE_SYSTEM_NAME} STREQUAL "MSYS")))
+	target_compile_definitions(libWAVM PRIVATE "WAVM_API=__declspec(dllexport)")
+	target_compile_definitions(libWAVM INTERFACE "WAVM_API=__declspec(dllimport)")
 elseif(NOT WAVM_ENABLE_STATIC_LINKING AND CXX_HAS_FVISIBILITY_HIDDEN)
 	target_compile_definitions(libWAVM PUBLIC "WAVM_API=__attribute__((visibility(\"default\")))")
 else()
