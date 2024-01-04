@@ -480,9 +480,9 @@ static inline ::llvm::Value* TagMemPointer(EmitFunctionContext& functionContext,
 	return address;
 }
 
-static inline ::llvm::Value* ComputeMemTagIndex(EmitFunctionContext& functionContext,
-												Uptr memoryIndex,
-												::llvm::Value*& address)
+static inline ::llvm::Value* UntagAddress(EmitFunctionContext& functionContext,
+										  Uptr memoryIndex,
+										  ::llvm::Value* address)
 {
 	MemoryType const& memoryType
 		= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
@@ -497,6 +497,16 @@ static inline ::llvm::Value* ComputeMemTagIndex(EmitFunctionContext& functionCon
 		address = irBuilder.CreatePtrToInt(address, functionContext.llvmContext.i32Type);
 		address = irBuilder.CreateAnd(address, irBuilder.getInt32(0x3FFFFFFF));
 	}
+	return address;
+}
+
+static inline ::llvm::Value* ComputeMemTagIndex(EmitFunctionContext& functionContext,
+												Uptr memoryIndex,
+												::llvm::Value* address,
+												bool addressuntagged)
+{
+	if(!addressuntagged) { address = UntagAddress(functionContext, memoryIndex, address); }
+	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
 	auto* memtagBasePointerVariable
 		= functionContext.memoryInfos[memoryIndex].memtagBasePointerVariable;
 	auto* memtagbase = ::WAVM::LLVMJIT::wavmCreateLoad(
@@ -628,12 +638,15 @@ void EmitFunctionContext::memory_loadtag(NoImm)
 	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this, 0))
 	{
-		auto realaddr = ComputeMemTagIndex(*this, 0, memaddress);
+		memaddress = UntagAddress(*this, 0, memaddress);
+
+		auto realaddr = ComputeMemTagIndex(*this, 0, memaddress, true);
 		llvm::IRBuilder<>& irBuilder = this->irBuilder;
 
 		const MemoryType& memoryType = this->moduleContext.irModule.memories.getType(0);
 		::llvm::Value* color
 			= ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, this->llvmContext.i8Type, realaddr);
+
 		uint32_t shiftval{};
 		if(memoryType.indexType == IndexType::i64)
 		{
@@ -645,8 +658,9 @@ void EmitFunctionContext::memory_loadtag(NoImm)
 			color = irBuilder.CreateZExt(color, this->llvmContext.i32Type);
 			shiftval = 30;
 		}
-		color = irBuilder.CreateShl(color, irBuilder.getInt32(shiftval));
+		color = irBuilder.CreateShl(color, shiftval);
 		memaddress = irBuilder.CreateOr(memaddress, color);
+		memaddress = irBuilder.CreateIntToPtr(memaddress, this->llvmContext.i8PtrType);
 	}
 	push(memaddress);
 }
