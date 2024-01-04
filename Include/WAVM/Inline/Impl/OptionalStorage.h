@@ -1,9 +1,9 @@
 #pragma once
 
-#include <new>
-#include <type_traits>
 #include <array>
 #include <cstddef>
+#include <new>
+#include <type_traits>
 #include "WAVM/Inline/BasicTypes.h"
 
 namespace WAVM {
@@ -33,7 +33,7 @@ namespace WAVM {
 #endif
 
 	private:
-		alignas(alignof(Contents)) ::std::array<::std::byte,sizeof(Contents)> contents;
+		alignas(alignof(Contents))::std::array<::std::byte, sizeof(Contents)> contents;
 	};
 
 	// Partial specialization for types with trivial destructors.
@@ -58,7 +58,7 @@ namespace WAVM {
 #endif
 
 	private:
-		alignas(alignof(Contents)) ::std::array<::std::byte,sizeof(Contents)> contents;
+		alignas(alignof(Contents))::std::array<::std::byte, sizeof(Contents)> contents;
 	};
 
 	namespace OptionalStorageAssertions {
