@@ -587,14 +587,15 @@ struct State
 			args.insert(args.begin(), getFilenameAndExtension(filename));
 
 			// Create the WASI process.
-			wasiProcess = WASI::createProcessWithFeatureSpec(compartment,
-											  std::move(args),
-											  {},
-											  sandboxFS.get(),
-											  Platform::getStdFD(Platform::StdDevice::in),
-											  Platform::getStdFD(Platform::StdDevice::out),
-											  Platform::getStdFD(Platform::StdDevice::err),
-											  irModule.featureSpec);
+			wasiProcess
+				= WASI::createProcessWithFeatureSpec(compartment,
+													 std::move(args),
+													 {},
+													 sandboxFS.get(),
+													 Platform::getStdFD(Platform::StdDevice::in),
+													 Platform::getStdFD(Platform::StdDevice::out),
+													 Platform::getStdFD(Platform::StdDevice::err),
+													 irModule.featureSpec);
 		}
 		else if(abi == ABI::bare)
 		{
@@ -630,7 +631,15 @@ struct State
 
 		// Call the module start function, if it has one.
 		Function* startFunction = getStartFunction(instance);
-		if(startFunction) { invokeFunctionWithMemTag(context, startFunction, IR::FunctionType(), nullptr, nullptr, irModule.featureSpec.memtag); }
+		if(startFunction)
+		{
+			invokeFunctionWithMemTag(context,
+									 startFunction,
+									 IR::FunctionType(),
+									 nullptr,
+									 nullptr,
+									 irModule.featureSpec.memtag);
+		}
 
 		if(emscriptenProcess)
 		{
@@ -721,8 +730,12 @@ struct State
 		untaggedInvokeResults.resize(invokeSig.results().size());
 
 		// Invoke the function.
-		invokeFunctionWithMemTag(
-			context, function, invokeSig, untaggedInvokeArgs.data(), untaggedInvokeResults.data(),irModule.featureSpec.memtag);
+		invokeFunctionWithMemTag(context,
+								 function,
+								 invokeSig,
+								 untaggedInvokeArgs.data(),
+								 untaggedInvokeResults.data(),
+								 irModule.featureSpec.memtag);
 
 		if(untaggedInvokeResults.size() == 1 && invokeSig.results()[0] == ValueType::i32)
 		{
