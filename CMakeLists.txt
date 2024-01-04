@@ -65,6 +65,19 @@ include(CPack)
 
 option(WAVM_ENABLE_STATIC_LINKING "use static linking instead of dynamic for the WAVM libraries" OFF)
 option(WAVM_ENABLE_RELEASE_ASSERTS "enable assertions in release builds" 0)
+
+if(DEFINED WAVM_CXX_STANDARD_VERSION)
+if(NOT DEFINED WAVM_LIB_CXX_STANDARD_VERSION)
+set(WAVM_LIB_CXX_STANDARD_VERSION ${WAVM_CXX_STANDARD_VERSION})
+endif()
+else()
+set(WAVM_CXX_STANDARD_VERSION 14)
+endif()
+
+if(NOT DEFINED WAVM_LIB_CXX_STANDARD_VERSION)
+set(WAVM_LIB_CXX_STANDARD_VERSION 11)
+endif()
+
 set(WAVM_ENABLE_LTO "OFF" CACHE STRING "enable link-time optimization (off, on, or thin)")
 
 option(WAVM_ENABLE_FUZZ_TARGETS "build the fuzz targets" ON)
@@ -448,8 +461,8 @@ function(WAVM_SET_TARGET_COMPILE_OPTIONS TARGET_NAME)
 			   $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/Include>
 	)
 
-	# Target C++17. (Optional is a C++17 feature)
-	target_compile_features(${TARGET_NAME} PUBLIC cxx_std_17)
+	# Target C++14. Allow users to switch standard
+	target_compile_features(${TARGET_NAME} PUBLIC cxx_std_${WAVM_CXX_STANDARD_VERSION})
 	
 	# Set sanitizer options.
 	WAVM_SET_TARGET_SANITIZER_OPTIONS(${TARGET_NAME})
@@ -633,7 +646,7 @@ function(WAVM_ADD_THIRD_PARTY_LIBRARY LIB_NAME)
 	add_library(${LIB_NAME} STATIC ${LIB_SOURCES} ${LIB_NONCOMPILED_SOURCES})
 	
 	# Target C++11.
-	target_compile_features(${LIB_NAME} PRIVATE cxx_std_11)
+	target_compile_features(${LIB_NAME} PRIVATE cxx_std_${WAVM_LIB_CXX_STANDARD_VERSION})
 
 	# Set the configured sanitizer and linker options.
 	if(NOT ${LIB_NAME} STREQUAL "WAVMUnwind")
