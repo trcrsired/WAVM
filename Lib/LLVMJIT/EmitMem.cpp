@@ -231,7 +231,7 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 			irBuilder, functionContext.llvmContext.i8Type, tagbytePointer);
 		functionContext.emitConditionalTrapIntrinsic(
 			irBuilder.CreateICmpNE(taggedval, taginmem),
-#if 1
+#if 0
 			"memoryTagFailsMore",
 			FunctionType(TypeTuple{},
 						 TypeTuple{functionContext.moduleContext.iptrValueType,
