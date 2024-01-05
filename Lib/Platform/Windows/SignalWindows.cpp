@@ -10,7 +10,7 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <Windows.h>
+#include <windows.h>
 #undef min
 #undef max
 
@@ -29,7 +29,9 @@ void Platform::registerEHFrames(const U8* imageBase, const U8* ehFrames, Uptr nu
 	// Register our manually fixed up copy of the function table.
 	if(!RtlAddFunctionTable(
 		   (RUNTIME_FUNCTION*)ehFrames, numFunctions, reinterpret_cast<ULONG_PTR>(imageBase)))
-	{ Errors::fatal("RtlAddFunctionTable failed"); }
+	{
+		Errors::fatal("RtlAddFunctionTable failed");
+	}
 #else
 	Errors::fatal("registerEHFrames isn't implemented on 32-bit Windows");
 #endif
@@ -42,7 +44,7 @@ void Platform::deregisterEHFrames(const U8* imageBase, const U8* ehFrames, Uptr 
 	Errors::fatal("deregisterEHFrames isn't implemented on 32-bit Windows");
 #endif
 }
-#if WAVMSIGNALENABLESEH
+#ifdef WAVMSIGNALENABLESEH
 static bool translateSEHToSignal(EXCEPTION_POINTERS* exceptionPointers, Signal& outSignal)
 {
 	// Decide how to handle this exception code.
@@ -79,10 +81,7 @@ static LONG CALLBACK sehSignalFilterFunctionNonReentrant(EXCEPTION_POINTERS* exc
 		CallStack callStack = unwindStack(*exceptionPointers->ContextRecord, 0);
 
 		if((*filter)(context, signal, std::move(callStack))) { return EXCEPTION_EXECUTE_HANDLER; }
-		else
-		{
-			return EXCEPTION_CONTINUE_SEARCH;
-		}
+		else { return EXCEPTION_CONTINUE_SEARCH; }
 	}
 }
 

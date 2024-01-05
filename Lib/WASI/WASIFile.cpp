@@ -89,14 +89,18 @@ static LockedFDE getLockedFDE(Process* process,
 
 	// Check that the fdMap contains a FDE for the given FD.
 	if(fd < process->fdMap.getMinIndex() || fd > process->fdMap.getMaxIndex())
-	{ return LockedFDE(__WASI_EBADF); }
+	{
+		return LockedFDE(__WASI_EBADF);
+	}
 	std::shared_ptr<FDE>* fde = process->fdMap.get(fd);
 	if(!fde) { return LockedFDE(__WASI_EBADF); }
 
 	// Check that the FDE has the required rights.
 	if(((*fde)->rights & requiredRights) != requiredRights
 	   || ((*fde)->inheritingRights & requiredInheritingRights) != requiredInheritingRights)
-	{ return LockedFDE(__WASI_ENOTCAPABLE); }
+	{
+		return LockedFDE(__WASI_ENOTCAPABLE);
+	}
 
 	TRACE_SYSCALL_FLOW("Locked FDE: %s", (*fde)->originalPath.c_str());
 
@@ -135,7 +139,9 @@ static bool getCanonicalPath(const std::string& basePath,
 	while(componentStart < relativePath.size())
 	{
 		while(componentStart < relativePath.size() && relativePath[componentStart] == '/')
-		{ ++componentStart; }
+		{
+			++componentStart;
+		}
 
 		Uptr nextPathSeparator = relativePath.find_first_of('/', componentStart);
 
@@ -149,15 +155,9 @@ static bool getCanonicalPath(const std::string& basePath,
 			if(component == "..")
 			{
 				if(!relativePathComponents.size()) { return false; }
-				else
-				{
-					relativePathComponents.pop_back();
-				}
+				else { relativePathComponents.pop_back(); }
 			}
-			else if(component != ".")
-			{
-				relativePathComponents.push_back(component);
-			}
+			else if(component != ".") { relativePathComponents.push_back(component); }
 
 			componentStart = nextPathSeparator + 1;
 		}
@@ -235,9 +235,9 @@ static Uptr truncatingMemcpy(void* dest, const void* source, Uptr numSourceBytes
 	return numBytes;
 }
 
-#include "WASIDefineIntrinsicsI32.h"
+#include "DefineIntrinsicsI32.h"
 #include "WASIFile.h"
 #if UINT32_MAX < SIZE_MAX
-#include "WASIDefineIntrinsicsI64.h"
+#include "DefineIntrinsicsI64.h"
 #include "WASIFile.h"
 #endif

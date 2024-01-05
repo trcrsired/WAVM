@@ -6,7 +6,7 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <Windows.h>
+#include <windows.h>
 #undef min
 #undef max
 
@@ -23,7 +23,9 @@ Platform::RWMutex::RWMutex()
 Platform::RWMutex::~RWMutex()
 {
 	if(!TryAcquireSRWLockExclusive((SRWLOCK*)&lockData))
-	{ Errors::fatal("Destroying RWMutex that is locked"); }
+	{
+		Errors::fatal("Destroying RWMutex that is locked");
+	}
 }
 
 void Platform::RWMutex::lock(LockShareability shareability)
@@ -35,10 +37,7 @@ void Platform::RWMutex::lock(LockShareability shareability)
 		exclusiveLockingThreadId.store(GetCurrentThreadId(), std::memory_order_relaxed);
 #endif
 	}
-	else
-	{
-		AcquireSRWLockShared((SRWLOCK*)&lockData);
-	}
+	else { AcquireSRWLockShared((SRWLOCK*)&lockData); }
 }
 
 void Platform::RWMutex::unlock(LockShareability shareability)
@@ -50,10 +49,7 @@ void Platform::RWMutex::unlock(LockShareability shareability)
 #endif
 		ReleaseSRWLockExclusive((SRWLOCK*)&lockData);
 	}
-	else
-	{
-		ReleaseSRWLockShared((SRWLOCK*)&lockData);
-	}
+	else { ReleaseSRWLockShared((SRWLOCK*)&lockData); }
 }
 
 #if WAVM_ENABLE_ASSERTS

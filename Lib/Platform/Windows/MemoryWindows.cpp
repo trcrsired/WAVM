@@ -7,11 +7,11 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <Windows.h>
+#include <windows.h>
 #undef min
 #undef max
 
-#include <Psapi.h>
+#include <psapi.h>
 
 using namespace WAVM;
 using namespace WAVM::Platform;
@@ -22,8 +22,8 @@ static Uptr internalGetPreferredVirtualPageSizeLog2()
 	GetSystemInfo(&systemInfo);
 	Uptr preferredVirtualPageSize = systemInfo.dwPageSize;
 	// Verify our assumption that the virtual page size is a power of two.
-	WAVM_ERROR_UNLESS((!(preferredVirtualPageSize & (preferredVirtualPageSize - 1)))&&
-		((preferredVirtualPageSize & 15u) == 0u));
+	WAVM_ERROR_UNLESS((!(preferredVirtualPageSize & (preferredVirtualPageSize - 1)))
+					  && ((preferredVirtualPageSize & 15u) == 0u));
 	return floorLogTwo(preferredVirtualPageSize);
 }
 Uptr Platform::getBytesPerPageLog2()
@@ -92,7 +92,7 @@ U8* Platform::allocateAlignedVirtualPages(Uptr numPages,
 	{
 		MEM_ADDRESS_REQUIREMENTS addressRequirements = {0};
 		addressRequirements.Alignment = Uptr(1) << alignmentLog2;
-		MEM_EXTENDED_PARAMETER alignmentParam = {0};
+		MEM_EXTENDED_PARAMETER alignmentParam = {};
 		alignmentParam.Type = MemExtendedParameterAddressRequirements;
 		alignmentParam.Pointer = &addressRequirements;
 		outUnalignedBaseAddress = (U8*)(*virtualAlloc2)(

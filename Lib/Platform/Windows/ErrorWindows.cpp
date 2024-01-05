@@ -8,7 +8,7 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <Windows.h>
+#include <windows.h>
 #undef min
 #undef max
 
@@ -30,11 +30,10 @@ static void dumpErrorCallStack(Uptr numOmittedFramesFromTop)
 		std::string frameDescription;
 		Platform::InstructionSource source;
 		if(!Platform::getInstructionSourceByAddress(callStack.frames[frameIndex].ip, source))
-		{ frameDescription = "<unknown function>"; }
-		else
 		{
-			frameDescription = asString(source);
+			frameDescription = "<unknown function>";
 		}
+		else { frameDescription = asString(source); }
 		std::fprintf(stderr, "  %s\n", frameDescription.c_str());
 	}
 	std::fflush(stderr);

@@ -33,7 +33,9 @@ PUSH_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 #include <llvm/Object/SymbolSize.h>
 #include <llvm/Pass.h>
 #include <llvm/Support/FileSystem.h>
+#if __has_include(<llvm/Support/Host.h>)
 #include <llvm/Support/Host.h>
+#endif
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Transforms/Scalar.h>
@@ -116,7 +118,9 @@ static void optimizeLLVMModule(llvm::Module& llvmModule, bool shouldLogMetrics)
 
 	fpm.doInitialization();
 	for(auto functionIt = llvmModule.begin(); functionIt != llvmModule.end(); ++functionIt)
-	{ fpm.run(*functionIt); }
+	{
+		fpm.run(*functionIt);
+	}
 
 	if(shouldLogMetrics)
 	{
@@ -286,7 +290,9 @@ std::string LLVMJIT::disassembleObject(const TargetSpec& targetSpec,
 #if LLVM_VERSION_MAJOR >= 9
 			if(llvm::Expected<llvm::StringRef> maybeSectionContents
 			   = (*symbolSection)->getContents())
-			{ sectionContents = maybeSectionContents.get(); }
+			{
+				sectionContents = maybeSectionContents.get();
+			}
 #else
 			(*symbolSection)->getContents(sectionContents);
 #endif
