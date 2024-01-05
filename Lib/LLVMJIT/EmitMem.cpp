@@ -64,16 +64,6 @@ static llvm::Value* getMemoryNumBytes(EmitFunctionContext& functionContext, Uptr
 		emitLiteralIptr(IR::numBytesPerPage, functionContext.moduleContext.iptrType));
 }
 
-#if 0
-static void debugi64(EmitFunctionContext& functionContext,::llvm::Value *val)
-{
-	functionContext.emitRuntimeIntrinsic(
-		"memoryTagDebugging",
-		FunctionType({}, TypeTuple{ValueType::i64}, IR::CallingConvention::intrinsic),
-		{val});
-}
-#endif
-
 static void createconditionaltrap(EmitFunctionContext& functionContext, ::llvm::Value* cmpres)
 {
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
@@ -198,29 +188,7 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 			= irBuilder.CreateICmpUGT(memoryNumBytesMinusNumBytes, memoryNumBytes);
 		auto cmpres{irBuilder.CreateOr(numBytesWasGreaterThanMemoryNumBytes,
 							   irBuilder.CreateICmpUGT(address, memoryNumBytesMinusNumBytes))};
-#if 0
-		functionContext.emitConditionalTrapIntrinsic(cmpres,
-#if 0
-			"memoryOutOfBoundsTrap",
-			FunctionType(TypeTuple{},
-						 TypeTuple{functionContext.moduleContext.iptrValueType,
-								   functionContext.moduleContext.iptrValueType,
-								   functionContext.moduleContext.iptrValueType,
-								   functionContext.moduleContext.iptrValueType},
-						 IR::CallingConvention::intrinsic),
-			{address,
-			 numBytes,
-			 memoryNumBytes,
-			 emitLiteralIptr(memoryIndex, functionContext.moduleContext.iptrType)}
-#else
-			"memoryOutOfBoundsTrapSimple",
-			FunctionType({}, {}, IR::CallingConvention::intrinsic),
-			{}
-#endif
-		);
-#else
 		createconditionaltrap(functionContext, cmpres);
-#endif
 		
 	}
 	else if(is32bitMemoryOn64bitHost)
