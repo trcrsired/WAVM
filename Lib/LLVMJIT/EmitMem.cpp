@@ -90,7 +90,6 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 		= memoryType.indexType == IndexType::i32
 		  && functionContext.moduleContext.iptrValueType == ValueType::i64;
 
-	auto addressbackup{address};
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
 	auto& meminfo{functionContext.memoryInfos[memoryIndex]};
 
