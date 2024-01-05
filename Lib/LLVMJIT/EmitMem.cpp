@@ -431,12 +431,12 @@ static inline ::llvm::Value* generateMemRandomTagByte(EmitFunctionContext& funct
 		iptrnativeValueType = IR::ValueType::i32;
 		ptrtype = irBuilder.getInt32Ty();
 	}
-
+#if 0
 	functionContext.emitRuntimeIntrinsic(
 		"memoryTagRandomTagRefillFunction",
 		FunctionType({}, {iptrnativeValueType}, IR::CallingConvention::intrinsic),
 		{irBuilder.CreatePtrToInt(begptr, ptrtype)});
-
+#endif
 	irBuilder.CreateBr(mergeBlock);
 	irBuilder.SetInsertPoint(mergeBlock);
 	auto currphiNode = irBuilder.CreatePHI(functionContext.llvmContext.i8PtrType, 2);
