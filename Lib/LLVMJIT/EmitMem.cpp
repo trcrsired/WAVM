@@ -73,6 +73,39 @@ static void debugi64(EmitFunctionContext& functionContext,::llvm::Value *val)
 		{val});
 }
 #endif
+
+static void createconditionaltrap(EmitFunctionContext& functionContext, ::llvm::Value* cmpres)
+{
+	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
+	::llvm::BasicBlock* trapBlock{};
+	auto* function = functionContext.function;
+	bool hastrapblock{functionContext.TrapBlock};
+	if(hastrapblock)
+	{
+		trapBlock = functionContext.TrapBlock;
+		::llvm::BasicBlock* normalBlock
+			= ::llvm::BasicBlock::Create(functionContext.moduleContext.llvmContext, "", function);
+		irBuilder.CreateCondBr(cmpres, trapBlock, normalBlock);
+		//irBuilder.CreateBr(normalBlock);
+		irBuilder.SetInsertPoint(normalBlock);
+	}
+	else
+	{
+		trapBlock = ::llvm::BasicBlock::Create(functionContext.moduleContext.llvmContext, "", function);
+		::llvm::BasicBlock* normalBlock
+			= ::llvm::BasicBlock::Create(functionContext.moduleContext.llvmContext, "", function);
+		irBuilder.CreateCondBr(cmpres, trapBlock, normalBlock);
+		//irBuilder.CreateBr(trapBlock);
+		irBuilder.SetInsertPoint(trapBlock);
+		irBuilder.CreateIntrinsic(::llvm::Intrinsic::trap,{},{});
+		irBuilder.CreateUnreachable();
+		//irBuilder.CreateBr(normalBlock);
+		irBuilder.SetInsertPoint(normalBlock);
+		functionContext.TrapBlock = trapBlock;
+
+	}
+}
+
 // Bounds checks a sandboxed memory address + offset, and returns an offset relative to the memory
 // base address that is guaranteed to be within the virtual address space allocated for the linear
 // memory object.
@@ -155,7 +188,6 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 														  functionContext.moduleContext.iptrType));
 		}
 	}
-
 	if(boundsCheckOp == BoundsCheckOp::trapOnOutOfBounds)
 	{
 		// If the caller requires a trap, test whether the addressed bytes are within the bounds of
@@ -164,9 +196,10 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 		llvm::Value* memoryNumBytesMinusNumBytes = irBuilder.CreateSub(memoryNumBytes, numBytes);
 		llvm::Value* numBytesWasGreaterThanMemoryNumBytes
 			= irBuilder.CreateICmpUGT(memoryNumBytesMinusNumBytes, memoryNumBytes);
-		functionContext.emitConditionalTrapIntrinsic(
-			irBuilder.CreateOr(numBytesWasGreaterThanMemoryNumBytes,
-							   irBuilder.CreateICmpUGT(address, memoryNumBytesMinusNumBytes)),
+		auto cmpres{irBuilder.CreateOr(numBytesWasGreaterThanMemoryNumBytes,
+							   irBuilder.CreateICmpUGT(address, memoryNumBytesMinusNumBytes))};
+#if 0
+		functionContext.emitConditionalTrapIntrinsic(cmpres,
 #if 0
 			"memoryOutOfBoundsTrap",
 			FunctionType(TypeTuple{},
@@ -185,6 +218,10 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 			{}
 #endif
 		);
+#else
+		createconditionaltrap(functionContext, cmpres);
+#endif
+		
 	}
 	else if(is32bitMemoryOn64bitHost)
 	{
@@ -205,7 +242,6 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 		address = irBuilder.CreateSelect(
 			irBuilder.CreateICmpULT(address, endAddress), address, endAddress);
 	}
-
 	// If the offset is less than the size of the guard region, then add it after bounds checking.
 	// This avoids the need to check the addition for overflow, and allows it to be used as the
 	// displacement in x86 addresses. Additionally, it allows the LLVM optimizer to reuse the bounds
@@ -218,7 +254,6 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 
 		address = irBuilder.CreateAdd(address, offsetConstant);
 	}
-
 	if(!istagging && memtagBasePointerVariable)
 	{
 		::llvm::Value* addressrshift{irBuilder.CreateLShr(addressoriginal, 4)};
@@ -228,27 +263,9 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 			irBuilder, functionContext.llvmContext.i8Type, tagbaseptrval, addressrshift);
 		::llvm::Value* taginmem = ::WAVM::LLVMJIT::wavmCreateLoad(
 			irBuilder, functionContext.llvmContext.i8Type, tagbytePointer);
-		functionContext.emitConditionalTrapIntrinsic(
-			irBuilder.CreateICmpNE(taggedval, taginmem),
-#if 0
-			"memoryTagFailsMore",
-			FunctionType(TypeTuple{},
-						 TypeTuple{functionContext.moduleContext.iptrValueType,
-								   functionContext.moduleContext.iptrValueType,
-								   IR::ValueType::i32,
-								   IR::ValueType::i32},
-						 IR::CallingConvention::intrinsic),
-			{
-				addressbackup, addressrshift,
-					irBuilder.CreateZExt(taggedval, irBuilder.getInt32Ty()),
-					irBuilder.CreateZExt(taginmem, irBuilder.getInt32Ty())
-			}
-#else
-			"memoryTagFails",
-			FunctionType(TypeTuple{}, TypeTuple{}, IR::CallingConvention::intrinsic),
-			{}
-#endif
-		);
+		
+		auto cmpres{irBuilder.CreateICmpNE(taggedval,taginmem)};
+		createconditionaltrap(functionContext, cmpres);
 	}
 	return address;
 }
