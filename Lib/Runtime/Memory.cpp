@@ -543,6 +543,7 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics,
 	throwException(ExceptionTypes::outOfBoundsMemoryAccess, {memory, outOfBoundsAddress});
 }
 
+#if 0
 WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics,
 							   "memoryTagRandomTagRefillFunction",
 							   void,
@@ -552,34 +553,6 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics,
 	wavm_random_tag_fill_buffer_function(reinterpret_cast<void*>(nativeaddress));
 }
 
-WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics, "memoryTagFails", void, memoryTagFails)
-{
-	fputs("memoryTagFails fails\n", stderr);
-	std::abort();
-}
-
-WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics,
-							   "memoryOutOfBoundsTrapSimple",
-							   void,
-							   outOfBoundsMemoryTrapSimple)
-{
-	fputs("memoryOutOfBoundsTrapSimple fails\n", stderr);
-	std::abort();
-}
-
-#if 0
-WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics,
-							   "memoryTagFailsMore",
-							   void,
-							   memoryTagFailsMore,
-							   size_t addr,
-							   Uptr addrdiv16,
-							   uint32_t tginptr,
-							   uint32_t tginmem)
-{
-	fprintf(stderr,"memoryTagFailsMore fails: %p %llu tginptr:%u tginmem:%u\n",addr,addrdiv16,tginptr,tginmem);
-	std::abort();
-}
 WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics,
 							   "memoryTagDebugging",
 							   void,

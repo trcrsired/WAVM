@@ -92,7 +92,7 @@ namespace WAVM { namespace Runtime {
 	};
 
 	inline constexpr Uptr memoryNumGuardBytes = 65536;
-	inline constexpr ::std::size_t memoryTagBufferBytes = 8192;
+	inline constexpr ::std::size_t memoryTagBufferBytes = 16384;
 #if 0
 	static_assert(sizeof(MemoryRuntimeData) == sizeof(Uptr) * 3,
 				  "MemoryRuntimeData isn't the expected size");
