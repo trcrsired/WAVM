@@ -71,6 +71,7 @@ static U8* createMemoryTagRandomBufferImpl() noexcept
 	{
 		::std::abort();
 	}
+	wavm_random_tag_fill_buffer_function(ptr);
 	return ptr;
 }
 
