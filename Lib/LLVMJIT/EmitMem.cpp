@@ -67,12 +67,10 @@ static llvm::Value* getMemoryNumBytes(EmitFunctionContext& functionContext, Uptr
 static void createconditionaltrap(EmitFunctionContext& functionContext, ::llvm::Value* cmpres)
 {
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
-	::llvm::BasicBlock* trapBlock{};
+	::llvm::BasicBlock* trapBlock{functionContext.TrapBlock};
 	auto* function = functionContext.function;
-	bool hastrapblock{functionContext.TrapBlock};
-	if(hastrapblock)
+	if(trapBlock!=nullptr)
 	{
-		trapBlock = functionContext.TrapBlock;
 		::llvm::BasicBlock* normalBlock
 			= ::llvm::BasicBlock::Create(functionContext.moduleContext.llvmContext, "", function);
 		irBuilder.CreateCondBr(cmpres, trapBlock, normalBlock);
@@ -214,17 +212,9 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 	// This avoids the need to check the addition for overflow, and allows it to be used as the
 	// displacement in x86 addresses. Additionally, it allows the LLVM optimizer to reuse the bounds
 	// checking code for consecutive loads/stores to the same address.
-	auto addressoriginal = address;
-	if(offset && offset < Runtime::memoryNumGuardBytes)
-	{
-		llvm::Constant* offsetConstant
-			= emitLiteralIptr(offset, functionContext.moduleContext.iptrType);
-
-		address = irBuilder.CreateAdd(address, offsetConstant);
-	}
 	if(!istagging && memtagBasePointerVariable)
 	{
-		::llvm::Value* addressrshift{irBuilder.CreateLShr(addressoriginal, 4)};
+		::llvm::Value* addressrshift{irBuilder.CreateLShr(address, 4)};
 		::llvm::Value* tagbaseptrval = ::WAVM::LLVMJIT::wavmCreateLoad(
 			irBuilder, functionContext.llvmContext.i8PtrType, memtagBasePointerVariable);
 		::llvm::Value* tagbytePointer = ::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
@@ -234,6 +224,13 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 		
 		auto cmpres{irBuilder.CreateICmpNE(taggedval,taginmem)};
 		createconditionaltrap(functionContext, cmpres);
+	}
+	if(offset && offset < Runtime::memoryNumGuardBytes)
+	{
+		llvm::Constant* offsetConstant
+			= emitLiteralIptr(offset, functionContext.moduleContext.iptrType);
+
+		address = irBuilder.CreateAdd(address, offsetConstant);
 	}
 	return address;
 }
