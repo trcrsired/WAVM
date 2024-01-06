@@ -69,28 +69,28 @@ static void createconditionaltrap(EmitFunctionContext& functionContext, ::llvm::
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
 	::llvm::BasicBlock* trapBlock{functionContext.TrapBlock};
 	auto* function = functionContext.function;
-	if(trapBlock!=nullptr)
+	if(trapBlock != nullptr)
 	{
 		::llvm::BasicBlock* normalBlock
 			= ::llvm::BasicBlock::Create(functionContext.moduleContext.llvmContext, "", function);
 		irBuilder.CreateCondBr(cmpres, trapBlock, normalBlock);
-		//irBuilder.CreateBr(normalBlock);
+		// irBuilder.CreateBr(normalBlock);
 		irBuilder.SetInsertPoint(normalBlock);
 	}
 	else
 	{
-		trapBlock = ::llvm::BasicBlock::Create(functionContext.moduleContext.llvmContext, "", function);
+		trapBlock
+			= ::llvm::BasicBlock::Create(functionContext.moduleContext.llvmContext, "", function);
 		::llvm::BasicBlock* normalBlock
 			= ::llvm::BasicBlock::Create(functionContext.moduleContext.llvmContext, "", function);
 		irBuilder.CreateCondBr(cmpres, trapBlock, normalBlock);
-		//irBuilder.CreateBr(trapBlock);
+		// irBuilder.CreateBr(trapBlock);
 		irBuilder.SetInsertPoint(trapBlock);
-		irBuilder.CreateIntrinsic(::llvm::Intrinsic::trap,{},{});
+		irBuilder.CreateIntrinsic(::llvm::Intrinsic::trap, {}, {});
 		irBuilder.CreateUnreachable();
-		//irBuilder.CreateBr(normalBlock);
+		// irBuilder.CreateBr(normalBlock);
 		irBuilder.SetInsertPoint(normalBlock);
 		functionContext.TrapBlock = trapBlock;
-
 	}
 }
 
@@ -153,9 +153,10 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 		llvm::Constant* offsetConstant
 			= emitLiteralIptr(offset, functionContext.moduleContext.iptrType);
 
-		if(is32bitMemoryOn64bitHost)
+		if(is32bitMemoryOn64bitHost || memtagBasePointerVariable)
 		{
 			// This is a 64-bit add of two numbers zero-extended from 32-bit, so it can't overflow.
+			// Memtag will reserve upper 8 bits so it won't overflow either
 			address = irBuilder.CreateAdd(address, offsetConstant);
 		}
 		else
@@ -184,10 +185,10 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 		llvm::Value* memoryNumBytesMinusNumBytes = irBuilder.CreateSub(memoryNumBytes, numBytes);
 		llvm::Value* numBytesWasGreaterThanMemoryNumBytes
 			= irBuilder.CreateICmpUGT(memoryNumBytesMinusNumBytes, memoryNumBytes);
-		auto cmpres{irBuilder.CreateOr(numBytesWasGreaterThanMemoryNumBytes,
+		auto cmpres{
+			irBuilder.CreateOr(numBytesWasGreaterThanMemoryNumBytes,
 							   irBuilder.CreateICmpUGT(address, memoryNumBytesMinusNumBytes))};
 		createconditionaltrap(functionContext, cmpres);
-		
 	}
 	else if(is32bitMemoryOn64bitHost)
 	{
@@ -205,8 +206,15 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 			irBuilder,
 			functionContext.moduleContext.iptrType,
 			functionContext.memoryInfos[memoryIndex].endAddressVariable);
-		address = irBuilder.CreateSelect(
-			irBuilder.CreateICmpULT(address, endAddress), address, endAddress);
+		if constexpr(false)
+		{
+			createconditionaltrap(functionContext, irBuilder.CreateICmpUGE(address, endAddress));
+		}
+		else
+		{
+			address = irBuilder.CreateSelect(
+				irBuilder.CreateICmpULT(address, endAddress), address, endAddress);
+		}
 	}
 	// If the offset is less than the size of the guard region, then add it after bounds checking.
 	// This avoids the need to check the addition for overflow, and allows it to be used as the
@@ -221,8 +229,8 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 			irBuilder, functionContext.llvmContext.i8Type, tagbaseptrval, addressrshift);
 		::llvm::Value* taginmem = ::WAVM::LLVMJIT::wavmCreateLoad(
 			irBuilder, functionContext.llvmContext.i8Type, tagbytePointer);
-		
-		auto cmpres{irBuilder.CreateICmpNE(taggedval,taginmem)};
+
+		auto cmpres{irBuilder.CreateICmpNE(taggedval, taginmem)};
 		createconditionaltrap(functionContext, cmpres);
 	}
 	if(offset && offset < Runtime::memoryNumGuardBytes)

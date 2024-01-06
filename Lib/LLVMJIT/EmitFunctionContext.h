@@ -26,6 +26,7 @@ namespace WAVM { namespace LLVMJIT {
 		const IR::FunctionDef& functionDef;
 		IR::FunctionType functionType;
 		llvm::Function* function;
+		::llvm::BasicBlock* TrapBlock{};
 
 #if LLVM_VERSION_MAJOR > 14
 		std::vector<localPointersRef> localPointers;

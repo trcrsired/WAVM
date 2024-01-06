@@ -59,13 +59,9 @@ static inline void wavm_random_tag_fill_buffer_function(void* ptr) noexcept
 
 static U8* createMemoryTagRandomBufferImpl() noexcept
 {
-	constexpr
-		::std::size_t buffersize{memoryTagBufferBytes};
-	U8 *ptr = reinterpret_cast<U8*>(::std::malloc(buffersize));
-	if(ptr==nullptr)
-	{
-		::std::abort();
-	}
+	constexpr ::std::size_t buffersize{memoryTagBufferBytes};
+	U8* ptr = reinterpret_cast<U8*>(::std::malloc(buffersize));
+	if(ptr == nullptr) { ::std::abort(); }
 	wavm_random_tag_fill_buffer_function(ptr);
 	return ptr;
 }
@@ -104,11 +100,13 @@ static Memory* createMemoryImpl(Compartment* compartment,
 
 	const Uptr numGuardPages = memoryNumGuardBytes >> pageBytesLog2;
 	auto totalpages = memoryMaxPages + numGuardPages;
-	memory->baseAddress = Platform::allocateVirtualPages(memoryMaxPages + numGuardPages);
+	memory->baseAddress = Platform::allocateVirtualPages(totalpages);
 	if(isMemTagged)
 	{
 		auto totaltaggedpages = (totalpages >> 4u) + (totalpages & 15u);
-		memory->baseAddressTags = Platform::allocateVirtualPages(totaltaggedpages);
+		auto baseAddressTags = Platform::allocateVirtualPages(totaltaggedpages);
+		if(!baseAddressTags) { return nullptr; }
+		memory->baseAddressTags = baseAddressTags;
 		memory->memtagRandomBufferBase = createMemoryTagRandomBufferImpl();
 	}
 	memory->numReservedBytes = memoryMaxPages << pageBytesLog2;
