@@ -580,8 +580,9 @@ void EmitFunctionContext::memory_subtag(MemoryImm imm)
 
 	if(isMemTaggedEnabled(*this, imm.memoryIndex))
 	{
-		const MemoryType& memoryType = this->moduleContext.irModule.memories.getType(0);
-		uint_least64_t mask = imm.memoryIndex;
+		const MemoryType& memoryType
+			= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
+		uint_least64_t mask;
 		if(memoryType.indexType == IndexType::i64) { mask = 0x00FFFFFFFFFFFFFF; }
 		else { mask = 0x3FFFFFFF; }
 		ptra = irBuilder.CreateAnd(ptra, mask);
