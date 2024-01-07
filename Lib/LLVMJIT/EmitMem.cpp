@@ -408,7 +408,7 @@ static inline ::llvm::Value* generateMemRandomTagByte(EmitFunctionContext& funct
 	irBuilder.SetInsertPoint(trueBlock);
 	::llvm::Value* begptr
 		= ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, functionContext.llvmContext.i8PtrType, arg0);
-
+#if 0
 	IR::ValueType iptrnativeValueType;
 	::llvm::Type* ptrtype;
 	if constexpr(sizeof(::std::uint_least64_t) == sizeof(::std::size_t))
@@ -421,7 +421,6 @@ static inline ::llvm::Value* generateMemRandomTagByte(EmitFunctionContext& funct
 		iptrnativeValueType = IR::ValueType::i32;
 		ptrtype = irBuilder.getInt32Ty();
 	}
-#if 0
 	functionContext.emitRuntimeIntrinsic(
 		"memoryTagRandomTagRefillFunction",
 		FunctionType({}, {iptrnativeValueType}, IR::CallingConvention::intrinsic),
