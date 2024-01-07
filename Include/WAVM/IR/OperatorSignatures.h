@@ -353,42 +353,41 @@ namespace WAVM { namespace IR {
 		{
 			return atomiccmpxchg(module_, imm, ValueType::i64);
 		}
-		inline OpSignature memory_storetag(const Module& module_, const NoImm& imm)
+		inline OpSignature memory_storetag(const Module& module_, const MemoryImm& imm)
 		{
-#if 0
-			const ValueType indexType
+			ValueType const indexType
 				= asValueType(module_.memories.getType(imm.memoryIndex).indexType);
 			return OpSignature({}, {indexType, indexType});
-#else
-
-			return OpSignature({}, {ValueType::i64, ValueType::i64});
-#endif
 		}
-		inline OpSignature memory_randomstoretag(const Module& module_, const NoImm& imm)
+		inline OpSignature memory_randomstoretag(const Module& module_, const MemoryImm& imm)
 		{
-#if 0
-			const ValueType indexType
+			ValueType const indexType
 				= asValueType(module_.memories.getType(imm.memoryIndex).indexType);
 			return OpSignature({indexType}, {indexType, indexType});
-#else
-			return OpSignature({ValueType::i64}, {ValueType::i64, ValueType::i64});
-#endif
 		}
-		inline OpSignature memory_randomtag(const Module& module_, const NoImm& imm)
+		inline OpSignature memory_randomtag(const Module& module_, const MemoryImm& imm)
 		{
-			return OpSignature({ValueType::i64}, {ValueType::i64});
+			ValueType const indexType
+				= asValueType(module_.memories.getType(imm.memoryIndex).indexType);
+			return OpSignature({indexType}, {indexType});
 		}
-		inline OpSignature memory_copytag(const Module& module_, const NoImm& imm)
+		inline OpSignature memory_copytag(const Module& module_, const MemoryImm& imm)
 		{
-			return OpSignature({ValueType::i64}, {ValueType::i64, ValueType::i64});
+			ValueType const indexType
+				= asValueType(module_.memories.getType(imm.memoryIndex).indexType);
+			return OpSignature({indexType}, {indexType, indexType});
 		}
-		inline OpSignature memory_subtag(const Module& module_, const NoImm& imm)
+		inline OpSignature memory_subtag(const Module& module_, const MemoryImm& imm)
 		{
-			return OpSignature({ValueType::i64}, {ValueType::i64, ValueType::i64});
+			ValueType const indexType
+				= asValueType(module_.memories.getType(imm.memoryIndex).indexType);
+			return OpSignature({indexType}, {indexType, indexType});
 		}
-		inline OpSignature memory_loadtag(const Module& module_, const NoImm& imm)
+		inline OpSignature memory_loadtag(const Module& module_, const MemoryImm& imm)
 		{
-			return OpSignature({ValueType::i64}, {ValueType::i64});
+			ValueType const indexType
+				= asValueType(module_.memories.getType(imm.memoryIndex).indexType);
+			return OpSignature({indexType}, {indexType});
 		}
 	};
 }};

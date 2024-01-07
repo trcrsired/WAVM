@@ -539,50 +539,50 @@ static inline ::llvm::Value* StoreTagIntoMem(EmitFunctionContext& functionContex
 	return address;
 }
 
-void EmitFunctionContext::memory_randomstoretag(NoImm)
+void EmitFunctionContext::memory_randomstoretag(MemoryImm imm)
 {
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
-	if(isMemTaggedEnabled(*this, 0))
+	if(isMemTaggedEnabled(*this, imm.memoryIndex))
 	{
-		auto color = generateMemRandomTagByte(*this, 0);
-		memaddress = StoreTagIntoMem(*this, 0, memaddress, taggedbytes, color);
-		memaddress = TagMemPointer(*this, 0, memaddress, color, true);
+		auto color = generateMemRandomTagByte(*this, imm.memoryIndex);
+		memaddress = StoreTagIntoMem(*this, imm.memoryIndex, memaddress, taggedbytes, color);
+		memaddress = TagMemPointer(*this, imm.memoryIndex, memaddress, color, true);
 	}
 	push(memaddress);
 }
 
-void EmitFunctionContext::memory_storetag(NoImm)
+void EmitFunctionContext::memory_storetag(MemoryImm imm)
 {
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
-	if(isMemTaggedEnabled(*this, 0))
+	if(isMemTaggedEnabled(*this, imm.memoryIndex))
 	{
-		StoreTagIntoMem(*this, 0, memaddress, taggedbytes, nullptr);
+		StoreTagIntoMem(*this, imm.memoryIndex, memaddress, taggedbytes, nullptr);
 	}
 }
 
-void EmitFunctionContext::memory_randomtag(NoImm)
+void EmitFunctionContext::memory_randomtag(MemoryImm imm)
 {
 	::llvm::Value* memaddress = pop();
-	if(isMemTaggedEnabled(*this, 0))
+	if(isMemTaggedEnabled(*this, imm.memoryIndex))
 	{
-		auto color = generateMemRandomTagByte(*this, 0);
-		memaddress = TagMemPointer(*this, 0, memaddress, color, false);
+		auto color = generateMemRandomTagByte(*this, imm.memoryIndex);
+		memaddress = TagMemPointer(*this, imm.memoryIndex, memaddress, color, false);
 	}
 	push(memaddress);
 }
 
-void EmitFunctionContext::memory_subtag(NoImm)
+void EmitFunctionContext::memory_subtag(MemoryImm imm)
 {
 	::llvm::Value* ptra = pop();
 	::llvm::Value* ptrb = pop();
 	llvm::IRBuilder<>& irBuilder = this->irBuilder;
 
-	if(isMemTaggedEnabled(*this, 0))
+	if(isMemTaggedEnabled(*this, imm.memoryIndex))
 	{
 		const MemoryType& memoryType = this->moduleContext.irModule.memories.getType(0);
-		uint_least64_t mask = 0;
+		uint_least64_t mask = imm.memoryIndex;
 		if(memoryType.indexType == IndexType::i64) { mask = 0x00FFFFFFFFFFFFFF; }
 		else { mask = 0x3FFFFFFF; }
 		ptra = irBuilder.CreateAnd(ptra, mask);
@@ -590,14 +590,15 @@ void EmitFunctionContext::memory_subtag(NoImm)
 	}
 	push(irBuilder.CreateSub(ptra, ptrb));
 }
-void EmitFunctionContext::memory_copytag(NoImm)
+void EmitFunctionContext::memory_copytag(MemoryImm imm)
 {
 	::llvm::Value* memaddress1 = pop();
 	::llvm::Value* memaddress2 = pop();
-	if(isMemTaggedEnabled(*this, 0))
+	if(isMemTaggedEnabled(*this, imm.memoryIndex))
 	{
 		llvm::IRBuilder<>& irBuilder = this->irBuilder;
-		const MemoryType& memoryType = this->moduleContext.irModule.memories.getType(0);
+		const MemoryType& memoryType
+			= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
 		uint_least64_t maskcolor, mask;
 		if(memoryType.indexType == IndexType::i64)
 		{
@@ -614,17 +615,18 @@ void EmitFunctionContext::memory_copytag(NoImm)
 	}
 	push(memaddress1);
 }
-void EmitFunctionContext::memory_loadtag(NoImm)
+void EmitFunctionContext::memory_loadtag(MemoryImm imm)
 {
 	::llvm::Value* memaddress = pop();
-	if(isMemTaggedEnabled(*this, 0))
+	if(isMemTaggedEnabled(*this, imm.memoryIndex))
 	{
-		memaddress = UntagAddress(*this, 0, memaddress);
+		memaddress = UntagAddress(*this, imm.memoryIndex, memaddress);
 
-		auto realaddr = ComputeMemTagIndex(*this, 0, memaddress, true);
+		auto realaddr = ComputeMemTagIndex(*this, imm.memoryIndex, memaddress, true);
 		llvm::IRBuilder<>& irBuilder = this->irBuilder;
 
-		const MemoryType& memoryType = this->moduleContext.irModule.memories.getType(0);
+		const MemoryType& memoryType
+			= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
 		::llvm::Value* color
 			= ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, this->llvmContext.i8Type, realaddr);
 
