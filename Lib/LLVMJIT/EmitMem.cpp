@@ -64,6 +64,36 @@ static llvm::Value* getMemoryNumBytes(EmitFunctionContext& functionContext, Uptr
 		emitLiteralIptr(IR::numBytesPerPage, functionContext.moduleContext.iptrType));
 }
 
+
+#if 0
+[[maybe_unused]]
+static inline void foomemorytagdebugging(EmitFunctionContext& functionContext, ::llvm::Value* memaddress)
+{
+	functionContext.emitRuntimeIntrinsic("memoryTagDebugging",
+	FunctionType(
+		TypeTuple{ValueType::i64},
+		TypeTuple{ValueType::i64},
+		IR::CallingConvention::intrinsic),
+	{memaddress});
+}
+
+static void createconditionaltrapcond(EmitFunctionContext& functionContext, ::llvm::Value* cmpres, ::llvm::Value* addressrshift)
+{
+	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
+	::llvm::BasicBlock* trapBlock
+		= ::llvm::BasicBlock::Create(functionContext.moduleContext.llvmContext, "");
+	::llvm::BasicBlock* normalBlock
+		= ::llvm::BasicBlock::Create(functionContext.moduleContext.llvmContext, "");
+	irBuilder.CreateCondBr(cmpres, trapBlock, normalBlock);
+	// irBuilder.CreateBr(trapBlock);
+	irBuilder.SetInsertPoint(trapBlock);
+	foomemorytagdebugging(functionContext,addressrshift);
+	irBuilder.CreateIntrinsic(::llvm::Intrinsic::trap, {}, {});
+	irBuilder.CreateUnreachable();
+	// irBuilder.CreateBr(normalBlock);
+	irBuilder.SetInsertPoint(normalBlock);
+}
+#endif
 static void createconditionaltrap(EmitFunctionContext& functionContext, ::llvm::Value* cmpres)
 {
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
@@ -216,6 +246,13 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 				irBuilder.CreateICmpULT(address, endAddress), address, endAddress);
 		}
 	}
+	if(offset && offset < Runtime::memoryNumGuardBytes)
+	{
+		llvm::Constant* offsetConstant
+			= emitLiteralIptr(offset, functionContext.moduleContext.iptrType);
+
+		address = irBuilder.CreateAdd(address, offsetConstant);
+	}
 	// If the offset is less than the size of the guard region, then add it after bounds checking.
 	// This avoids the need to check the addition for overflow, and allows it to be used as the
 	// displacement in x86 addresses. Additionally, it allows the LLVM optimizer to reuse the bounds
@@ -229,16 +266,8 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 			irBuilder, functionContext.llvmContext.i8Type, tagbaseptrval, addressrshift);
 		::llvm::Value* taginmem = ::WAVM::LLVMJIT::wavmCreateLoad(
 			irBuilder, functionContext.llvmContext.i8Type, tagbytePointer);
-
 		auto cmpres{irBuilder.CreateICmpNE(taggedval, taginmem)};
 		createconditionaltrap(functionContext, cmpres);
-	}
-	if(offset && offset < Runtime::memoryNumGuardBytes)
-	{
-		llvm::Constant* offsetConstant
-			= emitLiteralIptr(offset, functionContext.moduleContext.iptrType);
-
-		address = irBuilder.CreateAdd(address, offsetConstant);
 	}
 	return address;
 }
