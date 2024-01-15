@@ -771,8 +771,8 @@ void EmitFunctionContext::memory_hintstoreztag(MemoryImm imm)
 
 void EmitFunctionContext::memory_subtag(MemoryImm imm)
 {
-	::llvm::Value* ptra = pop();
 	::llvm::Value* ptrb = pop();
+	::llvm::Value* ptra = pop();
 	llvm::IRBuilder<>& irBuilder = this->irBuilder;
 
 	if(isMemTaggedEnabled(*this, imm.memoryIndex))
@@ -789,8 +789,8 @@ void EmitFunctionContext::memory_subtag(MemoryImm imm)
 }
 void EmitFunctionContext::memory_copytag(MemoryImm imm)
 {
-	::llvm::Value* memaddress1 = pop();
 	::llvm::Value* memaddress2 = pop();
+	::llvm::Value* memaddress1 = pop();
 	if(isMemTaggedEnabled(*this, imm.memoryIndex))
 	{
 		llvm::IRBuilder<>& irBuilder = this->irBuilder;
