@@ -210,18 +210,14 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 	{
 		// If the caller requires a trap, test whether the addressed bytes are within the bounds of
 		// the memory, and if not call a trap intrinsic.
-		if(!memtagBasePointerVariable)
-		{
-			llvm::Value* memoryNumBytes = getMemoryNumBytes(functionContext, memoryIndex);
-			llvm::Value* memoryNumBytesMinusNumBytes
-				= irBuilder.CreateSub(memoryNumBytes, numBytes);
-			llvm::Value* numBytesWasGreaterThanMemoryNumBytes
-				= irBuilder.CreateICmpUGT(memoryNumBytesMinusNumBytes, memoryNumBytes);
-			auto cmpres{
-				irBuilder.CreateOr(numBytesWasGreaterThanMemoryNumBytes,
-								   irBuilder.CreateICmpUGT(address, memoryNumBytesMinusNumBytes))};
-			createconditionaltrap(functionContext, cmpres);
-		}
+		llvm::Value* memoryNumBytes = getMemoryNumBytes(functionContext, memoryIndex);
+		llvm::Value* memoryNumBytesMinusNumBytes = irBuilder.CreateSub(memoryNumBytes, numBytes);
+		llvm::Value* numBytesWasGreaterThanMemoryNumBytes
+			= irBuilder.CreateICmpUGT(memoryNumBytesMinusNumBytes, memoryNumBytes);
+		auto cmpres{
+			irBuilder.CreateOr(numBytesWasGreaterThanMemoryNumBytes,
+							   irBuilder.CreateICmpUGT(address, memoryNumBytesMinusNumBytes))};
+		createconditionaltrap(functionContext, cmpres);
 	}
 	else if(is32bitMemoryOn64bitHost)
 	{
@@ -576,6 +572,29 @@ static inline ::llvm::Value* StoreTagIntoMem(EmitFunctionContext& functionContex
 		irBuilder, functionContext.llvmContext.i8PtrType, memtagBasePointerVariable);
 	auto* realtagaddress = irBuilder.CreateGEP(
 		functionContext.llvmContext.i8Type, memtagbase, {irBuilder.CreateLShr(address, 4)});
+	if(memoryType.indexType == IndexType::i64)
+	{
+		auto* cndpageprotect = irBuilder.CreateICmpUGE(
+			taggedbytes,
+			::llvm::ConstantInt::get(functionContext.llvmContext.i64Type,
+									 ::WAVM::Runtime::memoryNumGuardBytes));
+		llvm::Value* addressPlusOffsetAndOverflow
+			= functionContext.callLLVMIntrinsic({functionContext.moduleContext.iptrType},
+												llvm::Intrinsic::uadd_with_overflow,
+												{address, taggedbytes});
+		llvm::Value* addressPlusOffset
+			= irBuilder.CreateExtractValue(addressPlusOffsetAndOverflow, {0});
+		llvm::Value* addressPlusOffsetOverflowed
+			= irBuilder.CreateExtractValue(addressPlusOffsetAndOverflow, {1});
+		auto* cndbig
+			= irBuilder.CreateICmpUGE(addressPlusOffset,
+									  ::llvm::ConstantInt::get(functionContext.llvmContext.i64Type,
+															   ::WAVM::IR::maxMemory64WASMBytes));
+		createconditionaltrap(
+			functionContext,
+			irBuilder.CreateAnd(cndpageprotect,
+								irBuilder.CreateAnd(cndbig, addressPlusOffsetOverflowed)));
+	}
 	irBuilder.CreateMemSet(
 		realtagaddress, color, irBuilder.CreateLShr(taggedbytes, 4), LLVM_ALIGNMENT(1), false);
 	return address;
