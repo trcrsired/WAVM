@@ -185,6 +185,7 @@ static ::std::string reduceInvalidCPUs()
 	{
 		return "znver3";
 	}
+	return str;
 #else
 	return ::std::string(llvm::sys::getHostCPUName());
 #endif
