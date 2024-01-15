@@ -9,14 +9,15 @@ namespace WAVM { namespace IR {
 
 	struct OpTypeTuple
 	{
-		static constexpr U8 maxTypes = 5;
+		static constexpr U8 maxTypes = 6;
 
 		constexpr OpTypeTuple(std::initializer_list<ValueType> inTypes)
 		: types{inTypes.size() > 0 ? inTypes.begin()[0] : ValueType::none,
 				inTypes.size() > 1 ? inTypes.begin()[1] : ValueType::none,
 				inTypes.size() > 2 ? inTypes.begin()[2] : ValueType::none,
 				inTypes.size() > 3 ? inTypes.begin()[3] : ValueType::none,
-				inTypes.size() > 4 ? inTypes.begin()[4] : ValueType::none}
+				inTypes.size() > 4 ? inTypes.begin()[4] : ValueType::none,
+				inTypes.size() > 5 ? inTypes.begin()[5] : ValueType::none}
 		, numTypes(U8(inTypes.size()))
 		{
 		}
