@@ -12,4 +12,12 @@ namespace WAVM { namespace IR {
 	inline constexpr Uptr numBytesTaggedPerPage = numBytesPerPage / 16u;
 	inline constexpr Uptr numBytesTaggedPerPageLog2 = 12;
 	inline constexpr Uptr maxReturnValues = 16;
+	inline constexpr U64 maxMemory64WASMBytes =
+#if defined(WAVM_ENABLE_TSAN)
+		(U64(8) * 1024 * 1024 * 1024); // 8GB
+#else
+		(U64(1) * 1024 * 1024 * 1024 * 1024); // 1TB
+#endif
+	inline constexpr U64 maxMemory64WASMPages = maxMemory64WASMBytes >> IR::numBytesPerPageLog2;
+	inline constexpr U64 maxMemory64WASMMask = maxMemory64WASMBytes - 1u;
 }}

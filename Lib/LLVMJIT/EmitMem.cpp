@@ -174,7 +174,6 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 		address = irBuilder.CreateZExt(address, functionContext.moduleContext.iptrType);
 		numBytes = irBuilder.CreateZExt(numBytes, functionContext.moduleContext.iptrType);
 	}
-
 	// If the offset is greater than the size of the guard region, add it before bounds checking,
 	// and check for overflow.
 	if(offset && offset >= Runtime::memoryNumGuardBytes)
