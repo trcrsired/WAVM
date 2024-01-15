@@ -205,7 +205,12 @@
 	visitOp(0xfc22, memory_subtag             , "memory.subtag"             , MemoryImm                           , memory_subtag             , memtag                 )   \
 	visitOp(0xfc23, memory_loadtag            , "memory.loadtag"            , MemoryImm                           , memory_loadtag            , memtag                 )   \
 	visitOp(0xfc24, memory_storetag           , "memory.storetag"           , MemoryImm                           , memory_storetag           , memtag                 )   \
-	visitOp(0xfc28, memory_randomstoretag     , "memory.randomstoretag"     , MemoryImm                           , memory_randomstoretag     , memtag                 )
+	visitOp(0xfc25, memory_storeztag          , "memory.storeztag"          , MemoryImm                           , memory_storetag           , memtag                 )   \
+	visitOp(0xfc28, memory_randomstoretag     , "memory.randomstoretag"     , MemoryImm                           , memory_randomstoretag     , memtag                 )   \
+	visitOp(0xfc29, memory_randomstoreztag    , "memory.randomstoreztag"    , MemoryImm                           , memory_randomstoreztag    , memtag                 )   \
+	visitOp(0xfc2c, memory_hinttag            , "memory.hinttag"            , MemoryImm                           , memory_hinttag            , memtag                 )   \
+	visitOp(0xfc2d, memory_hintstoretag       , "memory.hintstoretag"       , MemoryImm                           , memory_hintstoretag       , memtag                 )   \
+	visitOp(0xfc2e, memory_hintstoreztag      , "memory.hintstoreztag"      , MemoryImm                           , memory_hintstoreztag      , memtag                 )
 
 #define WAVM_ENUM_NONCONTROL_NONPARAMETRIC_OPERATORS(visitOp)                                                                                                            \
 	visitOp(0x0001, nop                           , "nop"                           , NoImm                     , none_to_none              , mvp                    )   \

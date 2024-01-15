@@ -359,11 +359,41 @@ namespace WAVM { namespace IR {
 				= asValueType(module_.memories.getType(imm.memoryIndex).indexType);
 			return OpSignature({}, {indexType, indexType});
 		}
+		inline OpSignature memory_storeztag(const Module& module_, const MemoryImm& imm)
+		{
+			ValueType const indexType
+				= asValueType(module_.memories.getType(imm.memoryIndex).indexType);
+			return OpSignature({}, {indexType, indexType});
+		}
 		inline OpSignature memory_randomstoretag(const Module& module_, const MemoryImm& imm)
 		{
 			ValueType const indexType
 				= asValueType(module_.memories.getType(imm.memoryIndex).indexType);
 			return OpSignature({indexType}, {indexType, indexType});
+		}
+		inline OpSignature memory_randomstoreztag(const Module& module_, const MemoryImm& imm)
+		{
+			ValueType const indexType
+				= asValueType(module_.memories.getType(imm.memoryIndex).indexType);
+			return OpSignature({indexType}, {indexType, indexType});
+		}
+		inline OpSignature memory_hinttag(const Module& module_, const MemoryImm& imm)
+		{
+			ValueType const indexType
+				= asValueType(module_.memories.getType(imm.memoryIndex).indexType);
+			return OpSignature({indexType}, {indexType, indexType, indexType});
+		}
+		inline OpSignature memory_hintstoretag(const Module& module_, const MemoryImm& imm)
+		{
+			ValueType const indexType
+				= asValueType(module_.memories.getType(imm.memoryIndex).indexType);
+			return OpSignature({indexType}, {indexType, indexType, indexType, indexType});
+		}
+		inline OpSignature memory_hintstoreztag(const Module& module_, const MemoryImm& imm)
+		{
+			ValueType const indexType
+				= asValueType(module_.memories.getType(imm.memoryIndex).indexType);
+			return OpSignature({indexType}, {indexType, indexType, indexType, indexType});
 		}
 		inline OpSignature memory_randomtag(const Module& module_, const MemoryImm& imm)
 		{
