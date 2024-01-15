@@ -177,11 +177,24 @@ LLVMContext::LLVMContext()
 		= llvm::Constant::getNullValue(externrefType);
 }
 
+static ::std::string reduceInvalidCPUs()
+{
+#if LLVM_VERSION_MAJOR < 19
+	::std::string str(llvm::sys::getHostCPUName());
+	if(str == "znver4") // znver4 is not supported by llvm jit bug?
+	{
+		return "znver3";
+	}
+#else
+	return ::std::string(llvm::sys::getHostCPUName());
+#endif
+}
+
 TargetSpec LLVMJIT::getHostTargetSpec()
 {
 	TargetSpec result;
 	result.triple = llvm::sys::getProcessTriple();
-	result.cpu = std::string(llvm::sys::getHostCPUName());
+	result.cpu = reduceInvalidCPUs();
 	return result;
 }
 
