@@ -710,9 +710,9 @@ static ::llvm::Value* compute_hint_addr(EmitFunctionContext& functionContext,
 
 void EmitFunctionContext::memory_hinttag(MemoryImm imm)
 {
-	::llvm::Value* memaddress = pop();
-	::llvm::Value* hintptr = pop();
 	::llvm::Value* hintindex = pop();
+	::llvm::Value* hintptr = pop();
+	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this, imm.memoryIndex))
 	{
 		memaddress = compute_hint_addr(*this, imm.memoryIndex, memaddress, hintptr, hintindex);
@@ -722,10 +722,10 @@ void EmitFunctionContext::memory_hinttag(MemoryImm imm)
 
 void EmitFunctionContext::memory_hintstoretag(MemoryImm imm)
 {
-	::llvm::Value* memaddress = pop();
-	::llvm::Value* taggedbytes = pop();
-	::llvm::Value* hintptr = pop();
 	::llvm::Value* hintindex = pop();
+	::llvm::Value* hintptr = pop();
+	::llvm::Value* taggedbytes = pop();
+	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this, imm.memoryIndex))
 	{
 		auto hintres
@@ -739,10 +739,10 @@ void EmitFunctionContext::memory_hintstoretag(MemoryImm imm)
 
 void EmitFunctionContext::memory_hintstoreztag(MemoryImm imm)
 {
-	::llvm::Value* memaddress = pop();
-	::llvm::Value* taggedbytes = pop();
-	::llvm::Value* hintptr = pop();
 	::llvm::Value* hintindex = pop();
+	::llvm::Value* hintptr = pop();
+	::llvm::Value* taggedbytes = pop();
+	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this, imm.memoryIndex))
 	{
 		auto hintres
