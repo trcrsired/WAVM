@@ -28,7 +28,7 @@ namespace WAVM { namespace Runtime {
 static Platform::RWMutex memoriesMutex;
 static std::vector<Memory*> memories;
 
-static inline constexpr U64 maxMemory64WASMPages = IR::maxMemory64WASMBytes;
+static inline constexpr U64 maxMemory64WASMPages = IR::maxMemory64WASMPages;
 
 inline constexpr auto maxMemory64WASMTagsPages
 	= maxMemory64WASMPages / 16u + (maxMemory64WASMPages % 16u != 0);
