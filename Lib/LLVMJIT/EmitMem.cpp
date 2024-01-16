@@ -446,24 +446,6 @@ static inline ::llvm::Value* generateMemRandomTagByte(EmitFunctionContext& funct
 	irBuilder.SetInsertPoint(trueBlock);
 	::llvm::Value* begptr
 		= ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, functionContext.llvmContext.i8PtrType, arg0);
-#if 0
-	IR::ValueType iptrnativeValueType;
-	::llvm::Type* ptrtype;
-	if constexpr(sizeof(::std::uint_least64_t) == sizeof(::std::size_t))
-	{
-		iptrnativeValueType = IR::ValueType::i64;
-		ptrtype = irBuilder.getInt64Ty();
-	}
-	else
-	{
-		iptrnativeValueType = IR::ValueType::i32;
-		ptrtype = irBuilder.getInt32Ty();
-	}
-	functionContext.emitRuntimeIntrinsic(
-		"memoryTagRandomTagRefillFunction",
-		FunctionType({}, {iptrnativeValueType}, IR::CallingConvention::intrinsic),
-		{irBuilder.CreatePtrToInt(begptr, ptrtype)});
-#endif
 	irBuilder.CreateBr(mergeBlock);
 	irBuilder.SetInsertPoint(mergeBlock);
 	auto currphiNode = irBuilder.CreatePHI(functionContext.llvmContext.i8PtrType, 2);
@@ -472,8 +454,8 @@ static inline ::llvm::Value* generateMemRandomTagByte(EmitFunctionContext& funct
 	::llvm::Value* rettag = ::WAVM::LLVMJIT::wavmCreateLoad(
 		irBuilder, functionContext.llvmContext.i8Type, currphiNode);
 	currptr = irBuilder.CreateGEP(
-		functionContext.llvmContext.i8PtrType, currphiNode, {irBuilder.getInt32(1)});
-	irBuilder.CreateStore(currptraddr, currptr);
+		functionContext.llvmContext.i8Type, currphiNode, {irBuilder.getInt32(1)});
+	irBuilder.CreateStore(currptr, currptraddr);
 	return rettag;
 }
 
