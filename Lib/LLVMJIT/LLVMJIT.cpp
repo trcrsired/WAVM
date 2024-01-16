@@ -6,7 +6,7 @@
 #include "WAVM/Inline/BasicTypes.h"
 #include "WAVM/Inline/Errors.h"
 #include "WAVM/Inline/HashMap.h"
-
+#include "WAVM/Logging/Logging.h"
 PUSH_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/StringRef.h>
@@ -201,12 +201,17 @@ std::unique_ptr<llvm::TargetMachine> LLVMJIT::getTargetMachine(
 		// https://bugs.llvm.org/show_bug.cgi?id=43750
 		targetAttributes.push_back("-avx512f");
 	}
-
-	return std::unique_ptr<llvm::TargetMachine>(
-		llvm::EngineBuilder().selectTarget(triple, "", targetSpec.cpu, targetAttributes));
-#else
-	return std::unique_ptr<llvm::TargetMachine>(llvm::EngineBuilder().selectTarget());
 #endif
+	llvm::EngineBuilder engineBuilder;
+	::std::string errormessage;
+	engineBuilder.setErrorStr(::std::addressof(errormessage));
+	std::unique_ptr<llvm::TargetMachine> targetMachine(
+		engineBuilder.selectTarget(triple, "", targetSpec.cpu, targetAttributes));
+	if(!targetMachine)
+	{
+		Log::printf(Log::error, "llvm::EngineBuilder failed: %s\n", errormessage.c_str());
+	}
+	return targetMachine;
 }
 
 TargetValidationResult LLVMJIT::validateTargetMachine(
@@ -217,12 +222,7 @@ TargetValidationResult LLVMJIT::validateTargetMachine(
 	if(targetArch == llvm::Triple::x86_64)
 	{
 		// If the SIMD feature is enabled, then require the SSE4.1 CPU feature.
-#if 0
 		if(featureSpec.simd && !targetMachine->getMCSubtargetInfo()->checkFeatures("+sse4.1"))
-#else
-		// This feature frequently is bugged.
-		if(featureSpec.simd)
-#endif
 		{
 			return TargetValidationResult::x86CPUDoesNotSupportSSE41;
 		}
