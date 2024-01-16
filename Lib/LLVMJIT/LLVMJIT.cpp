@@ -186,24 +186,27 @@ TargetSpec LLVMJIT::getHostTargetSpec()
 	return result;
 }
 
-std::unique_ptr<llvm::TargetMachine> LLVMJIT::getTargetMachine(const TargetSpec& targetSpec)
+std::unique_ptr<llvm::TargetMachine> LLVMJIT::getTargetMachine(
+	[[maybe_unused]] const TargetSpec& targetSpec)
 {
 	globalInitLLVMOnce();
 
+#if LLVM_VERSION_MAJOR < 10
 	llvm::Triple triple(targetSpec.triple);
 	llvm::SmallVector<std::string, 1> targetAttributes;
 
-#if LLVM_VERSION_MAJOR < 10
 	if(triple.getArch() == llvm::Triple::x86 || triple.getArch() == llvm::Triple::x86_64)
 	{
 		// Disable AVX-512 on X86 targets to workaround a LLVM backend bug:
 		// https://bugs.llvm.org/show_bug.cgi?id=43750
 		targetAttributes.push_back("-avx512f");
 	}
-#endif
 
 	return std::unique_ptr<llvm::TargetMachine>(
 		llvm::EngineBuilder().selectTarget(triple, "", targetSpec.cpu, targetAttributes));
+#else
+	return std::unique_ptr<llvm::TargetMachine>(llvm::EngineBuilder().selectTarget());
+#endif
 }
 
 TargetValidationResult LLVMJIT::validateTargetMachine(
@@ -214,7 +217,12 @@ TargetValidationResult LLVMJIT::validateTargetMachine(
 	if(targetArch == llvm::Triple::x86_64)
 	{
 		// If the SIMD feature is enabled, then require the SSE4.1 CPU feature.
+#if 0
 		if(featureSpec.simd && !targetMachine->getMCSubtargetInfo()->checkFeatures("+sse4.1"))
+#else
+		// This feature frequently is bugged.
+		if(featureSpec.simd)
+#endif
 		{
 			return TargetValidationResult::x86CPUDoesNotSupportSSE41;
 		}
