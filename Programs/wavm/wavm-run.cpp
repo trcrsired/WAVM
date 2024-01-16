@@ -412,6 +412,7 @@ struct State
 		case LLVMJIT::TargetValidationResult::invalidTargetSpec:
 			Log::printf(Log::error, "LLVMJIT does not not support the host CPU.\n");
 			return false;
+		default: Log::printf(Log::error, "WAVM Unknown Error.\n"); return false;
 		};
 
 		const char* objectCachePath
