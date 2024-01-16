@@ -207,7 +207,7 @@ std::unique_ptr<llvm::TargetMachine> LLVMJIT::getTargetMachine(
 	engineBuilder.setErrorStr(::std::addressof(errormessage));
 	std::unique_ptr<llvm::TargetMachine> targetMachine(
 		engineBuilder.selectTarget(triple, "", targetSpec.cpu, targetAttributes));
-	if(engineBuilder->hasError())
+	if(!targetMachine)
 	{
 		fprintf(stderr, "llvm::EngineBuilder failed: %s\n", errormessage.c_str());
 	}
