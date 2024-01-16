@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <atomic>
 #include <memory>
+#include <random>
 #include <vector>
 #include "RuntimePrivate.h"
 #include "WAVM/IR/IR.h"
@@ -40,11 +41,12 @@ static inline Uptr getPlatformPagesPerWebAssemblyPageLog2()
 	return IR::numBytesPerPageLog2 - v;
 }
 
-static inline void wavm_random_tag_fill_buffer_function(void* ptr) noexcept
+static inline void wavm_random_tag_fill_buffer_function(U8* base, U8* ed) noexcept
 {
 	try
 	{
-		::WAVM::Platform::getCryptographicRNG(reinterpret_cast<U8*>(ptr), memoryTagBufferBytes);
+		::WAVM::Platform::getCryptographicRNG(reinterpret_cast<U8*>(base),
+											  static_cast<::std::size_t>(ed - base));
 	}
 	catch(...)
 	{
@@ -52,13 +54,16 @@ static inline void wavm_random_tag_fill_buffer_function(void* ptr) noexcept
 	}
 }
 
-static U8* createMemoryTagRandomBufferImpl() noexcept
+static MemtagRandomBufferInMemory createMemoryTagRandomBufferImpl() noexcept
 {
-	constexpr ::std::size_t buffersize{memoryTagBufferBytes};
+	::std::random_device eng;
+	::std::uniform_int_distribution<::std::size_t> dis(4096, 16384);
+	::std::size_t buffersize{dis(eng)};
 	U8* ptr = reinterpret_cast<U8*>(::std::malloc(buffersize));
 	if(ptr == nullptr) { ::std::abort(); }
-	wavm_random_tag_fill_buffer_function(ptr);
-	return ptr;
+	U8* ed = ptr + buffersize;
+	wavm_random_tag_fill_buffer_function(ptr, ed);
+	return {ptr, ed};
 }
 
 static Memory* createMemoryImpl(Compartment* compartment,
@@ -102,7 +107,7 @@ static Memory* createMemoryImpl(Compartment* compartment,
 		auto baseAddressTags = Platform::allocateVirtualPages(totaltaggedpages);
 		if(!baseAddressTags) { return nullptr; }
 		memory->baseAddressTags = baseAddressTags;
-		memory->memtagRandomBufferBase = createMemoryTagRandomBufferImpl();
+		memory->memtagRandomBuffer = createMemoryTagRandomBufferImpl();
 	}
 	memory->numReservedBytes = memoryMaxPages << pageBytesLog2;
 	if(!memory->baseAddress) { return nullptr; }
@@ -142,9 +147,8 @@ Memory* Runtime::createMemory(Compartment* compartment,
 		runtimeData.memtagBase = memory->baseAddressTags;
 		if(isMemTagged)
 		{
-			auto memtagrdbf{memory->memtagRandomBufferBase};
-			runtimeData.memtagRandomBuffer = {
-				memtagrdbf, memtagrdbf + memoryTagBufferBytes, memtagrdbf + memoryTagBufferBytes};
+			auto memtagrdbf{memory->memtagRandomBuffer};
+			runtimeData.memtagRandomBuffer = {memtagrdbf.Base, memtagrdbf.End, memtagrdbf.End};
 		}
 		else { runtimeData.memtagRandomBuffer = {}; }
 		runtimeData.numPages.store(memory->numPages.load(std::memory_order_acquire),
@@ -171,7 +175,7 @@ Memory* Runtime::cloneMemory(Memory* memory, Compartment* newCompartment)
 		memcpy(newMemory->baseAddressTags,
 			   memory->baseAddressTags,
 			   memoryType.size.min * (IR::numBytesPerPage >> 4u));
-		newMemory->memtagRandomBufferBase = createMemoryTagRandomBufferImpl();
+		newMemory->memtagRandomBuffer = createMemoryTagRandomBufferImpl();
 	}
 	resizingLock.unlock();
 
@@ -188,11 +192,10 @@ Memory* Runtime::cloneMemory(Memory* memory, Compartment* newCompartment)
 		runtimeData.numPages.store(newMemory->numPages, std::memory_order_release);
 		runtimeData.endAddress = newMemory->numReservedBytes;
 		runtimeData.memtagBase = newMemory->baseAddressTags;
-		auto memtagrdbf{newMemory->memtagRandomBufferBase};
-		if(memtagrdbf)
+		auto memtagrdbf{newMemory->memtagRandomBuffer};
+		if(memtagrdbf.Base)
 		{
-			runtimeData.memtagRandomBuffer = {
-				memtagrdbf, memtagrdbf + memoryTagBufferBytes, memtagrdbf + memoryTagBufferBytes};
+			runtimeData.memtagRandomBuffer = {memtagrdbf.Base, memtagrdbf.End, memtagrdbf.End};
 		}
 		else { runtimeData.memtagRandomBuffer = {}; }
 	}
@@ -251,10 +254,12 @@ Runtime::Memory::~Memory()
 	// Free the allocated quota.
 	if(resourceQuota) { resourceQuota->memoryPages.free(numPages); }
 
-	if(memtagRandomBufferBase)
+	if(memtagRandomBuffer.Base)
 	{
-		::WAVM::Utils::secure_clear(memtagRandomBufferBase, memoryTagBufferBytes);
-		free(memtagRandomBufferBase);
+		::WAVM::Utils::secure_clear(
+			memtagRandomBuffer.Base,
+			static_cast<::std::size_t>(memtagRandomBuffer.End - memtagRandomBuffer.Base));
+		free(memtagRandomBuffer.Base);
 	}
 }
 

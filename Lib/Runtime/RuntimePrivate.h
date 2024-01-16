@@ -80,6 +80,12 @@ namespace WAVM { namespace Runtime {
 	// at the end of the array will, when re-adding this Function's address, point to this Object.
 	extern Object* getOutOfBoundsElement();
 
+	struct MemtagRandomBufferInMemory
+	{
+		U8* Base = nullptr;
+		U8* End = nullptr;
+	};
+
 	// An instance of a WebAssembly Memory.
 	struct Memory : GCObject
 	{
@@ -91,7 +97,7 @@ namespace WAVM { namespace Runtime {
 
 		U8* baseAddress = nullptr;
 		U8* baseAddressTags = nullptr;
-		U8* memtagRandomBufferBase = nullptr;
+		MemtagRandomBufferInMemory memtagRandomBuffer;
 		Uptr numReservedBytes = 0;
 
 		mutable Platform::RWMutex resizingMutex;
