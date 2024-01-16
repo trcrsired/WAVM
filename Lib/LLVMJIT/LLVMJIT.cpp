@@ -6,7 +6,7 @@
 #include "WAVM/Inline/BasicTypes.h"
 #include "WAVM/Inline/Errors.h"
 #include "WAVM/Inline/HashMap.h"
-
+#include "WAVM/Logging/Logging.h"
 PUSH_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/StringRef.h>
@@ -201,9 +201,16 @@ std::unique_ptr<llvm::TargetMachine> LLVMJIT::getTargetMachine(const TargetSpec&
 		targetAttributes.push_back("-avx512f");
 	}
 #endif
-
-	return std::unique_ptr<llvm::TargetMachine>(
-		llvm::EngineBuilder().selectTarget(triple, "", targetSpec.cpu, targetAttributes));
+	llvm::EngineBuilder engineBuilder;
+	::std::string errormessage;
+	engineBuilder.setErrorStr(::std::addressof(errormessage));
+	std::unique_ptr<llvm::TargetMachine> targetMachine(
+		engineBuilder.selectTarget(triple, "", targetSpec.cpu, targetAttributes));
+	if(!targetMachine)
+	{
+		Log::printf(Log::error, "llvm::EngineBuilder failed: %s\n", errormessage.c_str());
+	}
+	return targetMachine;
 }
 
 TargetValidationResult LLVMJIT::validateTargetMachine(
