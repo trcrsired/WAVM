@@ -191,10 +191,10 @@ std::unique_ptr<llvm::TargetMachine> LLVMJIT::getTargetMachine(
 {
 	globalInitLLVMOnce();
 
-#if LLVM_VERSION_MAJOR < 10
 	llvm::Triple triple(targetSpec.triple);
 	llvm::SmallVector<std::string, 1> targetAttributes;
 
+#if LLVM_VERSION_MAJOR < 10
 	if(triple.getArch() == llvm::Triple::x86 || triple.getArch() == llvm::Triple::x86_64)
 	{
 		// Disable AVX-512 on X86 targets to workaround a LLVM backend bug:
