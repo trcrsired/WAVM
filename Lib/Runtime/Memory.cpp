@@ -388,16 +388,36 @@ static U8* getValidatedMemoryOffsetRangeImpl(Memory* memory,
 											 Uptr address,
 											 Uptr numBytes)
 {
-	if(memory->baseAddressTags)
+	auto baseaddrestags = memory->baseAddressTags;
+	U8 color = 0;
+	if(baseaddrestags)
 	{
-		if constexpr(sizeof(Uptr) == sizeof(uint_least64_t)) { address &= 0x00FFFFFFFFFFFFFF; }
-		else { address &= 0x3FFFFFFF; }
+		if constexpr(sizeof(Uptr) == sizeof(uint_least64_t))
+		{
+			color = static_cast<U8>(address >> 56);
+			address &= 0x00FFFFFFFFFFFFFF;
+		}
+		else
+		{
+			color = static_cast<U8>(address >> 30);
+			address &= 0x3FFFFFFF;
+		}
 	}
 	if(address + numBytes > memoryNumBytes || address + numBytes < address)
 	{
 		throwException(
 			ExceptionTypes::outOfBoundsMemoryAccess,
 			{asObject(memory), U64(address > memoryNumBytes ? address : memoryNumBytes)});
+	}
+	if(baseaddrestags && numBytes != 0)
+	{
+		Uptr tagaddress = address >> 4;
+		Uptr tagaddresslast = (address + numBytes - 1) >> 4;
+		if(baseaddrestags[tagaddress] != color || baseaddrestags[tagaddresslast] != color)
+		{
+			throwException(ExceptionTypes::invalidMemoryTagAccess,
+						   {asObject(memory), U64(address)});
+		}
 	}
 	WAVM_ASSERT(memoryBase);
 	numBytes = branchlessMin(numBytes, memoryNumBytes);
