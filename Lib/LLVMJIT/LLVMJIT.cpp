@@ -1,4 +1,5 @@
 #include "WAVM/LLVMJIT/LLVMJIT.h"
+#include <cstdio>
 #include <utility>
 #include "LLVMJITPrivate.h"
 #include "WAVM/IR/FeatureSpec.h"
@@ -6,7 +7,6 @@
 #include "WAVM/Inline/BasicTypes.h"
 #include "WAVM/Inline/Errors.h"
 #include "WAVM/Inline/HashMap.h"
-#include "WAVM/Logging/Logging.h"
 PUSH_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/StringRef.h>
@@ -207,7 +207,10 @@ std::unique_ptr<llvm::TargetMachine> LLVMJIT::getTargetMachine(
 	engineBuilder.setErrorStr(::std::addressof(errormessage));
 	std::unique_ptr<llvm::TargetMachine> targetMachine(
 		engineBuilder.selectTarget(triple, "", targetSpec.cpu, targetAttributes));
-	if(!targetMachine) { ::llvm::errs() << "llvm::EngineBuilder failed" << errormessage << '\n'; }
+	if(targetMachine->hasError())
+	{
+		fprintf(stderr, "llvm::EngineBuilder failed: %s\n", errormessage);
+	}
 	return targetMachine;
 }
 
