@@ -99,6 +99,7 @@ static bool globalInitLLVM()
 	llvm::InitializeAllAsmPrinters();
 	llvm::InitializeAllAsmParsers();
 	llvm::InitializeAllDisassemblers();
+	llvm::InitializeNativeTarget();
 	llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
 	return true;
 }
