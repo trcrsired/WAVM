@@ -157,7 +157,9 @@ static void validateExternKind(const Module& module_, ExternKind externKind)
 	case ExternKind::global: break;
 
 	case ExternKind::exceptionType:
+#if 0
 		VALIDATE_FEATURE("exception type extern", exceptionHandling);
+#endif
 		break;
 
 	case ExternKind::invalid:
@@ -457,7 +459,9 @@ struct FunctionValidationContext
 	void try_(ControlStructureImm imm)
 	{
 		const FunctionType type = validateBlockType(module_, imm.type);
+#if 0
 		VALIDATE_FEATURE("try", exceptionHandling);
+#endif
 		popAndValidateTypeTuple("try arguments", type.params());
 		pushControlStack(ControlContext::Type::try_, type.results(), type.results());
 		pushOperandTuple(type.params());
@@ -479,7 +483,9 @@ struct FunctionValidationContext
 	}
 	void catch_(ExceptionTypeImm imm)
 	{
+#if 0
 		VALIDATE_FEATURE("catch", exceptionHandling);
+#endif
 		VALIDATE_INDEX(imm.exceptionTypeIndex, module_.exceptionTypes.size());
 		const ExceptionType& type = module_.exceptionTypes.getType(imm.exceptionTypeIndex);
 		validateCatch();
@@ -487,7 +493,9 @@ struct FunctionValidationContext
 	}
 	void catch_all(NoImm)
 	{
+#if 0
 		VALIDATE_FEATURE("catch_all", exceptionHandling);
+#endif
 		validateCatch();
 	}
 
@@ -631,8 +639,10 @@ struct FunctionValidationContext
 
 	void throw_(ExceptionTypeImm imm)
 	{
+#if 0
 		VALIDATE_FEATURE("throw", exceptionHandling);
-		VALIDATE_INDEX(imm.exceptionTypeIndex, module_.exceptionTypes.size());
+#endif
+		VALIDATE_INDEX(imm.exceptionTypeIndex, module_.tagSegments.size());
 		const ExceptionType& exceptionType = module_.exceptionTypes.getType(imm.exceptionTypeIndex);
 		popAndValidateTypeTuple("exception arguments", exceptionType.params);
 		enterUnreachable();
@@ -640,7 +650,9 @@ struct FunctionValidationContext
 
 	void rethrow(RethrowImm imm)
 	{
+#if 0
 		VALIDATE_FEATURE("rethrow", exceptionHandling);
+#endif
 		VALIDATE_UNLESS(
 			"rethrow must target a catch: ",
 			getBranchTargetByDepth(imm.catchDepth).type != ControlContext::Type::catch_);

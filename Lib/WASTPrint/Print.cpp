@@ -910,13 +910,13 @@ void ModulePrintContext::printModule()
 						names.globals[import_.index].c_str(),
 						"global");
 			break;
-		case ExternKind::exceptionType:
+		case ExternKind::tag:
 			printImport(string,
 						module_,
 						module_.exceptionTypes.imports[import_.index],
 						import_.index,
 						names.exceptionTypes[import_.index].c_str(),
-						"exception_type");
+						"tag");
 			break;
 
 		case ExternKind::invalid:

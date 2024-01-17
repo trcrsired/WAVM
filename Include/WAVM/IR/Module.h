@@ -283,15 +283,15 @@ namespace WAVM { namespace IR {
 		function,
 		table,
 		memory,
+		tag,
+		exceptionType = tag,
 		global,
-		exceptionType,
 		export_,
 		start,
 		elem,
 		dataCount,
 		code,
 		data,
-		tag,
 	};
 
 	WAVM_API const char* asString(OrderedSectionID id);

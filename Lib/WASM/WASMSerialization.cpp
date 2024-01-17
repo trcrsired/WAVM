@@ -232,7 +232,7 @@ namespace WAVM { namespace IR {
 		case 1: kind = ExternKind::table; break;
 		case 2: kind = ExternKind::memory; break;
 		case 3: kind = ExternKind::global; break;
-		case 127: kind = ExternKind::exceptionType; break;
+		case 4: kind = ExternKind::exceptionType; break;
 		default: throw FatalSerializationException("invalid reference type encoding");
 		};
 	}
@@ -245,7 +245,7 @@ namespace WAVM { namespace IR {
 		case ExternKind::table: encodedKind = 1; break;
 		case ExternKind::memory: encodedKind = 2; break;
 		case ExternKind::global: encodedKind = 3; break;
-		case ExternKind::exceptionType: encodedKind = 127; break;
+		case ExternKind::exceptionType: encodedKind = 4; break;
 		case ExternKind::invalid:
 		default: WAVM_UNREACHABLE();
 		};
@@ -477,8 +477,7 @@ enum class SectionID : U8
 	code = 10,
 	data = 11,
 	dataCount = 12,
-	tag = 13,
-	exceptionType = 0x7f,
+	tag = 13
 };
 
 static void serialize(InputStream& stream, SectionID& sectionID)
@@ -1236,7 +1235,7 @@ template<typename Stream> void serializeImportSection(Stream& moduleStream, Modu
 						{globalType, std::move(moduleName), std::move(exportName)});
 					break;
 				}
-				case ExternKind::exceptionType: {
+				case ExternKind::tag: {
 					ExceptionType exceptionType;
 					serialize(sectionStream, exceptionType);
 					kindIndex = module_.exceptionTypes.imports.size();
@@ -1296,7 +1295,7 @@ template<typename Stream> void serializeImportSection(Stream& moduleStream, Modu
 					serialize(sectionStream, globalImport.type);
 					break;
 				}
-				case ExternKind::exceptionType: {
+				case ExternKind::tag: {
 					auto& exceptionTypeImport = module_.exceptionTypes.imports[kindIndex.index];
 					serialize(sectionStream, exceptionTypeImport.moduleName);
 					serialize(sectionStream, exceptionTypeImport.exportName);
@@ -1363,13 +1362,6 @@ template<typename Stream> void serializeGlobalSection(Stream& moduleStream, Modu
 {
 	serializeSection(moduleStream, SectionID::global, [&module_](Stream& sectionStream) {
 		serialize(sectionStream, module_.globals.defs);
-	});
-}
-
-template<typename Stream> void serializeExceptionTypeSection(Stream& moduleStream, Module& module_)
-{
-	serializeSection(moduleStream, SectionID::exceptionType, [&module_](Stream& sectionStream) {
-		serialize(sectionStream, module_.exceptionTypes.defs);
 	});
 }
 
@@ -1528,11 +1520,11 @@ static void serializeModule(OutputStream& moduleStream, Module& module_)
 	serializeCustomSectionsAfterKnownSection(moduleStream, module_, OrderedSectionID::table);
 	if(hasMemorySection(module_)) { serializeMemorySection(moduleStream, module_); }
 	serializeCustomSectionsAfterKnownSection(moduleStream, module_, OrderedSectionID::memory);
+	if(hasTagSection(module_)) { serializeTagSection(moduleStream, module_); }
+	serializeCustomSectionsAfterKnownSection(
+		moduleStream, module_, OrderedSectionID::tag);
 	if(hasGlobalSection(module_)) { serializeGlobalSection(moduleStream, module_); }
 	serializeCustomSectionsAfterKnownSection(moduleStream, module_, OrderedSectionID::global);
-	if(hasExceptionTypeSection(module_)) { serializeExceptionTypeSection(moduleStream, module_); }
-	serializeCustomSectionsAfterKnownSection(
-		moduleStream, module_, OrderedSectionID::exceptionType);
 	if(hasExportSection(module_)) { serializeExportSection(moduleStream, module_); }
 	serializeCustomSectionsAfterKnownSection(moduleStream, module_, OrderedSectionID::export_);
 	if(hasStartSection(module_)) { serializeStartSection(moduleStream, module_); }
@@ -1562,17 +1554,11 @@ static void serializeModule(InputStream& moduleStream, Module& module_)
 	OrderedSectionID lastKnownOrderedSectionID = OrderedSectionID::moduleBeginning;
 	bool hadFunctionDefinitions = false;
 	bool hadDataSection = false;
-	bool hasTagSection = false;
 	while(moduleStream.capacity())
 	{
 		SectionID sectionID;
 		serialize(moduleStream, sectionID);
-		if(sectionID == SectionID::tag)
-		{
-			if(hasTagSection) { throw FatalSerializationException("tag section appears twice"); }
-			hasTagSection = false;
-		}
-		else if(sectionID != SectionID::custom)
+		if(sectionID != SectionID::custom)
 		{
 			OrderedSectionID orderedSectionID;
 			switch(sectionID)
@@ -1589,11 +1575,10 @@ static void serializeModule(InputStream& moduleStream, Module& module_)
 			case SectionID::code: orderedSectionID = OrderedSectionID::code; break;
 			case SectionID::data: orderedSectionID = OrderedSectionID::data; break;
 			case SectionID::dataCount: orderedSectionID = OrderedSectionID::dataCount; break;
-			case SectionID::exceptionType:
-				orderedSectionID = OrderedSectionID::exceptionType;
+			case SectionID::tag:
+				orderedSectionID = OrderedSectionID::tag;
 				break;
 			case SectionID::custom: WAVM_UNREACHABLE();
-			case SectionID::tag: WAVM_UNREACHABLE();
 			default:
 				throw FatalSerializationException("unknown section ID ("
 												  + std::to_string(U8(sectionID)));
@@ -1627,13 +1612,10 @@ static void serializeModule(InputStream& moduleStream, Module& module_)
 			serializeMemorySection(moduleStream, module_);
 			IR::validateMemoryDefs(*moduleState.validationState);
 			break;
+		case SectionID::tag: serializeTagSection(moduleStream, module_); break;
 		case SectionID::global:
 			serializeGlobalSection(moduleStream, module_);
 			IR::validateGlobalDefs(*moduleState.validationState);
-			break;
-		case SectionID::exceptionType:
-			serializeExceptionTypeSection(moduleStream, module_);
-			IR::validateExceptionTypeDefs(*moduleState.validationState);
 			break;
 		case SectionID::export_:
 			serializeExportSection(moduleStream, module_);
@@ -1660,7 +1642,6 @@ static void serializeModule(InputStream& moduleStream, Module& module_)
 			hadDataSection = true;
 			IR::validateDataSegments(*moduleState.validationState);
 			break;
-		case SectionID::tag: serializeTagSection(moduleStream, module_); break;
 		case SectionID::custom: {
 			CustomSection& customSection
 				= *module_.customSections.insert(module_.customSections.end(), CustomSection());

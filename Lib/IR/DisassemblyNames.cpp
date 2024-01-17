@@ -28,7 +28,8 @@ enum class NameSubsectionType : U8
 	global = 7,
 	elemSegment = 8,
 	dataSegment = 9,
-	exceptionTypes = 10,
+	tag = 11,
+	exceptionTypes = tag,
 	invalid = 0xff
 };
 

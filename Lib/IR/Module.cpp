@@ -15,14 +15,13 @@ const char* IR::asString(OrderedSectionID id)
 	case OrderedSectionID::table: return "table";
 	case OrderedSectionID::memory: return "memory";
 	case OrderedSectionID::global: return "global";
-	case OrderedSectionID::exceptionType: return "exception_type";
+	case OrderedSectionID::tag: return "tag";
 	case OrderedSectionID::export_: return "export";
 	case OrderedSectionID::start: return "start";
 	case OrderedSectionID::elem: return "elem";
 	case OrderedSectionID::dataCount: return "data_count";
 	case OrderedSectionID::code: return "code";
 	case OrderedSectionID::data: return "data";
-	case OrderedSectionID::tag: return "tag";
 
 	default: WAVM_UNREACHABLE();
 	};
@@ -57,9 +56,6 @@ OrderedSectionID IR::getMaxPresentSection(const Module& module_, OrderedSectionI
 {
 	switch(maxSection)
 	{
-	case OrderedSectionID::tag:
-		if(hasTagSection(module_)) { return OrderedSectionID::tag; }
-		[[fallthrough]];
 	case OrderedSectionID::data:
 		if(hasDataSection(module_)) { return OrderedSectionID::data; }
 		[[fallthrough]];
@@ -78,8 +74,8 @@ OrderedSectionID IR::getMaxPresentSection(const Module& module_, OrderedSectionI
 	case OrderedSectionID::export_:
 		if(hasExportSection(module_)) { return OrderedSectionID::export_; }
 		[[fallthrough]];
-	case OrderedSectionID::exceptionType:
-		if(hasExceptionTypeSection(module_)) { return OrderedSectionID::exceptionType; }
+	case OrderedSectionID::tag:
+		if(hasTagSection(module_)) { return OrderedSectionID::tag; }
 		[[fallthrough]];
 	case OrderedSectionID::global:
 		if(hasGlobalSection(module_)) { return OrderedSectionID::global; }

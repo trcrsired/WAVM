@@ -233,7 +233,7 @@ Instance* Runtime::instantiateModuleInternal(Compartment* compartment,
 
 	// Instantiate the module's exception types.
 	for(Uptr exceptionTypeDefIndex = 0;
-		exceptionTypeDefIndex < module_->ir.exceptionTypes.defs.size();
+		exceptionTypeDefIndex < module_->ir.tagSegments.size();
 		++exceptionTypeDefIndex)
 	{
 		const ExceptionTypeDef& exceptionTypeDef

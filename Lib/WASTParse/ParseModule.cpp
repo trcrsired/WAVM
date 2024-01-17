@@ -1262,9 +1262,6 @@ static void parseCustomSection(CursorState* cursor)
 			case OrderedSectionID::table: hasPrecedingSection = hasTableSection(module_); break;
 			case OrderedSectionID::memory: hasPrecedingSection = hasMemorySection(module_); break;
 			case OrderedSectionID::global: hasPrecedingSection = hasGlobalSection(module_); break;
-			case OrderedSectionID::exceptionType:
-				hasPrecedingSection = hasExceptionTypeSection(module_);
-				break;
 			case OrderedSectionID::export_: hasPrecedingSection = hasExportSection(module_); break;
 			case OrderedSectionID::start: hasPrecedingSection = hasStartSection(module_); break;
 			case OrderedSectionID::elem: hasPrecedingSection = hasElemSection(module_); break;
