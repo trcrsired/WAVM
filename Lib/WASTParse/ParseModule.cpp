@@ -1273,6 +1273,7 @@ static void parseCustomSection(CursorState* cursor)
 				break;
 			case OrderedSectionID::code: hasPrecedingSection = hasCodeSection(module_); break;
 			case OrderedSectionID::data: hasPrecedingSection = hasDataSection(module_); break;
+			case OrderedSectionID::tag: hasPrecedingSection = hasTagSection(module_); break;
 			default: WAVM_UNREACHABLE();
 			};
 

@@ -220,6 +220,8 @@ namespace WAVM { namespace IR {
 		serialize(stream, exceptionType.params);
 	}
 
+	template<typename Stream> void serialize(Stream& stream, TagSegment& globalType) {}
+
 	static void serialize(InputStream& stream, ExternKind& kind)
 	{
 		U8 encodedKind = 0;
@@ -475,6 +477,7 @@ enum class SectionID : U8
 	code = 10,
 	data = 11,
 	dataCount = 12,
+	tag = 13,
 	exceptionType = 0x7f,
 };
 
@@ -1481,6 +1484,21 @@ void serializeDataSection(OutputStream& moduleStream, Module& module_)
 	});
 }
 
+template<typename Stream> void serializeTagSection(Stream& moduleStream, Module& module_)
+{
+	serializeSection(moduleStream, SectionID::tag, [&module_](Stream& sectionStream) {
+		auto& tagSegments = module_.tagSegments;
+		Uptr numTagSegments = tagSegments.size();
+		serializeVarUInt32(sectionStream, numTagSegments);
+		if(Stream::isInput) { tagSegments.resize(numTagSegments); }
+		for(auto& ele : tagSegments)
+		{
+			serializeNativeValue(sectionStream, ele.attribute);
+			serializeVarUInt32(sectionStream, ele.tagindex);
+		}
+	});
+}
+
 void serializeCustomSectionsAfterKnownSection(OutputStream& moduleStream,
 											  Module& module_,
 											  OrderedSectionID afterSection)
@@ -1544,12 +1562,17 @@ static void serializeModule(InputStream& moduleStream, Module& module_)
 	OrderedSectionID lastKnownOrderedSectionID = OrderedSectionID::moduleBeginning;
 	bool hadFunctionDefinitions = false;
 	bool hadDataSection = false;
+	bool hasTagSection = false;
 	while(moduleStream.capacity())
 	{
 		SectionID sectionID;
 		serialize(moduleStream, sectionID);
-
-		if(sectionID != SectionID::custom)
+		if(sectionID == SectionID::tag)
+		{
+			if(hasTagSection) { throw FatalSerializationException("tag section appears twice"); }
+			hasTagSection = false;
+		}
+		else if(sectionID != SectionID::custom)
 		{
 			OrderedSectionID orderedSectionID;
 			switch(sectionID)
@@ -1569,13 +1592,12 @@ static void serializeModule(InputStream& moduleStream, Module& module_)
 			case SectionID::exceptionType:
 				orderedSectionID = OrderedSectionID::exceptionType;
 				break;
-
 			case SectionID::custom: WAVM_UNREACHABLE();
+			case SectionID::tag: WAVM_UNREACHABLE();
 			default:
 				throw FatalSerializationException("unknown section ID ("
 												  + std::to_string(U8(sectionID)));
 			};
-
 			if(orderedSectionID > lastKnownOrderedSectionID)
 			{
 				lastKnownOrderedSectionID = orderedSectionID;
@@ -1638,6 +1660,7 @@ static void serializeModule(InputStream& moduleStream, Module& module_)
 			hadDataSection = true;
 			IR::validateDataSegments(*moduleState.validationState);
 			break;
+		case SectionID::tag: serializeTagSection(moduleStream, module_); break;
 		case SectionID::custom: {
 			CustomSection& customSection
 				= *module_.customSections.insert(module_.customSections.end(), CustomSection());
@@ -1649,14 +1672,14 @@ static void serializeModule(InputStream& moduleStream, Module& module_)
 		};
 	};
 
-	if(module_.functions.defs.size() && !hadFunctionDefinitions)
+	if(!module_.functions.defs.empty() && !hadFunctionDefinitions)
 	{
 		throw FatalSerializationException(
 			"module contained function declarations, but no corresponding "
 			"function definition section");
 	}
 
-	if(module_.dataSegments.size() && !hadDataSection)
+	if(!module_.dataSegments.empty() && !hadDataSection)
 	{
 		throw FatalSerializationException(
 			"module contained DataCount section with non-zero segment count, but no corresponding "

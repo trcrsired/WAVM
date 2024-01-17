@@ -1,7 +1,7 @@
 #pragma once
 
-#include <stdint.h>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -267,6 +267,12 @@ namespace WAVM { namespace IR {
 		std::shared_ptr<Contents> contents;
 	};
 
+	struct TagSegment
+	{
+		::std::uint_least8_t attribute;
+		::std::uint_least32_t tagindex;
+	};
+
 	// Identifies sections in the binary format of a module in the order they are required to occur.
 	enum class OrderedSectionID : U8
 	{
@@ -285,6 +291,7 @@ namespace WAVM { namespace IR {
 		dataCount,
 		code,
 		data,
+		tag,
 	};
 
 	WAVM_API const char* asString(OrderedSectionID id);
@@ -351,6 +358,7 @@ namespace WAVM { namespace IR {
 		std::vector<Export> exports;
 		std::vector<DataSegment> dataSegments;
 		std::vector<ElemSegment> elemSegments;
+		std::vector<TagSegment> tagSegments;
 		std::vector<CustomSection> customSections;
 
 		Uptr startFunctionIndex;
@@ -372,38 +380,39 @@ namespace WAVM { namespace IR {
 
 	// Functions that determine whether the binary form of a module will have specific sections.
 
-	inline bool hasTypeSection(const Module& module_) { return module_.types.size() > 0; }
+	inline bool hasTypeSection(const Module& module_) { return !module_.types.empty(); }
 	inline bool hasImportSection(const Module& module_)
 	{
-		WAVM_ASSERT((module_.imports.size() > 0)
-					== (module_.functions.imports.size() > 0 || module_.tables.imports.size() > 0
-						|| module_.memories.imports.size() > 0 || module_.globals.imports.size() > 0
-						|| module_.exceptionTypes.imports.size() > 0));
-		return module_.imports.size() > 0;
+		WAVM_ASSERT((!module_.imports.empty())
+					== (!module_.functions.imports.empty() || !module_.tables.imports.empty()
+						|| !module_.memories.imports.empty() || !module_.globals.imports.empty()
+						|| !module_.exceptionTypes.imports.empty()));
+		return !module_.imports.empty();
 	}
 	inline bool hasFunctionSection(const Module& module_)
 	{
-		return module_.functions.defs.size() > 0;
+		return !module_.functions.defs.empty();
 	}
-	inline bool hasTableSection(const Module& module_) { return module_.tables.defs.size() > 0; }
-	inline bool hasMemorySection(const Module& module_) { return module_.memories.defs.size() > 0; }
-	inline bool hasGlobalSection(const Module& module_) { return module_.globals.defs.size() > 0; }
+	inline bool hasTableSection(const Module& module_) { return !module_.tables.defs.empty(); }
+	inline bool hasMemorySection(const Module& module_) { return !module_.memories.defs.empty(); }
+	inline bool hasGlobalSection(const Module& module_) { return !module_.globals.defs.empty(); }
 	inline bool hasExceptionTypeSection(const Module& module_)
 	{
-		return module_.exceptionTypes.defs.size() > 0;
+		return !module_.exceptionTypes.defs.empty();
 	}
-	inline bool hasExportSection(const Module& module_) { return module_.exports.size() > 0; }
+	inline bool hasExportSection(const Module& module_) { return !module_.exports.empty(); }
 	inline bool hasStartSection(const Module& module_)
 	{
 		return module_.startFunctionIndex != UINTPTR_MAX;
 	}
-	inline bool hasElemSection(const Module& module_) { return module_.elemSegments.size() > 0; }
+	inline bool hasElemSection(const Module& module_) { return !module_.elemSegments.empty(); }
 	inline bool hasDataCountSection(const Module& module_)
 	{
-		return module_.dataSegments.size() > 0 && module_.featureSpec.bulkMemoryOperations;
+		return !module_.dataSegments.empty() && module_.featureSpec.bulkMemoryOperations;
 	}
-	inline bool hasCodeSection(const Module& module_) { return module_.functions.defs.size() > 0; }
-	inline bool hasDataSection(const Module& module_) { return module_.dataSegments.size() > 0; }
+	inline bool hasCodeSection(const Module& module_) { return !module_.functions.defs.empty(); }
+	inline bool hasDataSection(const Module& module_) { return !module_.dataSegments.empty(); }
+	inline bool hasTagSection(const Module& module_) { return !module_.tagSegments.empty(); }
 
 	WAVM_API OrderedSectionID getMaxPresentSection(const Module& module_,
 												   OrderedSectionID maxSection);
