@@ -129,11 +129,17 @@ static void createconditionaltrap(EmitFunctionContext& functionContext, ::llvm::
 static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionContext,
 											   Uptr memoryIndex,
 											   llvm::Value* address,
-											   llvm::Value* numBytes,
+											   uint32_t knownNumBytes,
 											   U64 offset,
 											   BoundsCheckOp boundsCheckOp,
+											   llvm::Value* numBytes = nullptr,
 											   bool istagging = false)
 {
+	if(numBytes == nullptr)
+	{
+		numBytes = llvm::ConstantInt::get(address->getType(), knownNumBytes);
+	}
+	else { knownNumBytes = 0; }
 	const MemoryType& memoryType
 		= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
 	const bool is32bitMemoryOn64bitHost
@@ -142,6 +148,8 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
 	auto& meminfo{functionContext.memoryInfos[memoryIndex]};
+
+	constexpr bool fullcheck{true};
 
 	auto memtagBasePointerVariable = meminfo.memtagBasePointerVariable;
 	::llvm::Value* taggedval{};
@@ -158,8 +166,17 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 			shifter = 30;
 			mask = 0x3FFFFFFF;
 		}
-		taggedval = irBuilder.CreateTrunc(irBuilder.CreateLShr(address, shifter),
-										  functionContext.llvmContext.i8Type);
+		if(fullcheck && 1 < knownNumBytes && knownNumBytes <= 16u)
+		{
+			taggedval = irBuilder.CreateTrunc(irBuilder.CreateLShr(address, shifter),
+											  functionContext.llvmContext.i16Type);
+			taggedval = irBuilder.CreateAdd(irBuilder.CreateShl(taggedval, 8), taggedval);
+		}
+		else
+		{
+			taggedval = irBuilder.CreateTrunc(irBuilder.CreateLShr(address, shifter),
+											  functionContext.llvmContext.i8Type);
+		}
 		address = irBuilder.CreateAnd(address, mask);
 	}
 	numBytes = irBuilder.CreateZExt(numBytes, address->getType());
@@ -268,15 +285,99 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 	// checking code for consecutive loads/stores to the same address.
 	if(!istagging && memtagBasePointerVariable)
 	{
-		::llvm::Value* addressrshift{irBuilder.CreateLShr(address, 4)};
-		::llvm::Value* tagbaseptrval = ::WAVM::LLVMJIT::wavmCreateLoad(
-			irBuilder, functionContext.llvmContext.i8PtrType, memtagBasePointerVariable);
-		::llvm::Value* tagbytePointer = ::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
-			irBuilder, functionContext.llvmContext.i8Type, tagbaseptrval, addressrshift);
-		::llvm::Value* taginmem = ::WAVM::LLVMJIT::wavmCreateLoad(
-			irBuilder, functionContext.llvmContext.i8Type, tagbytePointer);
-		auto cmpres{irBuilder.CreateICmpNE(taggedval, taginmem)};
-		createconditionaltrap(functionContext, cmpres);
+#if 1
+		if(fullcheck && knownNumBytes != 1)
+		{
+			if(1 < knownNumBytes && knownNumBytes <= 16u)
+			{
+				#if 1
+				::llvm::Value* addressrshift{irBuilder.CreateLShr(address, 4)};
+				::llvm::Value* tagbaseptrval = ::WAVM::LLVMJIT::wavmCreateLoad(
+					irBuilder, functionContext.llvmContext.i8PtrType, memtagBasePointerVariable);
+				::llvm::Value* tagbytePointer = ::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
+					irBuilder, functionContext.llvmContext.i8Type, tagbaseptrval, addressrshift);
+				::llvm::Value* taginmem = ::WAVM::LLVMJIT::wavmCreateLoad(
+					irBuilder, functionContext.llvmContext.i16Type, tagbytePointer);
+				::llvm::Value* addresslast = irBuilder.CreateAdd(
+					address, llvm::ConstantInt::get(address->getType(), knownNumBytes - 1u));
+				::llvm::Value* addresslastrshift{irBuilder.CreateLShr(addresslast, 4)};
+				// need littleendian
+				auto addresssamebucket = irBuilder.CreateICmpEQ(addressrshift, addresslastrshift);
+#if 0
+				auto c = irBuilder.CreateLShr(
+					llvm::ConstantInt::get(functionContext.llvmContext.i16Type, 0xFFFF),
+					irBuilder.CreateShl(
+						irBuilder.CreateZExt(addresssamebucket, functionContext.llvmContext.i8Type),
+						3));
+#else
+				auto c = irBuilder.CreateSelect(
+					addresssamebucket,
+					llvm::ConstantInt::get(functionContext.llvmContext.i16Type, 0xFF),
+					llvm::ConstantInt::get(functionContext.llvmContext.i16Type, 0xFFFF));
+#endif
+				taggedval = irBuilder.CreateAnd(taggedval, c);
+				taginmem = irBuilder.CreateAnd(taginmem, c);
+				createconditionaltrap(functionContext, irBuilder.CreateICmpNE(taggedval, taginmem));
+				#endif
+			}
+			else
+			{
+				::llvm::BasicBlock* checkBlock = ::llvm::BasicBlock::Create(
+					functionContext.moduleContext.llvmContext, "", functionContext.function);
+				::llvm::BasicBlock* mergeblock = ::llvm::BasicBlock::Create(
+					functionContext.moduleContext.llvmContext, "", functionContext.function);
+				irBuilder.CreateCondBr(
+					irBuilder.CreateICmpNE(numBytes,
+										   llvm::ConstantInt::get(numBytes->getType(), 0)),
+					checkBlock,
+					mergeblock);
+				irBuilder.SetInsertPoint(checkBlock);
+				::llvm::Value* addressrshift{irBuilder.CreateLShr(address, 4)};
+				::llvm::Value* tagbaseptrval = ::WAVM::LLVMJIT::wavmCreateLoad(
+					irBuilder, functionContext.llvmContext.i8PtrType, memtagBasePointerVariable);
+				::llvm::Value* tagbytePointer = ::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
+					irBuilder, functionContext.llvmContext.i8Type, tagbaseptrval, addressrshift);
+				auto firstcmpres = irBuilder.CreateICmpNE(
+					taggedval,
+					::WAVM::LLVMJIT::wavmCreateLoad(
+						irBuilder, functionContext.llvmContext.i8Type, tagbytePointer));
+
+				::llvm::Value* addresslastrshift{irBuilder.CreateLShr(
+					irBuilder.CreateAdd(
+						address,
+						irBuilder.CreateSub(numBytes,
+											llvm::ConstantInt::get(numBytes->getType(), 1))),
+					4)};
+				::llvm::Value* lasttagbytePointer
+					= ::WAVM::LLVMJIT::wavmCreateInBoundsGEP(irBuilder,
+															 functionContext.llvmContext.i8Type,
+															 tagbaseptrval,
+															 {addresslastrshift});
+				auto lastcmpres = irBuilder.CreateICmpNE(
+					taggedval,
+					::WAVM::LLVMJIT::wavmCreateLoad(
+						irBuilder, functionContext.llvmContext.i8Type, lasttagbytePointer));
+				createconditionaltrap(functionContext,
+									  irBuilder.CreateLogicalOr(firstcmpres, lastcmpres));
+				irBuilder.CreateBr(mergeblock);
+				irBuilder.SetInsertPoint(mergeblock);
+			}
+		}
+		else
+		{
+			::llvm::Value* addressrshift{irBuilder.CreateLShr(address, 4)};
+			::llvm::Value* tagbaseptrval = ::WAVM::LLVMJIT::wavmCreateLoad(
+				irBuilder, functionContext.llvmContext.i8PtrType, memtagBasePointerVariable);
+			::llvm::Value* tagbytePointer = ::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
+				irBuilder, functionContext.llvmContext.i8Type, tagbaseptrval, addressrshift);
+			createconditionaltrap(
+				functionContext,
+				irBuilder.CreateICmpNE(
+					taggedval,
+					::WAVM::LLVMJIT::wavmCreateLoad(
+						irBuilder, functionContext.llvmContext.i8Type, tagbytePointer)));
+		}
+#endif
 	}
 	return address;
 }
@@ -368,10 +469,15 @@ void EmitFunctionContext::memory_copy(MemoryCopyImm imm)
 	llvm::Value* sourceAddress = pop();
 	llvm::Value* destAddress = pop();
 
-	llvm::Value* sourceBoundedAddress = getOffsetAndBoundedAddress(
-		*this, imm.sourceMemoryIndex, sourceAddress, numBytes, 0, BoundsCheckOp::trapOnOutOfBounds);
+	llvm::Value* sourceBoundedAddress = getOffsetAndBoundedAddress(*this,
+																   imm.sourceMemoryIndex,
+																   sourceAddress,
+																   0,
+																   0,
+																   BoundsCheckOp::trapOnOutOfBounds,
+																   numBytes);
 	llvm::Value* destBoundedAddress = getOffsetAndBoundedAddress(
-		*this, imm.destMemoryIndex, destAddress, numBytes, 0, BoundsCheckOp::trapOnOutOfBounds);
+		*this, imm.destMemoryIndex, destAddress, 0, 0, BoundsCheckOp::trapOnOutOfBounds, numBytes);
 
 	llvm::Value* sourcePointer
 		= coerceAddressToPointer(sourceBoundedAddress, llvmContext.i8Type, imm.sourceMemoryIndex);
@@ -396,7 +502,7 @@ void EmitFunctionContext::memory_fill(MemoryImm imm)
 	llvm::Value* destAddress = pop();
 
 	llvm::Value* destBoundedAddress = getOffsetAndBoundedAddress(
-		*this, imm.memoryIndex, destAddress, numBytes, 0, BoundsCheckOp::trapOnOutOfBounds);
+		*this, imm.memoryIndex, destAddress, 0, 0, BoundsCheckOp::trapOnOutOfBounds, numBytes);
 	llvm::Value* destPointer
 		= coerceAddressToPointer(destBoundedAddress, llvmContext.i8Type, imm.memoryIndex);
 
@@ -856,13 +962,12 @@ void EmitFunctionContext::memory_loadtag(MemoryImm imm)
 	void EmitFunctionContext::name(LoadOrStoreImm<numBytesLog2> imm)                               \
 	{                                                                                              \
 		auto address = pop();                                                                      \
-		auto boundedAddress = getOffsetAndBoundedAddress(                                          \
-			*this,                                                                                 \
-			imm.memoryIndex,                                                                       \
-			address,                                                                               \
-			llvm::ConstantInt::get(address->getType(), U64(1 << numBytesLog2)),                    \
-			imm.offset,                                                                            \
-			BoundsCheckOp::clampToGuardRegion);                                                    \
+		auto boundedAddress = getOffsetAndBoundedAddress(*this,                                    \
+														 imm.memoryIndex,                          \
+														 address,                                  \
+														 U64(1 << numBytesLog2),                   \
+														 imm.offset,                               \
+														 BoundsCheckOp::clampToGuardRegion);       \
 		auto pointer = coerceAddressToPointer(boundedAddress, llvmMemoryType, imm.memoryIndex);    \
 		auto load = ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, llvmMemoryType, pointer);           \
 		/* Don't trust the alignment hint provided by the WebAssembly code, since the load can't   \
@@ -876,13 +981,12 @@ void EmitFunctionContext::memory_loadtag(MemoryImm imm)
 	{                                                                                              \
 		auto value = pop();                                                                        \
 		auto address = pop();                                                                      \
-		auto boundedAddress = getOffsetAndBoundedAddress(                                          \
-			*this,                                                                                 \
-			imm.memoryIndex,                                                                       \
-			address,                                                                               \
-			llvm::ConstantInt::get(address->getType(), U64(1 << numBytesLog2)),                    \
-			imm.offset,                                                                            \
-			BoundsCheckOp::clampToGuardRegion);                                                    \
+		auto boundedAddress = getOffsetAndBoundedAddress(*this,                                    \
+														 imm.memoryIndex,                          \
+														 address,                                  \
+														 U64(1 << numBytesLog2),                   \
+														 imm.offset,                               \
+														 BoundsCheckOp::clampToGuardRegion);       \
 		auto pointer = coerceAddressToPointer(boundedAddress, llvmMemoryType, imm.memoryIndex);    \
 		auto memoryValue = conversionOp(value, llvmMemoryType);                                    \
 		auto store = irBuilder.CreateStore(memoryValue, pointer);                                  \
@@ -954,13 +1058,12 @@ static void emitLoadLane(EmitFunctionContext& functionContext,
 	vector = functionContext.irBuilder.CreateBitCast(vector, llvmVectorType);
 
 	llvm::Value* address = functionContext.pop();
-	llvm::Value* boundedAddress = getOffsetAndBoundedAddress(
-		functionContext,
-		loadOrStoreImm.memoryIndex,
-		address,
-		llvm::ConstantInt::get(address->getType(), U64(1) << numBytesLog2),
-		loadOrStoreImm.offset,
-		BoundsCheckOp::clampToGuardRegion);
+	llvm::Value* boundedAddress = getOffsetAndBoundedAddress(functionContext,
+															 loadOrStoreImm.memoryIndex,
+															 address,
+															 U64(1) << numBytesLog2,
+															 loadOrStoreImm.offset,
+															 BoundsCheckOp::clampToGuardRegion);
 	llvm::Value* pointer = functionContext.coerceAddressToPointer(
 		boundedAddress, llvmVectorType->getScalarType(), loadOrStoreImm.memoryIndex);
 	llvm::LoadInst* load = ::WAVM::LLVMJIT::wavmCreateLoad(
@@ -986,13 +1089,12 @@ static void emitStoreLane(EmitFunctionContext& functionContext,
 	auto lane = functionContext.irBuilder.CreateExtractElement(vector, laneIndex);
 
 	llvm::Value* address = functionContext.pop();
-	llvm::Value* boundedAddress = getOffsetAndBoundedAddress(
-		functionContext,
-		loadOrStoreImm.memoryIndex,
-		address,
-		llvm::ConstantInt::get(address->getType(), U64(1) << numBytesLog2),
-		loadOrStoreImm.offset,
-		BoundsCheckOp::clampToGuardRegion);
+	llvm::Value* boundedAddress = getOffsetAndBoundedAddress(functionContext,
+															 loadOrStoreImm.memoryIndex,
+															 address,
+															 U64(1) << numBytesLog2,
+															 loadOrStoreImm.offset,
+															 BoundsCheckOp::clampToGuardRegion);
 	llvm::Value* pointer = functionContext.coerceAddressToPointer(
 		boundedAddress, lane->getType(), loadOrStoreImm.memoryIndex);
 	llvm::StoreInst* store = functionContext.irBuilder.CreateStore(lane, pointer);
@@ -1035,13 +1137,12 @@ static void emitLoadInterleaved(EmitFunctionContext& functionContext,
 	WAVM_ASSERT(numLanes <= maxLanes);
 
 	auto address = functionContext.pop();
-	auto boundedAddress
-		= getOffsetAndBoundedAddress(functionContext,
-									 imm.memoryIndex,
-									 address,
-									 llvm::ConstantInt::get(address->getType(), numBytes),
-									 imm.offset,
-									 BoundsCheckOp::clampToGuardRegion);
+	auto boundedAddress = getOffsetAndBoundedAddress(functionContext,
+													 imm.memoryIndex,
+													 address,
+													 numBytes,
+													 imm.offset,
+													 BoundsCheckOp::clampToGuardRegion);
 	auto pointer
 		= functionContext.coerceAddressToPointer(boundedAddress, llvmValueType, imm.memoryIndex);
 	if(functionContext.moduleContext.targetArch == llvm::Triple::aarch64)
@@ -1109,13 +1210,12 @@ static void emitStoreInterleaved(EmitFunctionContext& functionContext,
 			= functionContext.irBuilder.CreateBitCast(functionContext.pop(), llvmValueType);
 	}
 	auto address = functionContext.pop();
-	auto boundedAddress
-		= getOffsetAndBoundedAddress(functionContext,
-									 imm.memoryIndex,
-									 address,
-									 llvm::ConstantInt::get(address->getType(), numBytes),
-									 imm.offset,
-									 BoundsCheckOp::clampToGuardRegion);
+	auto boundedAddress = getOffsetAndBoundedAddress(functionContext,
+													 imm.memoryIndex,
+													 address,
+													 numBytes,
+													 imm.offset,
+													 BoundsCheckOp::clampToGuardRegion);
 	auto pointer
 		= functionContext.coerceAddressToPointer(boundedAddress, llvmValueType, imm.memoryIndex);
 	if(functionContext.moduleContext.targetArch == llvm::Triple::aarch64)
@@ -1228,13 +1328,8 @@ void EmitFunctionContext::memory_atomic_notify(AtomicLoadOrStoreImm<2> imm)
 {
 	llvm::Value* numWaiters = pop();
 	llvm::Value* address = pop();
-	llvm::Value* boundedAddress
-		= getOffsetAndBoundedAddress(*this,
-									 imm.memoryIndex,
-									 address,
-									 llvm::ConstantInt::get(address->getType(), U64(4)),
-									 imm.offset,
-									 BoundsCheckOp::clampToGuardRegion);
+	llvm::Value* boundedAddress = getOffsetAndBoundedAddress(
+		*this, imm.memoryIndex, address, U64(4), imm.offset, BoundsCheckOp::clampToGuardRegion);
 	trapIfMisalignedAtomic(boundedAddress, imm.alignmentLog2);
 	push(emitRuntimeIntrinsic(
 		"memory.atomic.notify",
@@ -1251,13 +1346,8 @@ void EmitFunctionContext::memory_atomic_wait32(AtomicLoadOrStoreImm<2> imm)
 	llvm::Value* timeout = pop();
 	llvm::Value* expectedValue = pop();
 	llvm::Value* address = pop();
-	llvm::Value* boundedAddress
-		= getOffsetAndBoundedAddress(*this,
-									 imm.memoryIndex,
-									 address,
-									 llvm::ConstantInt::get(address->getType(), U64(4)),
-									 imm.offset,
-									 BoundsCheckOp::clampToGuardRegion);
+	llvm::Value* boundedAddress = getOffsetAndBoundedAddress(
+		*this, imm.memoryIndex, address, U64(4), imm.offset, BoundsCheckOp::clampToGuardRegion);
 	trapIfMisalignedAtomic(boundedAddress, imm.alignmentLog2);
 	push(emitRuntimeIntrinsic(
 		"memory.atomic.wait32",
@@ -1277,13 +1367,8 @@ void EmitFunctionContext::memory_atomic_wait64(AtomicLoadOrStoreImm<3> imm)
 	llvm::Value* timeout = pop();
 	llvm::Value* expectedValue = pop();
 	llvm::Value* address = pop();
-	llvm::Value* boundedAddress
-		= getOffsetAndBoundedAddress(*this,
-									 imm.memoryIndex,
-									 address,
-									 llvm::ConstantInt::get(address->getType(), U64(8)),
-									 imm.offset,
-									 BoundsCheckOp::clampToGuardRegion);
+	llvm::Value* boundedAddress = getOffsetAndBoundedAddress(
+		*this, imm.memoryIndex, address, U64(8), imm.offset, BoundsCheckOp::clampToGuardRegion);
 	trapIfMisalignedAtomic(boundedAddress, imm.alignmentLog2);
 	push(emitRuntimeIntrinsic(
 		"memory.atomic.wait64",
@@ -1314,13 +1399,12 @@ void EmitFunctionContext::atomic_fence(AtomicFenceImm imm)
 	void EmitFunctionContext::valueTypeId##_##name(AtomicLoadOrStoreImm<numBytesLog2> imm)         \
 	{                                                                                              \
 		auto address = pop();                                                                      \
-		auto boundedAddress = getOffsetAndBoundedAddress(                                          \
-			*this,                                                                                 \
-			imm.memoryIndex,                                                                       \
-			address,                                                                               \
-			llvm::ConstantInt::get(address->getType(), U64(1 << numBytesLog2)),                    \
-			imm.offset,                                                                            \
-			BoundsCheckOp::clampToGuardRegion);                                                    \
+		auto boundedAddress = getOffsetAndBoundedAddress(*this,                                    \
+														 imm.memoryIndex,                          \
+														 address,                                  \
+														 U64(1 << numBytesLog2),                   \
+														 imm.offset,                               \
+														 BoundsCheckOp::clampToGuardRegion);       \
 		trapIfMisalignedAtomic(boundedAddress, numBytesLog2);                                      \
 		auto pointer = coerceAddressToPointer(boundedAddress, llvmMemoryType, imm.memoryIndex);    \
 		auto load = ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, address->getType(), pointer);       \
@@ -1334,13 +1418,12 @@ void EmitFunctionContext::atomic_fence(AtomicFenceImm imm)
 	{                                                                                              \
 		auto value = pop();                                                                        \
 		auto address = pop();                                                                      \
-		auto boundedAddress = getOffsetAndBoundedAddress(                                          \
-			*this,                                                                                 \
-			imm.memoryIndex,                                                                       \
-			address,                                                                               \
-			llvm::ConstantInt::get(address->getType(), U64(1 << numBytesLog2)),                    \
-			imm.offset,                                                                            \
-			BoundsCheckOp::clampToGuardRegion);                                                    \
+		auto boundedAddress = getOffsetAndBoundedAddress(*this,                                    \
+														 imm.memoryIndex,                          \
+														 address,                                  \
+														 U64(1 << numBytesLog2),                   \
+														 imm.offset,                               \
+														 BoundsCheckOp::clampToGuardRegion);       \
 		trapIfMisalignedAtomic(boundedAddress, numBytesLog2);                                      \
 		auto pointer = coerceAddressToPointer(boundedAddress, llvmMemoryType, imm.memoryIndex);    \
 		auto memoryValue = valueToMem(value, llvmMemoryType);                                      \
@@ -1374,13 +1457,12 @@ EMIT_ATOMIC_STORE_OP(i64, atomic_store32, llvmContext.i32Type, 2, trunc)
 		auto replacementValue = valueToMem(pop(), llvmMemoryType);                                 \
 		auto expectedValue = valueToMem(pop(), llvmMemoryType);                                    \
 		auto address = pop();                                                                      \
-		auto boundedAddress = getOffsetAndBoundedAddress(                                          \
-			*this,                                                                                 \
-			imm.memoryIndex,                                                                       \
-			address,                                                                               \
-			llvm::ConstantInt::get(address->getType(), U64(1 << numBytesLog2)),                    \
-			imm.offset,                                                                            \
-			BoundsCheckOp::clampToGuardRegion);                                                    \
+		auto boundedAddress = getOffsetAndBoundedAddress(*this,                                    \
+														 imm.memoryIndex,                          \
+														 address,                                  \
+														 U64(1 << numBytesLog2),                   \
+														 imm.offset,                               \
+														 BoundsCheckOp::clampToGuardRegion);       \
 		trapIfMisalignedAtomic(boundedAddress, numBytesLog2);                                      \
 		auto pointer = coerceAddressToPointer(boundedAddress, llvmMemoryType, imm.memoryIndex);    \
 		auto atomicCmpXchg = ::WAVM::LLVMJIT::wavmCreateAtomicCmpXchg(                             \
@@ -1410,13 +1492,12 @@ EMIT_ATOMIC_CMPXCHG(i64, atomic_rmw_cmpxchg, llvmContext.i64Type, 3, identity, i
 	{                                                                                              \
 		auto value = valueToMem(pop(), llvmMemoryType);                                            \
 		auto address = pop();                                                                      \
-		auto boundedAddress = getOffsetAndBoundedAddress(                                          \
-			*this,                                                                                 \
-			imm.memoryIndex,                                                                       \
-			address,                                                                               \
-			llvm::ConstantInt::get(address->getType(), U64(1 << numBytesLog2)),                    \
-			imm.offset,                                                                            \
-			BoundsCheckOp::clampToGuardRegion);                                                    \
+		auto boundedAddress = getOffsetAndBoundedAddress(*this,                                    \
+														 imm.memoryIndex,                          \
+														 address,                                  \
+														 U64(1 << numBytesLog2),                   \
+														 imm.offset,                               \
+														 BoundsCheckOp::clampToGuardRegion);       \
 		trapIfMisalignedAtomic(boundedAddress, numBytesLog2);                                      \
 		auto pointer = coerceAddressToPointer(boundedAddress, llvmMemoryType, imm.memoryIndex);    \
 		auto atomicRMW                                                                             \
