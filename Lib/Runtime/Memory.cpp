@@ -330,13 +330,13 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 			if(memory->resourceQuota) { memory->resourceQuota->memoryPages.free(numPagesToGrow); }
 			return GrowResult::outOfMemory;
 		}
-		if(memory->baseAddressTags)
+		auto baseAddressTags = memory->baseAddressTags;
+		if(baseAddressTags)
 		{
 			auto wasmlog2m4 = wasmlog2 - 4u;
 			auto grownpagesTagged = numPagesToGrow << wasmlog2m4;
 			if(!Platform::commitVirtualPages(
-				   memory->baseAddressTags + oldNumPages * IR::numBytesTaggedPerPage,
-				   grownpagesTagged))
+				   baseAddressTags + oldNumPages * IR::numBytesTaggedPerPage, grownpagesTagged))
 			{
 				if(memory->resourceQuota)
 				{
@@ -344,6 +344,8 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 				}
 				return GrowResult::outOfMemory;
 			}
+			auto randombuffer{memory->memtagRandomBuffer};
+			if(randombuffer.Base != randombuffer.End) { *baseAddressTags = randombuffer.End[-1]; }
 		}
 		Platform::registerVirtualAllocation(grownpages);
 

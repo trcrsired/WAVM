@@ -516,6 +516,7 @@ static inline ::llvm::Value* ComputeMemTagIndex(EmitFunctionContext& functionCon
 		= functionContext.memoryInfos[memoryIndex].memtagBasePointerVariable;
 	auto* memtagbase = ::WAVM::LLVMJIT::wavmCreateLoad(
 		irBuilder, functionContext.llvmContext.i8PtrType, memtagBasePointerVariable);
+	address = irBuilder.CreateAnd(address, ::IR::maxMemory64WASMMask);
 	auto* realtagaddress = irBuilder.CreateGEP(
 		functionContext.llvmContext.i8Type, memtagbase, {irBuilder.CreateLShr(address, 4)});
 	return realtagaddress;
