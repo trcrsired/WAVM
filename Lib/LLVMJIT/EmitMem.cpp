@@ -149,7 +149,7 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
 	auto& meminfo{functionContext.memoryInfos[memoryIndex]};
 
-	constexpr bool fullcheck{true};
+	constexpr bool fullcheck{false};
 
 	auto memtagBasePointerVariable = meminfo.memtagBasePointerVariable;
 	::llvm::Value* taggedval{};
@@ -285,12 +285,10 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 	// checking code for consecutive loads/stores to the same address.
 	if(!istagging && memtagBasePointerVariable)
 	{
-#if 1
-		if(fullcheck && knownNumBytes != 1)
+		if((fullcheck||knownNumBytes==0) && knownNumBytes != 1)
 		{
 			if(1 < knownNumBytes && knownNumBytes <= 16u)
 			{
-				#if 1
 				::llvm::Value* addressrshift{irBuilder.CreateLShr(address, 4)};
 				::llvm::Value* tagbaseptrval = ::WAVM::LLVMJIT::wavmCreateLoad(
 					irBuilder, functionContext.llvmContext.i8PtrType, memtagBasePointerVariable);
@@ -318,7 +316,6 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 				taggedval = irBuilder.CreateAnd(taggedval, c);
 				taginmem = irBuilder.CreateAnd(taginmem, c);
 				createconditionaltrap(functionContext, irBuilder.CreateICmpNE(taggedval, taginmem));
-				#endif
 			}
 			else
 			{
@@ -377,7 +374,6 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 					::WAVM::LLVMJIT::wavmCreateLoad(
 						irBuilder, functionContext.llvmContext.i8Type, tagbytePointer)));
 		}
-#endif
 	}
 	return address;
 }
