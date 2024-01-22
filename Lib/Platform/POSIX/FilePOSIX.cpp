@@ -21,10 +21,6 @@
 #include "WAVM/Platform/Mutex.h"
 #include "WAVM/VFS/VFS.h"
 
-#ifndef IOV_MAX
-#define IOV_MAX 1024
-#endif
-
 #define FILE_OFFSET_IS_64BIT (sizeof(off_t) == 8)
 
 using namespace WAVM;
@@ -302,7 +298,9 @@ struct POSIXFD : VFD
 		if(outNumBytesRead) { *outNumBytesRead = 0; }
 
 		if(numBuffers == 0) { return Result::success; }
+#ifdef IOV_MAX
 		else if(numBuffers > IOV_MAX) { return Result::tooManyBuffers; }
+#endif
 
 		if(offset == nullptr)
 		{
@@ -375,7 +373,9 @@ struct POSIXFD : VFD
 		if(outNumBytesWritten) { *outNumBytesWritten = 0; }
 
 		if(numBuffers == 0) { return Result::success; }
+#ifdef IOV_MAX
 		else if(numBuffers > IOV_MAX) { return Result::tooManyBuffers; }
+#endif
 
 		if(offset == nullptr)
 		{
