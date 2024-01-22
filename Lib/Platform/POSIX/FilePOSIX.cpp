@@ -21,6 +21,10 @@
 #include "WAVM/Platform/Mutex.h"
 #include "WAVM/VFS/VFS.h"
 
+#ifndef IOV_MAX
+#define IOV_MAX 1024
+#endif
+
 #define FILE_OFFSET_IS_64BIT (sizeof(off_t) == 8)
 
 using namespace WAVM;
