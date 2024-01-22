@@ -298,7 +298,9 @@ struct POSIXFD : VFD
 		if(outNumBytesRead) { *outNumBytesRead = 0; }
 
 		if(numBuffers == 0) { return Result::success; }
+#ifdef IOV_MAX
 		else if(numBuffers > IOV_MAX) { return Result::tooManyBuffers; }
+#endif
 
 		if(offset == nullptr)
 		{
@@ -371,7 +373,9 @@ struct POSIXFD : VFD
 		if(outNumBytesWritten) { *outNumBytesWritten = 0; }
 
 		if(numBuffers == 0) { return Result::success; }
+#ifdef IOV_MAX
 		else if(numBuffers > IOV_MAX) { return Result::tooManyBuffers; }
+#endif
 
 		if(offset == nullptr)
 		{
