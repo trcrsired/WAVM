@@ -93,7 +93,7 @@ static NtCloseFunc *NtClose;
 # define BIG_ENDIAN	4321
 # define BYTE_ORDER	LITTLE_ENDIAN
 # ifndef SSIZE_MAX
-#  define SSIZE_MAX	INT_MAX
+#  define SSIZE_MAX	PTRDIFF_MAX
 # endif
 #endif
 #else
@@ -3482,6 +3482,10 @@ mdb_freelist_save(MDB_txn *txn)
 		txn->mt_loose_pgs = NULL;
 		txn->mt_loose_count = 0;
 	}
+
+#ifndef SSIZE_MAX
+#define SSIZE_MAX PTRDIFF_MAX
+#endif
 
 	/* MDB_RESERVE cancels meminit in ovpage malloc (when no WRITEMAP) */
 	clean_limit = (env->me_flags & (MDB_NOMEMINIT|MDB_WRITEMAP))
