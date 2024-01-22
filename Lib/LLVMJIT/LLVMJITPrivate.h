@@ -351,6 +351,7 @@ namespace WAVM { namespace LLVMJIT {
 				 "no-frame-pointer-elim",
 				 "true");
 
+#if defined(__x86_64__) || defined(__i386__)
 			// Set the probe-stack attribute: this will cause functions that allocate more than a
 			// page of stack space to call the wavm_probe_stack function defined in POSIX.S
 			attrs =
@@ -363,7 +364,7 @@ namespace WAVM { namespace LLVMJIT {
 				 llvm::AttributeList::FunctionIndex,
 				 "probe-stack",
 				 "wavm_probe_stack");
-
+#endif
 			function->setAttributes(attrs);
 		}
 	}
