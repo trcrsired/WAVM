@@ -232,7 +232,7 @@ namespace WAVM { namespace IR {
 		case 1: kind = ExternKind::table; break;
 		case 2: kind = ExternKind::memory; break;
 		case 3: kind = ExternKind::global; break;
-		case 4: kind = ExternKind::exceptionType; break;
+		case 5: kind = ExternKind::tag; break;
 		default: throw FatalSerializationException("invalid reference type encoding");
 		};
 	}
@@ -245,7 +245,7 @@ namespace WAVM { namespace IR {
 		case ExternKind::table: encodedKind = 1; break;
 		case ExternKind::memory: encodedKind = 2; break;
 		case ExternKind::global: encodedKind = 3; break;
-		case ExternKind::exceptionType: encodedKind = 4; break;
+		case ExternKind::tag: encodedKind = 5; break;
 		case ExternKind::invalid:
 		default: WAVM_UNREACHABLE();
 		};

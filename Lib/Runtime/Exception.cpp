@@ -436,3 +436,20 @@ void Runtime::unwindSignalsAsExceptions(const std::function<void()>& thunk)
 		throw exception;
 	}
 }
+
+
+struct ExceptionTypeTag
+{
+	uint64_t tag;
+	uint64_t ehptr;
+};
+
+WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsException,
+							   "throwExceptionTag",
+							   void,
+							   intrinsicThrowExceptionTag,
+							   uint64_t tag,
+							   uint64_t ehptr)
+{
+	throw ExceptionTypeTag{tag, ehptr};
+}

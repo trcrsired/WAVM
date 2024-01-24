@@ -274,6 +274,7 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	controlContext.type = ControlContext::Type::catch_;
 	controlContext.isReachable = true;
 }
+
 void EmitFunctionContext::catch_all(NoImm)
 {
 	WAVM_ASSERT(controlStack.size());
@@ -315,55 +316,18 @@ void EmitFunctionContext::catch_all(NoImm)
 
 void EmitFunctionContext::throw_(ExceptionTypeImm imm)
 {
-	const IR::ExceptionType& exceptionType
-		= irModule.exceptionTypes.getType(imm.exceptionTypeIndex);
+	auto ehptr = pop();
+	auto& tagseg{irModule.tagSegments[imm.exceptionTypeIndex]};
 
-	const Uptr numArgs = exceptionType.params.size();
-	const Uptr numArgBytes = numArgs * sizeof(UntaggedValue);
-	auto argBaseAddress
-		= irBuilder.CreateAlloca(llvmContext.i8Type, emitLiteral(llvmContext, numArgBytes));
-	argBaseAddress->setAlignment(LLVM_ALIGNMENT(sizeof(UntaggedValue)));
-
-	for(Uptr argIndex = 0; argIndex < exceptionType.params.size(); ++argIndex)
-	{
-		auto elementValue = pop();
-		storeToUntypedPointer(
-			elementValue,
-#if LLVM_VERSION_MAJOR <= 14
-			irBuilder.CreatePointerCast(
-#endif
-				::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
-					irBuilder,
-					llvmContext.i8Type,
-					argBaseAddress,
-					{emitLiteral(llvmContext, (numArgs - argIndex - 1) * sizeof(UntaggedValue))}),
-#if LLVM_VERSION_MAJOR <= 14
-				elementValue->getType()->getPointerTo()),
-#endif
-			sizeof(UntaggedValue));
-	}
-
-	llvm::Value* exceptionTypeId = moduleContext.exceptionTypeIds[imm.exceptionTypeIndex];
-	llvm::Value* argsPointerAsInt
-		= irBuilder.CreatePtrToInt(argBaseAddress, moduleContext.iptrType);
-
-	llvm::Value* exceptionPointer = emitRuntimeIntrinsic(
-		"createException",
-		FunctionType(
-			TypeTuple{moduleContext.iptrValueType},
-			TypeTuple{moduleContext.iptrValueType, moduleContext.iptrValueType, ValueType::i32},
-			IR::CallingConvention::intrinsic),
-		{exceptionTypeId, argsPointerAsInt, emitLiteral(llvmContext, I32(1))})[0];
-
-	emitRuntimeIntrinsic(
-		"throwException",
-		FunctionType(
-			TypeTuple{}, TypeTuple{moduleContext.iptrValueType}, IR::CallingConvention::intrinsic),
-		{irBuilder.CreatePtrToInt(exceptionPointer, moduleContext.iptrType)});
-
+	emitRuntimeIntrinsic("throwExceptionTag",
+						 FunctionType(TypeTuple{},
+									  TypeTuple{ValueType::i64, moduleContext.iptrValueType},
+									  IR::CallingConvention::intrinsic),
+						 {::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex), ehptr});
 	irBuilder.CreateUnreachable();
 	enterUnreachable();
 }
+
 void EmitFunctionContext::rethrow(RethrowImm imm)
 {
 	WAVM_ASSERT(imm.catchDepth < catchStack.size());

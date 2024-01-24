@@ -639,12 +639,13 @@ struct FunctionValidationContext
 
 	void throw_(ExceptionTypeImm imm)
 	{
-#if 0
-		VALIDATE_FEATURE("throw", exceptionHandling);
-#endif
 		VALIDATE_INDEX(imm.exceptionTypeIndex, module_.tagSegments.size());
-		const ExceptionType& exceptionType = module_.exceptionTypes.getType(imm.exceptionTypeIndex);
-		popAndValidateTypeTuple("exception arguments", exceptionType.params);
+		auto& tagseg{module_.tagSegments[imm.exceptionTypeIndex]};
+		if(tagseg.attribute != 0)
+		{
+			std::abort();
+		}
+		popAndValidateOperand("throw exception tag", ValueType::i64);
 		enterUnreachable();
 	}
 
