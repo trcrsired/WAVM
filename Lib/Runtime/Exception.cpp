@@ -14,6 +14,7 @@
 #include "WAVM/Platform/Diagnostics.h"
 #include "WAVM/Platform/RWMutex.h"
 #include "WAVM/Platform/Signal.h"
+#include "WAVM/Runtime/ExceptionTypeTag.h"
 #include "WAVM/Runtime/Intrinsics.h"
 #include "WAVM/Runtime/Runtime.h"
 #include "WAVM/RuntimeABI/RuntimeABI.h"
@@ -437,13 +438,6 @@ void Runtime::unwindSignalsAsExceptions(const std::function<void()>& thunk)
 	}
 }
 
-
-struct ExceptionTypeTag
-{
-	uint64_t tag;
-	uint64_t ehptr;
-};
-
 WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsException,
 							   "throwExceptionTag",
 							   void,
@@ -451,5 +445,5 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsException,
 							   uint64_t tag,
 							   uint64_t ehptr)
 {
-	throw ExceptionTypeTag{tag, ehptr};
+	throw ::WAVM::Runtime::ExceptionTypeTag{tag, ehptr};
 }

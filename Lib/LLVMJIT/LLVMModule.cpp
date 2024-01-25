@@ -40,18 +40,21 @@ PUSH_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 #include <llvm/Support/MemoryBuffer.h>
 POP_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 
-#ifdef _WIN32
-#define USE_WINDOWS_SEH 1
+#ifdef _MSC_VER
+#define USE_MSVC_SEH 1
 #else
-#define USE_WINDOWS_SEH 0
+#define USE_MSVC_SEH 0
 #endif
 
-#if !USE_WINDOWS_SEH
+#if !USE_MSVC_SEH
 #include <cxxabi.h>
 #endif
 
 namespace WAVM { namespace Runtime {
 	struct ExceptionType;
+#if !USE_MSVC_SEH
+	::std::type_info const* getRttiFromExceptionTypeTag();
+#endif
 }}
 
 #define KEEP_UNLOADED_MODULE_ADDRESSES_RESERVED 0
@@ -122,7 +125,7 @@ struct LLVMJIT::ModuleMemoryManager : llvm::RTDyldMemoryManager
 
 	void registerEHFrames(U8* addr, U64 loadAddr, uintptr_t numBytes) override
 	{
-		if(!USE_WINDOWS_SEH)
+		if(!USE_MSVC_SEH)
 		{
 			Platform::registerEHFrames(imageBaseAddress, addr, numBytes);
 			hasRegisteredEHFrames = true;
@@ -163,7 +166,7 @@ struct LLVMJIT::ModuleMemoryManager : llvm::RTDyldMemoryManager
 										U32 readWriteAlignment) override
 #endif
 	{
-		if(USE_WINDOWS_SEH)
+		if(USE_MSVC_SEH)
 		{
 			// Pad the code section to allow for the SEH trampoline.
 			numCodeBytes += 32;
@@ -442,7 +445,7 @@ Module::Module(const std::vector<U8>& objectBytes,
 	Uptr pdataNumBytes = 0;
 	llvm::object::SectionRef xdataSection;
 	U8* xdataCopy = nullptr;
-	if(USE_WINDOWS_SEH)
+	if(USE_MSVC_SEH)
 	{
 		for(auto section : object->sections())
 		{
@@ -494,7 +497,7 @@ Module::Module(const std::vector<U8>& objectBytes,
 		Errors::fatalf("RuntimeDyld failed: %s", loader.getErrorString().data());
 	}
 
-	if(USE_WINDOWS_SEH && pdataCopy)
+	if(USE_MSVC_SEH && pdataCopy)
 	{
 		// Lookup the real address of _CxxFrameHandler3.
 		const llvm::JITEvaluatedSymbol sehHandlerSymbol
@@ -787,22 +790,13 @@ std::shared_ptr<LLVMJIT::Module> LLVMJIT::loadModule(
 	importedSymbolMap.addOrFail("unoptimizableOne", 1);
 #endif
 
-#if !USE_WINDOWS_SEH
-	// Use __cxxabiv1::__cxa_current_exception_type to get a reference to the std::type_info for
-	// Runtime::Exception* without enabling RTTI.
-	std::type_info* runtimeExceptionPointerTypeInfo = nullptr;
-	try
-	{
-		throw (Runtime::Exception*)nullptr;
-	}
-	catch(Runtime::Exception*)
-	{
-		runtimeExceptionPointerTypeInfo = __cxxabiv1::__cxa_current_exception_type();
-	}
+#if !USE_MSVC_SEH
+	std::type_info const* runtimeExceptionTypeTagInfo
+		= ::WAVM::Runtime::getRttiFromExceptionTypeTag();
+	// Bind the std::type_info for Runtime::ExceptionTypeTag.
+	importedSymbolMap.addOrFail("runtimeExceptionTypeTagInfo",
+								reinterpret_cast<Uptr>(runtimeExceptionTypeTagInfo));
 
-	// Bind the std::type_info for Runtime::Exception.
-	importedSymbolMap.addOrFail("runtimeExceptionTypeInfo",
-								reinterpret_cast<Uptr>(runtimeExceptionPointerTypeInfo));
 #endif
 
 	// Load the module.
