@@ -241,7 +241,7 @@ void LLVMJIT::emitModule(const IR::Module& irModule,
 	else
 	{
 		moduleContext.runtimeExceptionTypeInfo = llvm::ConstantExpr::getPointerCast(
-			createImportedConstant(*moduleContext.llvmModule, "runtimeExceptionTypeInfo"),
+			createImportedConstant(*moduleContext.llvmModule, "runtimeExceptionTypeTagInfo"),
 			llvmContext.i8PtrType);
 	}
 
