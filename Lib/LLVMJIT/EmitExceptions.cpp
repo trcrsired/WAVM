@@ -11,6 +11,7 @@
 #include "WAVM/Inline/Assert.h"
 #include "WAVM/Inline/BasicTypes.h"
 #include "WAVM/Platform/Signal.h"
+#include "WAVM/Runtime/ExceptionTypeTag.h"
 #include "WAVM/RuntimeABI/RuntimeABI.h"
 
 PUSH_DISABLE_WARNINGS_FOR_LLVM_HEADERS
@@ -188,17 +189,14 @@ void EmitFunctionContext::try_(ControlStructureImm imm)
 		irBuilder.CreateCall(getCXAEndCatchFunction(moduleContext));
 
 		// Load the exception type ID.
-		auto exceptionTypeId = loadFromUntypedPointer(
-			::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
-				irBuilder,
-				llvmContext.i8Type,
-				exceptionPointer,
-				{emitLiteralIptr(offsetof(Exception, typeId), moduleContext.iptrType)}),
-			moduleContext.iptrType);
+		auto ehtagId
+			= loadFromUntypedPointer(::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
+										 irBuilder, llvmContext.i8Type, exceptionPointer, {0}),
+									 llvmContext.i64Type);
 
 		tryStack.push_back(TryContext{landingPadBlock});
-		catchStack.push_back(CatchContext{
-			nullptr, landingPadInst, exceptionPointer, landingPadBlock, exceptionTypeId});
+		catchStack.push_back(
+			CatchContext{nullptr, landingPadInst, exceptionPointer, landingPadBlock, ehtagId});
 	}
 
 	irBuilder.SetInsertPoint(originalInsertBlock);
