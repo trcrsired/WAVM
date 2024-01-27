@@ -491,6 +491,8 @@ struct FunctionValidationContext
 		validateCatch();
 		for(auto param : type.params) { pushOperand(param); }
 	}
+	void delegate(ControlStructureImm) {}
+
 	void catch_all(NoImm)
 	{
 #if 0
@@ -641,10 +643,7 @@ struct FunctionValidationContext
 	{
 		VALIDATE_INDEX(imm.exceptionTypeIndex, module_.tagSegments.size());
 		auto& tagseg{module_.tagSegments[imm.exceptionTypeIndex]};
-		if(tagseg.attribute != 0)
-		{
-			std::abort();
-		}
+		if(tagseg.attribute != 0) { std::abort(); }
 		popAndValidateOperand("throw exception tag", ValueType::i64);
 		enterUnreachable();
 	}

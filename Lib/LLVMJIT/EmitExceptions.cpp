@@ -339,3 +339,5 @@ void EmitFunctionContext::rethrow(RethrowImm imm)
 	irBuilder.CreateUnreachable();
 	enterUnreachable();
 }
+
+void EmitFunctionContext::delegate(ControlStructureImm) {}

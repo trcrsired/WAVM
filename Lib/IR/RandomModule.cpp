@@ -44,7 +44,8 @@ struct FunctionState
 			ifElse,
 			loop,
 			try_,
-			catch_
+			catch_,
+			delegate
 		};
 
 		Type type;

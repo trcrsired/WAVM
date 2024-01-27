@@ -756,6 +756,14 @@ struct FunctionPrintContext
 		string += moduleContext.names.exceptionTypes[imm.exceptionTypeIndex];
 		string += INDENT_STRING;
 	}
+	void delegate(ControlStructureImm imm)
+	{
+		string += DEDENT_STRING;
+		controlStack.back().type = ControlContext::Type::delegate;
+		string += "\ndelegate ";
+		// string += moduleContext.names.exceptionTypes[imm.exceptionTypeIndex];
+		string += INDENT_STRING;
+	}
 	void catch_all(NoImm)
 	{
 		string += DEDENT_STRING;
@@ -786,6 +794,7 @@ private:
 			loop,
 			try_,
 			catch_,
+			delegate
 		};
 		Type type;
 		std::string labelId;

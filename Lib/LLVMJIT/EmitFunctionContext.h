@@ -46,7 +46,8 @@ namespace WAVM { namespace LLVMJIT {
 				ifElse,
 				loop,
 				try_,
-				catch_
+				catch_,
+				delegate
 			};
 
 			Type type;
