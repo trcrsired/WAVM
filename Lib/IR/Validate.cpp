@@ -486,10 +486,14 @@ struct FunctionValidationContext
 #if 0
 		VALIDATE_FEATURE("catch", exceptionHandling);
 #endif
-		VALIDATE_INDEX(imm.exceptionTypeIndex, module_.exceptionTypes.size());
-		const ExceptionType& type = module_.exceptionTypes.getType(imm.exceptionTypeIndex);
+		VALIDATE_INDEX(imm.exceptionTypeIndex, module_.tagSegments.size());
+		//		const ExceptionType& type = module_.exceptionTypes.getType(imm.exceptionTypeIndex);
 		validateCatch();
-		for(auto param : type.params) { pushOperand(param); }
+		if constexpr(false)
+		{
+			//		for(auto param : type.params) { pushOperand(param); }
+		}
+		else { pushOperand(ValueType::i64); }
 	}
 	void delegate(ControlStructureImm) {}
 

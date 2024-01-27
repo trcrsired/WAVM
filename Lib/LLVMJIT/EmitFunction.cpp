@@ -283,7 +283,7 @@ struct UnreachableOpVisitor
 	{
 		if(!unreachableControlDepth) { context.catch_all(imm); }
 	}
-	void delegate(ControlStructureImm) { ++unreachableControlDepth; }
+	void delegate(ControlStructureImm) {}
 
 private:
 	EmitFunctionContext& context;
