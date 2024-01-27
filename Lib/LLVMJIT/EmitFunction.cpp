@@ -96,6 +96,7 @@ void EmitFunctionContext::traceOperator(const std::string& operatorDescription)
 		case ControlContext::Type::loop: controlStackString += "L"; break;
 		case ControlContext::Type::try_: controlStackString += "T"; break;
 		case ControlContext::Type::catch_: controlStackString += "C"; break;
+		case ControlContext::Type::delegate: controlStackString += "D"; break;
 		default: WAVM_UNREACHABLE();
 		};
 		if(!controlStack[stackIndex].isReachable) { controlStackString += ")"; }
