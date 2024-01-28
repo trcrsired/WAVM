@@ -125,7 +125,7 @@ void EmitFunctionContext::try_(ControlStructureImm imm)
 	auto originalInsertBlock = irBuilder.GetInsertBlock();
 
 	if(moduleContext.useWindowsSEH)
-	{
+	{ // Todo : MSVC ABI support after i figured out how the thing works out.
 		// Insert an alloca for the exception pointer at the beginning of the function.
 		irBuilder.SetInsertPoint(&function->getEntryBlock(),
 								 function->getEntryBlock().getFirstInsertionPt());
@@ -184,23 +184,16 @@ void EmitFunctionContext::try_(ControlStructureImm imm)
 		auto exceptionPointer
 			= irBuilder.CreateCall(getCXABeginCatchFunction(moduleContext),
 								   {irBuilder.CreateExtractValue(landingPadInst, {0})});
-
 		// Call __cxa_end_catch immediately to free memory used to throw the exception.
 		irBuilder.CreateCall(getCXAEndCatchFunction(moduleContext));
-
 		// Load the exception type ID.
-		auto ehtagId
-			= loadFromUntypedPointer(::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
-										 irBuilder, llvmContext.i8Type, exceptionPointer, {0}),
-									 llvmContext.i64Type);
-
+		auto ehtagId = loadFromUntypedPointer(exceptionPointer, moduleContext.iptrType);
 		tryStack.push_back(TryContext{landingPadBlock});
 		catchStack.push_back(
 			CatchContext{nullptr, landingPadInst, exceptionPointer, landingPadBlock, ehtagId});
 	}
 
 	irBuilder.SetInsertPoint(originalInsertBlock);
-
 	// Create an end try+phi for the try result.
 	FunctionType blockType = resolveBlockType(irModule, imm.type);
 	auto endBlock = llvm::BasicBlock::Create(llvmContext, "tryEnd", function);
