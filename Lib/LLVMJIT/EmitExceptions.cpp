@@ -340,4 +340,4 @@ void EmitFunctionContext::rethrow(RethrowImm imm)
 	enterUnreachable();
 }
 
-void EmitFunctionContext::delegate(ControlStructureImm) {}
+void EmitFunctionContext::delegate(BranchImm) {}

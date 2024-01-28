@@ -756,7 +756,7 @@ struct FunctionPrintContext
 		string += moduleContext.names.exceptionTypes[imm.exceptionTypeIndex];
 		string += INDENT_STRING;
 	}
-	void delegate(ControlStructureImm imm)
+	void delegate(BranchImm imm)
 	{
 		string += DEDENT_STRING;
 		controlStack.back().type = ControlContext::Type::delegate;

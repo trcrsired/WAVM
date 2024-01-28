@@ -13,7 +13,7 @@
 	visitOp(0x000b, end                , "end"                              , NoImm                     , POLYMORPHIC               , mvp                    )   \
 	visitOp(0x0006, try_               , "try"                              , ControlStructureImm       , POLYMORPHIC               , exceptionHandling      )   \
 	visitOp(0x0007, catch_             , "catch"                            , ExceptionTypeImm          , POLYMORPHIC               , exceptionHandling      )   \
-	visitOp(0x0018, delegate           , "delegate"                         , ControlStructureImm       , POLYMORPHIC               , exceptionHandling      )   \
+	visitOp(0x0018, delegate           , "delegate"                         , BranchImm                 , POLYMORPHIC               , exceptionHandling      )   \
 	visitOp(0x0019, catch_all          , "catch_all"                        , NoImm                     , POLYMORPHIC               , exceptionHandling      )
 
 #define WAVM_ENUM_PARAMETRIC_OPERATORS(visitOp)                                                                                                                  \
