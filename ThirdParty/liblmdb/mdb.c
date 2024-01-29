@@ -1697,7 +1697,7 @@ static char *const mdb_errstr[] = {
 	"MDB_PROBLEM: Unexpected problem - txn should abort",
 };
 
-char *
+char const*
 mdb_strerror(int err)
 {
 	int i;
