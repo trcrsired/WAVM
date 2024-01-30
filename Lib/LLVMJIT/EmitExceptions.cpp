@@ -84,12 +84,15 @@ void EmitFunctionContext::endTryCatch()
 	// handlers.
 	llvm::BasicBlock* savedInsertionPoint = irBuilder.GetInsertBlock();
 	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
+#if 0
 	emitRuntimeIntrinsic(
 		"throwException",
 		FunctionType(
 			TypeTuple{}, TypeTuple{moduleContext.iptrValueType}, CallingConvention::intrinsic),
 		{irBuilder.CreatePtrToInt(catchContext.exceptionPointer, moduleContext.iptrType)});
 	irBuilder.CreateUnreachable();
+#endif
+
 	irBuilder.SetInsertPoint(savedInsertionPoint);
 
 	catchStack.pop_back();
@@ -100,9 +103,10 @@ void EmitFunctionContext::exitCatch()
 	ControlContext& currentContext = controlStack.back();
 	WAVM_ASSERT(currentContext.type == ControlContext::Type::catch_);
 
-	WAVM_ASSERT(catchStack.size());
+	WAVM_ASSERT(!catchStack.empty());
 	CatchContext& catchContext = catchStack.back();
 
+#if 0
 	if(currentContext.isReachable)
 	{
 		// Destroy the exception caught by the previous catch clause.
@@ -112,6 +116,7 @@ void EmitFunctionContext::exitCatch()
 				TypeTuple{}, TypeTuple{moduleContext.iptrValueType}, CallingConvention::intrinsic),
 			{irBuilder.CreatePtrToInt(catchContext.exceptionPointer, moduleContext.iptrType)});
 	}
+#endif
 }
 
 llvm::BasicBlock* EmitContext::getInnermostUnwindToBlock()
@@ -215,15 +220,15 @@ void EmitFunctionContext::try_(ControlStructureImm imm)
 
 void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 {
-	WAVM_ASSERT(controlStack.size());
-	WAVM_ASSERT(catchStack.size());
+	WAVM_ASSERT(!controlStack.empty());
+	WAVM_ASSERT(!catchStack.empty());
 	ControlContext& controlContext = controlStack.back();
 	CatchContext& catchContext = catchStack.back();
 	WAVM_ASSERT(controlContext.type == ControlContext::Type::try_
 				|| controlContext.type == ControlContext::Type::catch_);
 	if(controlContext.type == ControlContext::Type::try_)
 	{
-		WAVM_ASSERT(tryStack.size());
+		WAVM_ASSERT(!tryStack.empty());
 		tryStack.pop_back();
 	}
 	else { exitCatch(); }
@@ -231,7 +236,8 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	branchToEndOfControlContext();
 
 	// Look up the exception type instance to be caught
-	WAVM_ASSERT(imm.exceptionTypeIndex < moduleContext.exceptionTypeIds.size());
+	WAVM_ASSERT(imm.exceptionTypeIndex < irModule.tagSegments.size());
+#if 0
 	const IR::ExceptionType catchType = irModule.exceptionTypes.getType(imm.exceptionTypeIndex);
 	llvm::Constant* catchTypeId = moduleContext.exceptionTypeIds[imm.exceptionTypeIndex];
 
@@ -260,6 +266,29 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 			sizeof(Exception::arguments[0]));
 		push(argument);
 	}
+#else
+	auto& tagseg{irModule.tagSegments[imm.exceptionTypeIndex]};
+	llvm::Constant* catchTypeId = ::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex);
+
+	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
+	auto isExceptionType = irBuilder.CreateICmpEQ(catchContext.exceptionTypeId, catchTypeId);
+
+	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catch", function);
+	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "unhandled", function);
+	irBuilder.CreateCondBr(isExceptionType, catchBlock, unhandledBlock);
+	catchContext.nextHandlerBlock = unhandledBlock;
+	irBuilder.SetInsertPoint(catchBlock);
+
+	auto argument = loadFromUntypedPointer(
+		::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
+			irBuilder,
+			llvmContext.i8Type,
+			catchContext.exceptionPointer,
+			{emitLiteralIptr(__builtin_offsetof(::WAVM::Runtime::ExceptionTypeTag, ehptr),
+							 moduleContext.iptrType)}),
+		moduleContext.iptrType);
+	push(argument);
+#endif
 
 	// Change the top of the control stack to a catch clause.
 	controlContext.type = ControlContext::Type::catch_;
@@ -268,15 +297,15 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 
 void EmitFunctionContext::catch_all(NoImm)
 {
-	WAVM_ASSERT(controlStack.size());
-	WAVM_ASSERT(catchStack.size());
+	WAVM_ASSERT(!controlStack.empty());
+	WAVM_ASSERT(!catchStack.empty());
 	ControlContext& controlContext = controlStack.back();
 	CatchContext& catchContext = catchStack.back();
 	WAVM_ASSERT(controlContext.type == ControlContext::Type::try_
 				|| controlContext.type == ControlContext::Type::catch_);
 	if(controlContext.type == ControlContext::Type::try_)
 	{
-		WAVM_ASSERT(tryStack.size());
+		WAVM_ASSERT(!tryStack.empty());
 		tryStack.pop_back();
 	}
 	else { exitCatch(); }
@@ -333,4 +362,10 @@ void EmitFunctionContext::rethrow(RethrowImm imm)
 	enterUnreachable();
 }
 
-void EmitFunctionContext::delegate(BranchImm) {}
+void EmitFunctionContext::delegate(BranchImm imm)
+{
+	__builtin_printf("%s %s %d\n", __FILE__, __PRETTY_FUNCTION__, __LINE__);
+	
+	irBuilder.CreateUnreachable();
+	enterUnreachable();
+}
