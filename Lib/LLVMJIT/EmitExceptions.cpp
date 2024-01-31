@@ -276,7 +276,11 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	irBuilder.CreateCondBr(isExceptionType, catchBlock, unhandledBlock);
 	catchContext.nextHandlerBlock = unhandledBlock;
 	irBuilder.SetInsertPoint(catchBlock);
-
+#if 0
+	auto ehid = loadFromUntypedPointer(
+		catchContext.exceptionPointer,
+		moduleContext.iptrType);
+#endif
 	auto argument = loadFromUntypedPointer(
 		::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
 			irBuilder,
@@ -309,7 +313,7 @@ void EmitFunctionContext::catch_all(NoImm)
 	else { exitCatch(); }
 
 	branchToEndOfControlContext();
-
+#if 0
 	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
 #if 0
 	auto isUserExceptionType = irBuilder.CreateICmpNE(
@@ -324,13 +328,16 @@ void EmitFunctionContext::catch_all(NoImm)
 #elif 1
 	auto isUserExceptionType = irBuilder.CreateICmpNE(
 		loadFromUntypedPointer(catchContext.exceptionPointer, llvmContext.i8Type),
-		llvm::ConstantInt::get(llvmContext.i8Type, llvm::APInt(8, 0, false)));
+		);
 #endif
 	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catch", function);
 	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "unhandled", function);
 	irBuilder.CreateCondBr(isUserExceptionType, catchBlock, unhandledBlock);
 	catchContext.nextHandlerBlock = unhandledBlock;
 	irBuilder.SetInsertPoint(catchBlock);
+#else
+
+#endif
 
 	// Change the top of the control stack to a catch clause.
 	controlContext.type = ControlContext::Type::catch_;
@@ -361,12 +368,22 @@ void EmitFunctionContext::rethrow(RethrowImm imm)
 		FunctionType(
 			TypeTuple{}, TypeTuple{moduleContext.iptrValueType}, IR::CallingConvention::intrinsic),
 		{irBuilder.CreatePtrToInt(catchContext.exceptionPointer, moduleContext.iptrType)});
-#elif 0
+#elif 1
+	auto exceptionPointer = catchContext.exceptionPointer;
+	auto ehtagId = loadFromUntypedPointer(exceptionPointer, moduleContext.iptrType);
+	auto argument = loadFromUntypedPointer(
+		::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
+			irBuilder,
+			llvmContext.i8Type,
+			catchContext.exceptionPointer,
+			{emitLiteralIptr(__builtin_offsetof(::WAVM::Runtime::ExceptionTypeTag, ehptr),
+							 moduleContext.iptrType)}),
+		moduleContext.iptrType);
 	emitRuntimeIntrinsic("throwExceptionTag",
 						 FunctionType(TypeTuple{},
 									  TypeTuple{ValueType::i64, moduleContext.iptrValueType},
 									  IR::CallingConvention::intrinsic),
-						 {::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex), ehptr});
+						 {ehtagId, argument});
 #endif
 	irBuilder.CreateUnreachable();
 	enterUnreachable();
@@ -374,8 +391,10 @@ void EmitFunctionContext::rethrow(RethrowImm imm)
 
 void EmitFunctionContext::delegate(BranchImm imm)
 {
-	irBuilder.CreateUnreachable();
-	enterUnreachable();
+	CatchContext& catchContext = catchStack.back();
+	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
+//	irBuilder.CreateUnreachable();
+//	enterUnreachable();
 	ControlContext& controlContext = controlStack.back();
 	if(controlContext.type == ControlContext::Type::try_)
 	{
