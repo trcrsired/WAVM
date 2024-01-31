@@ -454,7 +454,7 @@ struct FunctionValidationContext
 		validateStackEmptyAtEndOfControlStructure();
 
 		controlStack.pop_back();
-		if(controlStack.size()) { pushOperandTuple(results); }
+		if(!controlStack.empty()) { pushOperandTuple(results); }
 	}
 	void try_(ControlStructureImm imm)
 	{

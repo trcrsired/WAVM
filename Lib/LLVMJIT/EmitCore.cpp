@@ -142,7 +142,7 @@ void EmitFunctionContext::else_(NoImm imm)
 }
 void EmitFunctionContext::end(NoImm)
 {
-	WAVM_ASSERT(controlStack.size());
+	WAVM_ASSERT(!controlStack.empty());
 	ControlContext& currentContext = controlStack.back();
 
 	if(currentContext.type == ControlContext::Type::try_) { endTryWithoutCatch(); }

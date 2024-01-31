@@ -66,7 +66,7 @@ static llvm::Function* getCXAEndCatchFunction(EmitModuleContext& moduleContext)
 
 void EmitFunctionContext::endTryWithoutCatch()
 {
-	WAVM_ASSERT(tryStack.size());
+	WAVM_ASSERT(!tryStack.empty());
 	tryStack.pop_back();
 
 	endTryCatch();
@@ -74,7 +74,7 @@ void EmitFunctionContext::endTryWithoutCatch()
 
 void EmitFunctionContext::endTryCatch()
 {
-	WAVM_ASSERT(catchStack.size());
+	WAVM_ASSERT(!catchStack.empty());
 	CatchContext& catchContext = catchStack.back();
 
 	exitCatch();
@@ -90,23 +90,21 @@ void EmitFunctionContext::endTryCatch()
 		FunctionType(
 			TypeTuple{}, TypeTuple{moduleContext.iptrValueType}, CallingConvention::intrinsic),
 		{irBuilder.CreatePtrToInt(catchContext.exceptionPointer, moduleContext.iptrType)});
-	irBuilder.CreateUnreachable();
 #endif
+	irBuilder.CreateUnreachable();
 
 	irBuilder.SetInsertPoint(savedInsertionPoint);
-
 	catchStack.pop_back();
 }
 
 void EmitFunctionContext::exitCatch()
 {
+#if 0
 	ControlContext& currentContext = controlStack.back();
 	WAVM_ASSERT(currentContext.type == ControlContext::Type::catch_);
-
 	WAVM_ASSERT(!catchStack.empty());
 	CatchContext& catchContext = catchStack.back();
 
-#if 0
 	if(currentContext.isReachable)
 	{
 		// Destroy the exception caught by the previous catch clause.
@@ -121,7 +119,7 @@ void EmitFunctionContext::exitCatch()
 
 llvm::BasicBlock* EmitContext::getInnermostUnwindToBlock()
 {
-	if(tryStack.size()) { return tryStack.back().unwindToBlock; }
+	if(!tryStack.empty()) { return tryStack.back().unwindToBlock; }
 	else { return nullptr; }
 }
 
@@ -313,6 +311,7 @@ void EmitFunctionContext::catch_all(NoImm)
 	branchToEndOfControlContext();
 
 	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
+#if 0
 	auto isUserExceptionType = irBuilder.CreateICmpNE(
 		loadFromUntypedPointer(
 			::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
@@ -322,7 +321,11 @@ void EmitFunctionContext::catch_all(NoImm)
 				{emitLiteralIptr(offsetof(Exception, isUserException), moduleContext.iptrType)}),
 			llvmContext.i8Type),
 		llvm::ConstantInt::get(llvmContext.i8Type, llvm::APInt(8, 0, false)));
-
+#elif 1
+	auto isUserExceptionType = irBuilder.CreateICmpNE(
+		loadFromUntypedPointer(catchContext.exceptionPointer, llvmContext.i8Type),
+		llvm::ConstantInt::get(llvmContext.i8Type, llvm::APInt(8, 0, false)));
+#endif
 	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catch", function);
 	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "unhandled", function);
 	irBuilder.CreateCondBr(isUserExceptionType, catchBlock, unhandledBlock);
@@ -352,20 +355,33 @@ void EmitFunctionContext::rethrow(RethrowImm imm)
 {
 	WAVM_ASSERT(imm.catchDepth < catchStack.size());
 	CatchContext& catchContext = catchStack[catchStack.size() - imm.catchDepth - 1];
+#if 0
 	emitRuntimeIntrinsic(
 		"throwException",
 		FunctionType(
 			TypeTuple{}, TypeTuple{moduleContext.iptrValueType}, IR::CallingConvention::intrinsic),
 		{irBuilder.CreatePtrToInt(catchContext.exceptionPointer, moduleContext.iptrType)});
-
+#elif 0
+	emitRuntimeIntrinsic("throwExceptionTag",
+						 FunctionType(TypeTuple{},
+									  TypeTuple{ValueType::i64, moduleContext.iptrValueType},
+									  IR::CallingConvention::intrinsic),
+						 {::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex), ehptr});
+#endif
 	irBuilder.CreateUnreachable();
 	enterUnreachable();
 }
 
 void EmitFunctionContext::delegate(BranchImm imm)
 {
-	__builtin_printf("%s %s %d\n", __FILE__, __PRETTY_FUNCTION__, __LINE__);
-	
 	irBuilder.CreateUnreachable();
 	enterUnreachable();
+	ControlContext& controlContext = controlStack.back();
+	if(controlContext.type == ControlContext::Type::try_)
+	{
+		WAVM_ASSERT(!tryStack.empty());
+		tryStack.pop_back();
+	}
+	controlContext.isReachable = true;
+	controlStack.pop_back();
 }
