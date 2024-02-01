@@ -335,8 +335,6 @@ void EmitFunctionContext::catch_all(NoImm)
 	irBuilder.CreateCondBr(isUserExceptionType, catchBlock, unhandledBlock);
 	catchContext.nextHandlerBlock = unhandledBlock;
 	irBuilder.SetInsertPoint(catchBlock);
-#else
-
 #endif
 
 	// Change the top of the control stack to a catch clause.
@@ -391,10 +389,11 @@ void EmitFunctionContext::rethrow(RethrowImm imm)
 
 void EmitFunctionContext::delegate(BranchImm imm)
 {
+#if 1
 	CatchContext& catchContext = catchStack.back();
 	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
-//	irBuilder.CreateUnreachable();
-//	enterUnreachable();
+	//	irBuilder.CreateUnreachable();
+	//	enterUnreachable();
 	ControlContext& controlContext = controlStack.back();
 	if(controlContext.type == ControlContext::Type::try_)
 	{
@@ -403,4 +402,7 @@ void EmitFunctionContext::delegate(BranchImm imm)
 	}
 	controlContext.isReachable = true;
 	controlStack.pop_back();
+#else
+	endTryWithoutCatch();
+#endif
 }
