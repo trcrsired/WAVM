@@ -22,7 +22,6 @@ set(Sources
 	)
 
 set(AppleSources
-	src/Unwind_AppleExtras.cpp
 	src/Unwind-EHABI.cpp
 	src/Unwind-EHABI.h
 	)
