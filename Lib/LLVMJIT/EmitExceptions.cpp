@@ -206,7 +206,7 @@ static inline void generate_catch_common(EmitFunctionContext& emitFunctionContex
 void EmitFunctionContext::try_(ControlStructureImm imm)
 {
 	auto originalInsertBlock = irBuilder.GetInsertBlock();
-
+#if 0
 	if(moduleContext.useWindowsSEH)
 	{ // Todo : MSVC ABI support after i figured out how the thing works out.
 		// Insert an alloca for the exception pointer at the beginning of the function.
@@ -275,7 +275,9 @@ void EmitFunctionContext::try_(ControlStructureImm imm)
 		catchStack.push_back(
 			CatchContext{nullptr, landingPadInst, exceptionPointer, landingPadBlock, ehtagId});
 	}
-
+#else
+	generate_catch_common(*this);
+#endif
 	irBuilder.SetInsertPoint(originalInsertBlock);
 	// Create an end try+phi for the try result.
 	FunctionType blockType = resolveBlockType(irModule, imm.type);
