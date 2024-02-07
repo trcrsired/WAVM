@@ -189,6 +189,7 @@ static inline void generate_catch_common(EmitFunctionContext& emitFunctionContex
 			llvm::StructType::get(llvmContext, {llvmContext.i8PtrType, llvmContext.i32Type}), 1);
 		landingPadInst->addClause(moduleContext.runtimeExceptionTypeInfo);
 
+#if 1
 		// Call __cxa_begin_catch to get the exception pointer.
 		auto exceptionPointer
 			= irBuilder.CreateCall(getCXABeginCatchFunction(moduleContext),
@@ -200,6 +201,11 @@ static inline void generate_catch_common(EmitFunctionContext& emitFunctionContex
 		tryStack.push_back(TryContext{landingPadBlock});
 		catchStack.push_back(
 			CatchContext{nullptr, landingPadInst, exceptionPointer, landingPadBlock, ehtagId});
+#else
+		tryStack.push_back(TryContext{landingPadBlock});
+		catchStack.push_back(
+			CatchContext{nullptr, landingPadInst, nullptr, landingPadBlock, nullptr});
+#endif
 	}
 }
 
@@ -471,6 +477,7 @@ void EmitFunctionContext::rethrow(RethrowImm imm)
 
 void EmitFunctionContext::delegate(BranchImm imm)
 {
+#if 0
 #if 1
 	CatchContext& catchContext = catchStack.back();
 	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
@@ -489,5 +496,6 @@ void EmitFunctionContext::delegate(BranchImm imm)
 
 #else
 	endTryWithoutCatch();
+#endif
 #endif
 }
