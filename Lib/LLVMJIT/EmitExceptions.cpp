@@ -503,15 +503,13 @@ void EmitFunctionContext::delegate(BranchImm imm)
 	//	irBuilder.CreateUnreachable();
 	//	enterUnreachable();
 	ControlContext& controlContext = controlStack.back();
-	if(controlContext.type == ControlContext::Type::try_)
-	{
-		WAVM_ASSERT(!tryStack.empty());
-		tryStack.pop_back();
-	}
-	else { exitCatch(); }
+	WAVM_ASSERT(controlContext.type == ControlContext::Type::try_);
+	WAVM_ASSERT(!tryStack.empty());
 
-	branchToEndOfControlContext();
-
+	irBuilder.CreateCatchSwitch(catchContext.landingPadInst,nullptr,imm.targetDepth);
+//	branchToEndOfControlContext();
+	tryStack.pop_back();
+	catchStack.pop_back();
 
 #else
 	endTryWithoutCatch();
