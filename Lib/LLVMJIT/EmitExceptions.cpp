@@ -206,7 +206,7 @@ static inline void generate_catch_common(EmitFunctionContext& emitFunctionContex
 		catchStack.push_back(
 			CatchContext{nullptr, landingPadInst, exceptionPointer, landingPadBlock, ehtagId});
 #else
-#if 0
+#if 1
 		tryStack.push_back(TryContext{landingPadBlock});
 		auto exceptionPointer = llvm::ConstantPointerNull::get(llvmContext.i8PtrType);
 		auto ehtagId = llvm::ConstantInt::get(llvmContext.i8Type, 0);
@@ -328,9 +328,7 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	if(controlContext.type == ControlContext::Type::try_)
 	{
 		WAVM_ASSERT(!tryStack.empty());
-		__builtin_printf("%s %s %d %zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,tryStack.size());
 		tryStack.pop_back();
-		__builtin_printf("%s %s %d %zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,tryStack.size());
 	}
 	else { exitCatch(); }
 
@@ -372,6 +370,7 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	llvm::Constant* catchTypeId = ::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex);
 
 	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
+
 	auto exceptionPointer
 		= irBuilder.CreateCall(getCXABeginCatchFunction(moduleContext),
 								{irBuilder.CreateExtractValue(catchContext.landingPadInst, {0})});
@@ -386,25 +385,16 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	irBuilder.CreateCondBr(isExceptionType, catchBlock, unhandledBlock);
 	catchContext.nextHandlerBlock = unhandledBlock;
 	irBuilder.SetInsertPoint(catchBlock);
-#if 0
-	auto ehid = loadFromUntypedPointer(
-		catchContext.exceptionPointer,
-		moduleContext.iptrType);
-#endif
-
-#if 0
 	auto argument = loadFromUntypedPointer(
 		::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
 			irBuilder,
 			llvmContext.i8Type,
-			catchContext.exceptionPointer,
+			exceptionPointer,
 			{emitLiteralIptr(__builtin_offsetof(::WAVM::Runtime::ExceptionTypeTag, ehptr),
 							 moduleContext.iptrType)}),
 		moduleContext.iptrType);
 	push(argument);
 #endif
-#endif
-	__builtin_printf("%s %s %d\n",__FILE__,__PRETTY_FUNCTION__,__LINE__);
 
 	// Change the top of the control stack to a catch clause.
 	controlContext.type = ControlContext::Type::catch_;
@@ -422,9 +412,7 @@ void EmitFunctionContext::catch_all(NoImm)
 	if(controlContext.type == ControlContext::Type::try_)
 	{
 		WAVM_ASSERT(!tryStack.empty());
-		__builtin_printf("%s %s %d %zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,tryStack.size());
 		tryStack.pop_back();
-		__builtin_printf("%s %s %d %zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,tryStack.size());
 	}
 	else { exitCatch(); }
 
@@ -451,8 +439,8 @@ void EmitFunctionContext::catch_all(NoImm)
 	irBuilder.CreateCondBr(isUserExceptionType, catchBlock, unhandledBlock);
 	catchContext.nextHandlerBlock = unhandledBlock;
 	irBuilder.SetInsertPoint(catchBlock);
+#else
 #endif
-	__builtin_printf("%s %s %d\n",__FILE__,__PRETTY_FUNCTION__,__LINE__);
 
 	// Change the top of the control stack to a catch clause.
 	controlContext.type = ControlContext::Type::catch_;
