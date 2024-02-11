@@ -67,8 +67,9 @@ static llvm::Function* getCXAEndCatchFunction(EmitModuleContext& moduleContext)
 void EmitFunctionContext::endTryWithoutCatch()
 {
 	WAVM_ASSERT(!tryStack.empty());
+	__builtin_printf("%s %s %d %zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,tryStack.size());
 	tryStack.pop_back();
-
+	__builtin_printf("%s %s %d %zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,tryStack.size());
 	endTryCatch();
 }
 
@@ -119,7 +120,10 @@ void EmitFunctionContext::exitCatch()
 
 llvm::BasicBlock* EmitContext::getInnermostUnwindToBlock()
 {
-	if(!tryStack.empty()) { return tryStack.back().unwindToBlock; }
+	if(!tryStack.empty()) {
+		auto temp = tryStack.back().unwindToBlock;
+		return temp;
+	}
 	else { return nullptr; }
 }
 
@@ -189,7 +193,7 @@ static inline void generate_catch_common(EmitFunctionContext& emitFunctionContex
 			llvm::StructType::get(llvmContext, {llvmContext.i8PtrType, llvmContext.i32Type}), 1);
 		landingPadInst->addClause(moduleContext.runtimeExceptionTypeInfo);
 
-#if 1
+#if 0
 		// Call __cxa_begin_catch to get the exception pointer.
 		auto exceptionPointer
 			= irBuilder.CreateCall(getCXABeginCatchFunction(moduleContext),
@@ -202,9 +206,18 @@ static inline void generate_catch_common(EmitFunctionContext& emitFunctionContex
 		catchStack.push_back(
 			CatchContext{nullptr, landingPadInst, exceptionPointer, landingPadBlock, ehtagId});
 #else
+#if 0
+		tryStack.push_back(TryContext{landingPadBlock});
+		auto exceptionPointer = llvm::ConstantPointerNull::get(llvmContext.i8PtrType);
+		auto ehtagId = llvm::ConstantInt::get(llvmContext.i8Type, 0);
+		catchStack.push_back(
+			CatchContext{nullptr, landingPadInst, exceptionPointer, landingPadBlock, ehtagId});
+#else
 		tryStack.push_back(TryContext{landingPadBlock});
 		catchStack.push_back(
 			CatchContext{nullptr, landingPadInst, nullptr, landingPadBlock, nullptr});
+#endif
+		__builtin_printf("%s %s %d\n",__FILE__,__PRETTY_FUNCTION__,__LINE__);
 #endif
 	}
 }
@@ -315,7 +328,9 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	if(controlContext.type == ControlContext::Type::try_)
 	{
 		WAVM_ASSERT(!tryStack.empty());
+		__builtin_printf("%s %s %d %zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,tryStack.size());
 		tryStack.pop_back();
+		__builtin_printf("%s %s %d %zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,tryStack.size());
 	}
 	else { exitCatch(); }
 
@@ -369,6 +384,8 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 		catchContext.exceptionPointer,
 		moduleContext.iptrType);
 #endif
+
+#if 0
 	auto argument = loadFromUntypedPointer(
 		::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
 			irBuilder,
@@ -379,6 +396,8 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 		moduleContext.iptrType);
 	push(argument);
 #endif
+#endif
+	__builtin_printf("%s %s %d\n",__FILE__,__PRETTY_FUNCTION__,__LINE__);
 
 	// Change the top of the control stack to a catch clause.
 	controlContext.type = ControlContext::Type::catch_;
@@ -396,7 +415,9 @@ void EmitFunctionContext::catch_all(NoImm)
 	if(controlContext.type == ControlContext::Type::try_)
 	{
 		WAVM_ASSERT(!tryStack.empty());
+		__builtin_printf("%s %s %d %zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,tryStack.size());
 		tryStack.pop_back();
+		__builtin_printf("%s %s %d %zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,tryStack.size());
 	}
 	else { exitCatch(); }
 
@@ -424,6 +445,7 @@ void EmitFunctionContext::catch_all(NoImm)
 	catchContext.nextHandlerBlock = unhandledBlock;
 	irBuilder.SetInsertPoint(catchBlock);
 #endif
+	__builtin_printf("%s %s %d\n",__FILE__,__PRETTY_FUNCTION__,__LINE__);
 
 	// Change the top of the control stack to a catch clause.
 	controlContext.type = ControlContext::Type::catch_;
@@ -440,6 +462,7 @@ void EmitFunctionContext::throw_(ExceptionTypeImm imm)
 									  TypeTuple{ValueType::i64, moduleContext.iptrValueType},
 									  IR::CallingConvention::intrinsic),
 						 {::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex), ehptr});
+	__builtin_printf("%s %s %d\n",__FILE__,__PRETTY_FUNCTION__,__LINE__);
 	irBuilder.CreateUnreachable();
 	enterUnreachable();
 }
@@ -454,7 +477,7 @@ void EmitFunctionContext::rethrow(RethrowImm imm)
 		FunctionType(
 			TypeTuple{}, TypeTuple{moduleContext.iptrValueType}, IR::CallingConvention::intrinsic),
 		{irBuilder.CreatePtrToInt(catchContext.exceptionPointer, moduleContext.iptrType)});
-#elif 1
+#elif 0
 	auto exceptionPointer = catchContext.exceptionPointer;
 	auto ehtagId = loadFromUntypedPointer(exceptionPointer, moduleContext.iptrType);
 	auto argument = loadFromUntypedPointer(
@@ -471,12 +494,14 @@ void EmitFunctionContext::rethrow(RethrowImm imm)
 									  IR::CallingConvention::intrinsic),
 						 {ehtagId, argument});
 #endif
+	__builtin_printf("%s %s %d\n",__FILE__,__PRETTY_FUNCTION__,__LINE__);
 	irBuilder.CreateUnreachable();
 	enterUnreachable();
 }
 
 void EmitFunctionContext::delegate(BranchImm imm)
 {
+	__builtin_printf("%s %s %d\n",__FILE__,__PRETTY_FUNCTION__,__LINE__);
 #if 0
 #if 1
 	CatchContext& catchContext = catchStack.back();
