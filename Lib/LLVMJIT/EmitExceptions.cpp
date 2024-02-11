@@ -372,7 +372,14 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	llvm::Constant* catchTypeId = ::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex);
 
 	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
-	auto isExceptionType = irBuilder.CreateICmpEQ(catchContext.exceptionTypeId, catchTypeId);
+	auto exceptionPointer
+		= irBuilder.CreateCall(getCXABeginCatchFunction(moduleContext),
+								{irBuilder.CreateExtractValue(catchContext.landingPadInst, {0})});
+	// Load the exception type ID.
+	auto ehtagId = loadFromUntypedPointer(exceptionPointer, moduleContext.iptrType);
+	// Call __cxa_end_catch immediately to free memory used to throw the exception.
+	irBuilder.CreateCall(getCXAEndCatchFunction(moduleContext));
+	auto isExceptionType = irBuilder.CreateICmpEQ(ehtagId, catchTypeId);
 
 	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catch", function);
 	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "unhandled", function);
