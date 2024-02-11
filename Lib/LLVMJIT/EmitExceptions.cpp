@@ -496,8 +496,7 @@ void EmitFunctionContext::rethrow(RethrowImm imm)
 
 void EmitFunctionContext::delegate(BranchImm imm)
 {
-	__builtin_printf("%s %s %d\n",__FILE__,__PRETTY_FUNCTION__,__LINE__);
-#if 0
+	__builtin_printf("%s %s %d catchStack.size():%zu imm.targetDepth=%zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,catchStack.size(),imm.targetDepth);
 #if 1
 	CatchContext& catchContext = catchStack.back();
 	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
@@ -516,6 +515,5 @@ void EmitFunctionContext::delegate(BranchImm imm)
 
 #else
 	endTryWithoutCatch();
-#endif
 #endif
 }
