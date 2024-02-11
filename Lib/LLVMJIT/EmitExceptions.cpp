@@ -206,7 +206,7 @@ static inline void generate_catch_common(EmitFunctionContext& emitFunctionContex
 		catchStack.push_back(
 			CatchContext{nullptr, landingPadInst, exceptionPointer, landingPadBlock, ehtagId});
 #else
-#if 1
+#if 0
 		tryStack.push_back(TryContext{landingPadBlock});
 		auto exceptionPointer = llvm::ConstantPointerNull::get(llvmContext.i8PtrType);
 		auto ehtagId = llvm::ConstantInt::get(llvmContext.i8Type, 0);
