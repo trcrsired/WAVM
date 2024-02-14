@@ -170,9 +170,9 @@ static inline void generate_catch_common(EmitFunctionContext& emitFunctionContex
 		// Load the exception pointer from the alloca that the catchpad wrote it to.
 		auto exceptionPointer
 			= emitFunctionContext.loadFromUntypedPointer(exceptionPointerAlloca, llvmContext.i8PtrType);
+		auto exceptionTypeId = emitFunctionContext.loadFromUntypedPointer(
 
 		// Load the exception type ID.
-		auto exceptionTypeId = emitFunctionContext.loadFromUntypedPointer(
 			::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
 				irBuilder,
 				llvmContext.i8Type,
@@ -498,6 +498,7 @@ void EmitFunctionContext::delegate(BranchImm imm)
 {
 	__builtin_printf("%s %s %d catchStack.size():%zu imm.targetDepth=%zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,catchStack.size(),imm.targetDepth);
 #if 1
+#if 0
 	CatchContext& catchContext = catchStack.back();
 	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
 	//	irBuilder.CreateUnreachable();
@@ -507,9 +508,12 @@ void EmitFunctionContext::delegate(BranchImm imm)
 	WAVM_ASSERT(!tryStack.empty());
 
 	irBuilder.CreateCatchSwitch(catchContext.landingPadInst,nullptr,imm.targetDepth);
+#endif
 //	branchToEndOfControlContext();
 	tryStack.pop_back();
 	catchStack.pop_back();
+
+//	exitCatch();
 
 #else
 	endTryWithoutCatch();
