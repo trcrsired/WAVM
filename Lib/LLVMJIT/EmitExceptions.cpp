@@ -498,9 +498,9 @@ void EmitFunctionContext::delegate(BranchImm imm)
 {
 	__builtin_printf("%s %s %d catchStack.size():%zu imm.targetDepth=%zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,catchStack.size(),imm.targetDepth);
 #if 1
-#if 0
 	CatchContext& catchContext = catchStack.back();
-	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
+#if 1
+//	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
 	//	irBuilder.CreateUnreachable();
 	//	enterUnreachable();
 	ControlContext& controlContext = controlStack.back();
@@ -509,7 +509,16 @@ void EmitFunctionContext::delegate(BranchImm imm)
 
 	irBuilder.CreateCatchSwitch(catchContext.landingPadInst,nullptr,imm.targetDepth);
 #endif
+
+//	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catch", function);
+//	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "unhandled", function);
+
+//	auto isExceptionType = irBuilder.CreateICmpEQ(catchContext.exceptionTypeId, catchTypeId);
+//	irBuilder.CreateCondBr(isExceptionType, catchBlock, unhandledBlock);
+//	catchContext.nextHandlerBlock = unhandledBlock;
+//	irBuilder.SetInsertPoint(catchBlock);
 //	branchToEndOfControlContext();
+	irBuilder.CreateUnreachable();
 	tryStack.pop_back();
 	catchStack.pop_back();
 
