@@ -540,12 +540,12 @@ void EmitFunctionContext::delegate(BranchImm imm)
 	WAVM_ASSERT(controlContext.type == ControlContext::Type::try_);
 	WAVM_ASSERT(!tryStack.empty());
 
-	branchToEndOfControlContext();
-
 	catchContext.nextHandlerBlock = unhandledBlock;
 	controlContext.type = ControlContext::Type::catch_;
-	//tryStack.pop_back();
+	tryStack.pop_back();
 	controlStack.pop_back();
+	branchToEndOfControlContext();
+
 #else
 	endTryWithoutCatch();
 #endif
