@@ -499,8 +499,9 @@ void EmitFunctionContext::delegate(BranchImm imm)
 	__builtin_printf("%s %s %d catchStack.size():%zu imm.targetDepth=%zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,catchStack.size(),imm.targetDepth);
 #if 1
 	CatchContext& catchContext = catchStack.back();
+#if 0
 #if 1
-//	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
+	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
 	//	irBuilder.CreateUnreachable();
 	//	enterUnreachable();
 	ControlContext& controlContext = controlStack.back();
@@ -510,20 +511,41 @@ void EmitFunctionContext::delegate(BranchImm imm)
 	irBuilder.CreateCatchSwitch(catchContext.landingPadInst,nullptr,imm.targetDepth);
 #endif
 
-//	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catch", function);
-//	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "unhandled", function);
 
+
+
+//	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catch", function);
+	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "unhandleddelegate", function);
+	catchContext.nextHandlerBlock = unhandledBlock;
 //	auto isExceptionType = irBuilder.CreateICmpEQ(catchContext.exceptionTypeId, catchTypeId);
 //	irBuilder.CreateCondBr(isExceptionType, catchBlock, unhandledBlock);
 //	catchContext.nextHandlerBlock = unhandledBlock;
 //	irBuilder.SetInsertPoint(catchBlock);
-//	branchToEndOfControlContext();
-	irBuilder.CreateUnreachable();
-	tryStack.pop_back();
-	catchStack.pop_back();
 
 //	exitCatch();
+	catchStack.pop_back();
+#endif
+	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
 
+//	irBuilder.CreateCatchSwitch(catchContext.landingPadInst,nullptr,imm.targetDepth);
+
+	irBuilder.CreateResume(catchContext.landingPadInst);
+
+	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "delegatenormal", function);
+	irBuilder.CreateBr(unhandledBlock);
+
+	irBuilder.SetInsertPoint(unhandledBlock);
+
+	ControlContext& controlContext = controlStack.back();
+	WAVM_ASSERT(controlContext.type == ControlContext::Type::try_);
+	WAVM_ASSERT(!tryStack.empty());
+
+	branchToEndOfControlContext();
+
+	catchContext.nextHandlerBlock = unhandledBlock;
+	controlContext.type = ControlContext::Type::catch_;
+	//tryStack.pop_back();
+	controlStack.pop_back();
 #else
 	endTryWithoutCatch();
 #endif
