@@ -498,23 +498,20 @@ void EmitFunctionContext::rethrow(RethrowImm imm)
 
 void EmitFunctionContext::delegate(BranchImm imm)
 {
+#if 0
 	__builtin_printf("%s %s %d catchStack.size():%zu imm.targetDepth=%zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,catchStack.size(),imm.targetDepth);
+#endif
 	CatchContext& catchContext = catchStack.back();
 
 	llvm::BasicBlock* savedInsertionPoint = irBuilder.GetInsertBlock();
 	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
-
+#if 0
 //	irBuilder.CreateCatchSwitch(catchContext.landingPadInst,nullptr,imm.targetDepth);
-
+#endif
 	irBuilder.CreateResume(catchContext.landingPadInst);
 
-
-	irBuilder.CreateUnreachable();
-
-	branchToEndOfControlContext();
 	irBuilder.SetInsertPoint(savedInsertionPoint);
 
-	tryStack.pop_back();
-	controlStack.pop_back();
-	catchStack.pop_back();
+	this->end(NoImm{});
+
 }
