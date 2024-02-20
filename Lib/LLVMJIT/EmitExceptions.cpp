@@ -189,6 +189,7 @@ static inline void generate_catch_common(EmitFunctionContext& emitFunctionContex
 		irBuilder.SetInsertPoint(landingPadBlock);
 		auto landingPadInst = irBuilder.CreateLandingPad(
 			llvm::StructType::get(llvmContext, {llvmContext.i8PtrType, llvmContext.i32Type}), 1);
+		landingPadInst->setCleanup(true);
 		//landingPadInst->addClause(moduleContext.runtimeExceptionTypeInfo);
 
 #if 0
@@ -366,6 +367,7 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	auto& tagseg{irModule.tagSegments[imm.exceptionTypeIndex]};
 	llvm::Constant* catchTypeId = ::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex);
 
+	catchContext.landingPadInst->setCleanup(false);
 	catchContext.landingPadInst->addClause(moduleContext.runtimeExceptionTypeInfo);
 
 	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
