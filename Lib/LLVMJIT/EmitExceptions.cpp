@@ -67,9 +67,7 @@ static llvm::Function* getCXAEndCatchFunction(EmitModuleContext& moduleContext)
 void EmitFunctionContext::endTryWithoutCatch()
 {
 	WAVM_ASSERT(!tryStack.empty());
-	__builtin_printf("%s %s %d %zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,tryStack.size());
 	tryStack.pop_back();
-	__builtin_printf("%s %s %d %zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,tryStack.size());
 	endTryCatch();
 }
 
@@ -217,7 +215,6 @@ static inline void generate_catch_common(EmitFunctionContext& emitFunctionContex
 		catchStack.push_back(
 			CatchContext{nullptr, landingPadInst, nullptr, landingPadBlock, nullptr});
 #endif
-		__builtin_printf("%s %s %d\n",__FILE__,__PRETTY_FUNCTION__,__LINE__);
 #endif
 	}
 }
@@ -459,7 +456,6 @@ void EmitFunctionContext::throw_(ExceptionTypeImm imm)
 									  TypeTuple{ValueType::i64, moduleContext.iptrValueType},
 									  IR::CallingConvention::intrinsic),
 						 {::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex), ehptr});
-	__builtin_printf("%s %s %d\n",__FILE__,__PRETTY_FUNCTION__,__LINE__);
 	irBuilder.CreateUnreachable();
 	enterUnreachable();
 }
@@ -491,16 +487,12 @@ void EmitFunctionContext::rethrow(RethrowImm imm)
 									  IR::CallingConvention::intrinsic),
 						 {ehtagId, argument});
 #endif
-	__builtin_printf("%s %s %d\n",__FILE__,__PRETTY_FUNCTION__,__LINE__);
 	irBuilder.CreateUnreachable();
 	enterUnreachable();
 }
 
 void EmitFunctionContext::delegate(BranchImm imm)
 {
-#if 0
-	__builtin_printf("%s %s %d catchStack.size():%zu imm.targetDepth=%zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,catchStack.size(),imm.targetDepth);
-#endif
 	CatchContext& catchContext = catchStack.back();
 
 	llvm::BasicBlock* savedInsertionPoint = irBuilder.GetInsertBlock();
