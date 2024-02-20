@@ -500,6 +500,7 @@ void EmitFunctionContext::delegate(BranchImm imm)
 #if 0
 //	irBuilder.CreateCatchSwitch(catchContext.landingPadInst,nullptr,imm.targetDepth);
 #endif
+	catchContext.landingPadInst->setCleanup(true);
 	irBuilder.CreateResume(catchContext.landingPadInst);
 
 	irBuilder.SetInsertPoint(savedInsertionPoint);
