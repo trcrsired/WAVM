@@ -191,7 +191,7 @@ static inline void generate_catch_common(EmitFunctionContext& emitFunctionContex
 		irBuilder.SetInsertPoint(landingPadBlock);
 		auto landingPadInst = irBuilder.CreateLandingPad(
 			llvm::StructType::get(llvmContext, {llvmContext.i8PtrType, llvmContext.i32Type}), 1);
-		landingPadInst->addClause(moduleContext.runtimeExceptionTypeInfo);
+		//landingPadInst->addClause(moduleContext.runtimeExceptionTypeInfo);
 
 #if 0
 		// Call __cxa_begin_catch to get the exception pointer.
@@ -369,6 +369,8 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	auto& tagseg{irModule.tagSegments[imm.exceptionTypeIndex]};
 	llvm::Constant* catchTypeId = ::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex);
 
+	catchContext.landingPadInst->addClause(moduleContext.runtimeExceptionTypeInfo);
+
 	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
 
 	auto exceptionPointer
@@ -497,56 +499,22 @@ void EmitFunctionContext::rethrow(RethrowImm imm)
 void EmitFunctionContext::delegate(BranchImm imm)
 {
 	__builtin_printf("%s %s %d catchStack.size():%zu imm.targetDepth=%zu\n",__FILE__,__PRETTY_FUNCTION__,__LINE__,catchStack.size(),imm.targetDepth);
-#if 1
 	CatchContext& catchContext = catchStack.back();
-#if 0
-#if 1
-	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
-	//	irBuilder.CreateUnreachable();
-	//	enterUnreachable();
-	ControlContext& controlContext = controlStack.back();
-	WAVM_ASSERT(controlContext.type == ControlContext::Type::try_);
-	WAVM_ASSERT(!tryStack.empty());
 
-	irBuilder.CreateCatchSwitch(catchContext.landingPadInst,nullptr,imm.targetDepth);
-#endif
-
-
-
-
-//	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catch", function);
-	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "unhandleddelegate", function);
-	catchContext.nextHandlerBlock = unhandledBlock;
-//	auto isExceptionType = irBuilder.CreateICmpEQ(catchContext.exceptionTypeId, catchTypeId);
-//	irBuilder.CreateCondBr(isExceptionType, catchBlock, unhandledBlock);
-//	catchContext.nextHandlerBlock = unhandledBlock;
-//	irBuilder.SetInsertPoint(catchBlock);
-
-//	exitCatch();
-	catchStack.pop_back();
-#endif
+	llvm::BasicBlock* savedInsertionPoint = irBuilder.GetInsertBlock();
 	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
 
 //	irBuilder.CreateCatchSwitch(catchContext.landingPadInst,nullptr,imm.targetDepth);
 
 	irBuilder.CreateResume(catchContext.landingPadInst);
 
-	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "delegatenormal", function);
-	irBuilder.CreateBr(unhandledBlock);
 
-	irBuilder.SetInsertPoint(unhandledBlock);
+	irBuilder.CreateUnreachable();
 
-	ControlContext& controlContext = controlStack.back();
-	WAVM_ASSERT(controlContext.type == ControlContext::Type::try_);
-	WAVM_ASSERT(!tryStack.empty());
+	branchToEndOfControlContext();
+	irBuilder.SetInsertPoint(savedInsertionPoint);
 
-	catchContext.nextHandlerBlock = unhandledBlock;
-	controlContext.type = ControlContext::Type::catch_;
 	tryStack.pop_back();
 	controlStack.pop_back();
-	branchToEndOfControlContext();
-
-#else
-	endTryWithoutCatch();
-#endif
+	catchStack.pop_back();
 }
