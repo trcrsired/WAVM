@@ -417,8 +417,20 @@ void EmitFunctionContext::catch_all(NoImm)
 	}
 	else { exitCatch(); }
 
+	__builtin_printf("%s %d\n",__FILE__,__LINE__);
+
 	branchToEndOfControlContext();
 #if 0
+	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
+	catchContext.landingPadInst->addClause(moduleContext.runtimeExceptionTypeInfo);
+
+//	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catchall", function);
+	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "unhandledall", function);
+//	irBuilder.CreateCondBr(isUserExceptionType, catchBlock, unhandledBlock);
+	catchContext.nextHandlerBlock = unhandledBlock;
+	irBuilder.SetInsertPoint(catchBlock);
+
+#else
 	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
 #if 0
 	auto isUserExceptionType = irBuilder.CreateICmpNE(
@@ -430,17 +442,22 @@ void EmitFunctionContext::catch_all(NoImm)
 				{emitLiteralIptr(offsetof(Exception, isUserException), moduleContext.iptrType)}),
 			llvmContext.i8Type),
 		llvm::ConstantInt::get(llvmContext.i8Type, llvm::APInt(8, 0, false)));
-#elif 1
+#elif 0
 	auto isUserExceptionType = irBuilder.CreateICmpNE(
 		loadFromUntypedPointer(catchContext.exceptionPointer, llvmContext.i8Type),
-		);
+		loadFromUntypedPointer(catchContext.exceptionPointer, llvmContext.i8Type));
 #endif
-	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catch", function);
-	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "unhandled", function);
+
+#if 0
+	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catchall", function);
+	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "unhandledall", function);
 	irBuilder.CreateCondBr(isUserExceptionType, catchBlock, unhandledBlock);
-	catchContext.nextHandlerBlock = unhandledBlock;
-	irBuilder.SetInsertPoint(catchBlock);
 #else
+	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catchBlock", function);
+	irBuilder.CreateBr(catchBlock);
+#endif
+	catchContext.nextHandlerBlock = nullptr;
+	irBuilder.SetInsertPoint(catchBlock);
 #endif
 
 	// Change the top of the control stack to a catch clause.
