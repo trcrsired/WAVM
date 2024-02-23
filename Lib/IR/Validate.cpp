@@ -866,7 +866,7 @@ private:
 			ifElse,
 			loop,
 			try_,
-			catch_
+			catch_,
 		};
 
 		Type type;

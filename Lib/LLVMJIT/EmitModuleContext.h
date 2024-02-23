@@ -56,6 +56,8 @@ namespace WAVM { namespace LLVMJIT {
 		llvm::Function* cxaEndCatchFunction = nullptr;
 		llvm::Constant* runtimeExceptionTypeInfo = nullptr;
 
+		llvm::Function* wavmThrowWasmEhtagFunction = nullptr;
+
 		EmitModuleContext(const IR::Module& inModule,
 						  LLVMContext& inLLVMContext,
 						  llvm::Module* inLLVMModule,

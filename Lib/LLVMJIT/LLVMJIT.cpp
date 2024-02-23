@@ -1,4 +1,5 @@
 #include "WAVM/LLVMJIT/LLVMJIT.h"
+#include <unwind.h>
 #include <cstdio>
 #include <utility>
 #include "LLVMJITPrivate.h"
@@ -30,6 +31,9 @@ using namespace WAVM::IR;
 using namespace WAVM::LLVMJIT;
 
 namespace LLVMRuntimeSymbols {
+
+	extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t, ::std::uint_least64_t);
+
 #ifdef _WIN32
 	// the LLVM X86 code generator calls __chkstk when allocating more than 4KB of stack space
 #ifdef __MINGW32__
@@ -55,6 +59,8 @@ namespace LLVMRuntimeSymbols {
 	static HashMap<std::string, void*> map = {
 		{"memmove", (void*)&memmove},
 		{"memset", (void*)&memset},
+		{"_Unwind_Resume", (void*)&_Unwind_Resume},
+		{"wavm_throw_wasm_ehtag", (void*)&wavm_throw_wasm_ehtag},
 #ifdef _WIN32
 #ifdef __MINGW32__
 		{"___chkstk_ms", (void*)&___chkstk_ms},
