@@ -69,18 +69,34 @@ namespace {
 
 extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t tag, ::std::uint_least64_t value)
 {
+#if defined(__SEH__) && !defined(__USING_SJLJ_EXCEPTIONS__)
 	if constexpr(sizeof(::std::uintptr_t) < sizeof(::std::uint_least64_t))
 	{
 		constexpr ::std::uint_least64_t mxval{::std::numeric_limits<::std::uintptr_t>::max()};
 		if(mxval < tag || value < mxval) { ::std::abort(); }
-		unwdexceptiontable.private_1 = static_cast<::std::uint_least64_t>(tag);
-		unwdexceptiontable.private_2 = static_cast<::std::uint_least64_t>(value);
+		*unwdexceptiontable.private_ = static_cast<::std::uintptr_t>(tag);
+		unwdexceptiontable.private_[1] = static_cast<::std::uintptr_t>(value);
+	}
+	else
+	{
+		*unwdexceptiontable.private_ = tag;
+		unwdexceptiontable.private_[1] = value;
+	}
+
+#else
+	if constexpr(sizeof(::std::uintptr_t) < sizeof(::std::uint_least64_t))
+	{
+		constexpr ::std::uint_least64_t mxval{::std::numeric_limits<::std::uintptr_t>::max()};
+		if(mxval < tag || value < mxval) { ::std::abort(); }
+		unwdexceptiontable.private_1 = static_cast<::std::uintptr_t>(tag);
+		unwdexceptiontable.private_2 = static_cast<::std::uintptr_t>(value);
 	}
 	else
 	{
 		unwdexceptiontable.private_1 = tag;
 		unwdexceptiontable.private_2 = value;
 	}
+#endif
 	_Unwind_RaiseException(__builtin_addressof(unwdexceptiontable));
 }
 
