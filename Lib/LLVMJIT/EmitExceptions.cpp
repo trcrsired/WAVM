@@ -83,35 +83,7 @@ extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t tag, ::std::uint_lea
 	}
 	_Unwind_RaiseException(__builtin_addressof(unwdexceptiontable));
 }
-#if 0
-static llvm::Function* getCXABeginCatchFunction(EmitModuleContext& moduleContext)
-{
-	if(!moduleContext.cxaBeginCatchFunction)
-	{
-		LLVMContext& llvmContext = moduleContext.llvmContext;
-		moduleContext.cxaBeginCatchFunction = llvm::Function::Create(
-			llvm::FunctionType::get(llvmContext.i8PtrType, {llvmContext.i8PtrType}, false),
-			llvm::GlobalValue::LinkageTypes::ExternalLinkage,
-			"__cxa_begin_catch",
-			moduleContext.llvmModule);
-	}
-	return moduleContext.cxaBeginCatchFunction;
-}
 
-static llvm::Function* getCXAEndCatchFunction(EmitModuleContext& moduleContext)
-{
-	if(!moduleContext.cxaEndCatchFunction)
-	{
-		LLVMContext& llvmContext = moduleContext.llvmContext;
-		moduleContext.cxaEndCatchFunction = llvm::Function::Create(
-			llvm::FunctionType::get(llvm::Type::getVoidTy(llvmContext), false),
-			llvm::GlobalValue::LinkageTypes::ExternalLinkage,
-			"__cxa_end_catch",
-			moduleContext.llvmModule);
-	}
-	return moduleContext.cxaEndCatchFunction;
-}
-#endif
 static llvm::Function* getWavmThrowWasmEhtagFunction(EmitModuleContext& moduleContext)
 {
 	if(!moduleContext.wavmThrowWasmEhtagFunction)
@@ -206,7 +178,7 @@ static inline void generate_catch_common(EmitFunctionContext& emitFunctionContex
 	irBuilder.SetInsertPoint(landingPadBlock);
 	auto landingPadInst = irBuilder.CreateLandingPad(
 		llvm::StructType::get(llvmContext, {llvmContext.i8PtrType, llvmContext.i32Type}), 1);
-	landingPadInst->setCleanup(true);
+	//	landingPadInst->setCleanup(true);
 
 	tryStack.push_back(TryContext{landingPadBlock});
 	catchStack.push_back(CatchContext{nullptr, landingPadInst, nullptr, landingPadBlock, nullptr});
@@ -214,9 +186,11 @@ static inline void generate_catch_common(EmitFunctionContext& emitFunctionContex
 
 void EmitFunctionContext::try_(ControlStructureImm imm)
 {
-	auto originalInsertBlock = irBuilder.GetInsertBlock();
-	generate_catch_common(*this);
-	irBuilder.SetInsertPoint(originalInsertBlock);
+	{
+		::llvm::IRBuilderBase::InsertPointGuard guard(irBuilder);
+		generate_catch_common(*this);
+	}
+
 	// Create an end try+phi for the try result.
 	FunctionType blockType = resolveBlockType(irModule, imm.type);
 	auto endBlock = llvm::BasicBlock::Create(llvmContext, "tryEnd", function);
@@ -292,7 +266,7 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	llvm::Constant* catchTypeId = ::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex);
 
 	catchContext.landingPadInst->setCleanup(false);
-//	catchContext.landingPadInst->addClause(moduleContext.runtimeExceptionTypeInfo);
+	//	catchContext.landingPadInst->addClause(moduleContext.runtimeExceptionTypeInfo);
 
 	// Change the top of the control stack to a catch clause.
 	controlContext.type = ControlContext::Type::catch_;
@@ -359,15 +333,14 @@ void EmitFunctionContext::rethrow(RethrowImm imm)
 void EmitFunctionContext::delegate(BranchImm imm)
 {
 	CatchContext& catchContext = catchStack.back();
+	{
+		::llvm::IRBuilderBase::InsertPointGuard guard(irBuilder);
+		//	llvm::BasicBlock* savedInsertionPoint = irBuilder.GetInsertBlock();
+		irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
 
-//	::llvm::IRBuilderBase::InsertPointGuard guard(irBuilder);
-//	llvm::BasicBlock* savedInsertionPoint = irBuilder.GetInsertBlock();
-	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
-
-	catchContext.landingPadInst->setCleanup(true);
-	irBuilder.CreateResume(catchContext.landingPadInst);
-
-//	irBuilder.SetInsertPoint(savedInsertionPoint);
-
+		catchContext.landingPadInst->setCleanup(true);
+		irBuilder.CreateResume(catchContext.landingPadInst);
+		//	catchContext.nextHandlerBlock=nullptr;
+	}
 	this->end(NoImm{});
 }
