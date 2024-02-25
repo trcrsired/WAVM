@@ -40,7 +40,11 @@ PUSH_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 #include <llvm/Support/MemoryBuffer.h>
 POP_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 
+#if(defined(_WIN32) && !defined(__WINE__)) || defined(__CYGWIN__)
+#define USE_MSVC_SEH 1
+#else
 #define USE_MSVC_SEH 0
+#endif
 
 #define KEEP_UNLOADED_MODULE_ADDRESSES_RESERVED 0
 
@@ -420,17 +424,16 @@ Module::Module(const std::vector<U8>& objectBytes,
 	loader.setProcessAllSections(true);
 #endif
 
-#if 0
 	// The LLVM dynamic loader doesn't correctly apply the IMAGE_REL_AMD64_ADDR32NB relocations in
 	// the pdata and xdata sections
 	// (https://github.com/llvm-mirror/llvm/blob/e84d8c12d5157a926db15976389f703809c49aa5/lib/ExecutionEngine/RuntimeDyld/Targets/RuntimeDyldCOFFX86_64.h#L96)
 	// Make a copy of those sections before they are clobbered, so we can do the fixup ourselves
 	// later.
 	llvm::object::SectionRef pdataSection;
-	U8* pdataCopy = nullptr;
+	std::unique_ptr<U8[]> pdataCopy;
 	Uptr pdataNumBytes = 0;
 	llvm::object::SectionRef xdataSection;
-	U8* xdataCopy = nullptr;
+	std::unique_ptr<U8[]> xdataCopy;
 	if(USE_MSVC_SEH)
 	{
 		for(auto section : object->sections())
@@ -459,22 +462,22 @@ Module::Module(const std::vector<U8>& objectBytes,
 					const U8* loadedSection = (const U8*)sectionContents.data();
 					if(sectionName == ".pdata")
 					{
-						pdataCopy = new U8[section.getSize()];
+						pdataCopy.reset(new U8[section.getSize()]);
 						pdataNumBytes = section.getSize();
 						pdataSection = section;
-						memcpy(pdataCopy, loadedSection, section.getSize());
+						memcpy(pdataCopy.get(), loadedSection, section.getSize());
 					}
 					else if(sectionName == ".xdata")
 					{
-						xdataCopy = new U8[section.getSize()];
+						xdataCopy.reset(new U8[section.getSize()]);
 						xdataSection = section;
-						memcpy(xdataCopy, loadedSection, section.getSize());
+						memcpy(xdataCopy.get(), loadedSection, section.getSize());
 					}
 				}
 			}
 		}
 	}
-#endif
+
 	// Use the LLVM object loader to load the object.
 	std::unique_ptr<llvm::RuntimeDyld::LoadedObjectInfo> loadedObject = loader.loadObject(*object);
 	loader.finalizeWithMemoryManagerLocking();
@@ -482,7 +485,7 @@ Module::Module(const std::vector<U8>& objectBytes,
 	{
 		Errors::fatalf("RuntimeDyld failed: %s", loader.getErrorString().data());
 	}
-#if 0
+
 	if(USE_MSVC_SEH && pdataCopy)
 	{
 		// Lookup the real address of _CxxFrameHandler3.
@@ -502,10 +505,10 @@ Module::Module(const std::vector<U8>& objectBytes,
 		processSEHTables(memoryManager->getImageBaseAddress(),
 						 *loadedObject,
 						 pdataSection,
-						 pdataCopy,
+						 pdataCopy.get(),
 						 pdataNumBytes,
 						 xdataSection,
-						 xdataCopy,
+						 xdataCopy.get(),
 						 reinterpret_cast<Uptr>(trampolineBytes));
 
 		memoryManager->registerFixedSEHFrames(
@@ -514,17 +517,7 @@ Module::Module(const std::vector<U8>& objectBytes,
 	}
 
 	// Free the copies of the Windows SEH sections created above.
-	if(pdataCopy)
-	{
-		delete[] pdataCopy;
-		pdataCopy = nullptr;
-	}
-	if(xdataCopy)
-	{
-		delete[] xdataCopy;
-		xdataCopy = nullptr;
-	}
-#endif
+
 	// After having a chance to manually apply relocations for the pdata/xdata sections, apply the
 	// final non-writable memory permissions.
 	memoryManager->reallyFinalizeMemory();

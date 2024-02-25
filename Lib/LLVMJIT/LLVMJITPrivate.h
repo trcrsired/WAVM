@@ -446,7 +446,7 @@ namespace WAVM { namespace LLVMJIT {
 											 llvm::Module&& llvmModule,
 											 bool shouldLogMetrics,
 											 llvm::TargetMachine* targetMachine);
-#if 0
+
 	extern void processSEHTables(U8* imageBase,
 								 const llvm::LoadedObjectInfo& loadedObject,
 								 const llvm::object::SectionRef& pdataSection,
@@ -455,7 +455,7 @@ namespace WAVM { namespace LLVMJIT {
 								 const llvm::object::SectionRef& xdataSection,
 								 const U8* xdataCopy,
 								 Uptr sehTrampolineAddress);
-#endif
+
 	template<typename T>
 	inline ::llvm::LoadInst* wavmCreateLoad(T& obj,
 											[[maybe_unused]] ::llvm::Type* valuetype,

@@ -247,6 +247,8 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 
 	auto& tagseg{irModule.tagSegments[imm.exceptionTypeIndex]};
 
+	catchContext.landingPadInst->addClause(::llvm::ConstantPointerNull::get(irBuilder.getPtrTy()));
+
 	auto unwindehptr = irBuilder.CreateExtractValue(catchContext.landingPadInst, {0});
 	auto magic = ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, llvmContext.i64Type, unwindehptr);
 	auto isUserExceptionType = irBuilder.CreateICmpEQ(
@@ -279,9 +281,6 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	push(argument);
 
 	llvm::Constant* catchTypeId = ::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex);
-
-	catchContext.landingPadInst->setCleanup(false);
-	catchContext.landingPadInst->addClause(::llvm::ConstantPointerNull::get(irBuilder.getPtrTy()));
 
 	// Change the top of the control stack to a catch clause.
 	controlContext.type = ControlContext::Type::catch_;
