@@ -41,6 +41,13 @@ using namespace WAVM::Runtime;
 namespace {
 	inline constexpr ::std::uint_least64_t exceptionclass{0x334c4aa53cddfc65};
 
+	struct wavm_eh_tag_unwind_eh
+	{
+		_Unwind_Exception itaniumeh;
+		::std::uintptr_t ehtag;
+		::std::uintptr_t userdata;
+	};
+
 	inline
 #ifdef __cpp_constinit
 		constinit
@@ -50,53 +57,19 @@ namespace {
 #else
 		thread_local
 #endif
-		_Unwind_Exception unwdexceptiontable{exceptionclass};
+		wavm_eh_tag_unwind_eh unwdexceptiontable{0, 0, {exceptionclass}};
 
-#if defined(__SEH__) && !defined(__USING_SJLJ_EXCEPTIONS__)
-	inline constexpr ::std::size_t Unwind_Exception_Private1_Offset{
-		__builtin_offsetof(_Unwind_Exception, private_)};
-	inline constexpr ::std::size_t Unwind_Exception_Private2_Offset{Unwind_Exception_Private1_Offset
-																	+ sizeof(::std::uintptr_t)};
-#else
-	inline constexpr ::std::size_t Unwind_Exception_Private1_Offset{
-		__builtin_offsetof(_Unwind_Exception, private_1)};
-	inline constexpr ::std::size_t Unwind_Exception_Private2_Offset{
-		__builtin_offsetof(_Unwind_Exception, private_2)};
-#endif
+	inline constexpr ::std::size_t EhTagOffset{__builtin_offsetof(wavm_eh_tag_unwind_eh, ehtag)};
+	inline constexpr ::std::size_t UserDataOffset{
+		__builtin_offsetof(wavm_eh_tag_unwind_eh, userdata)};
 
 }
 
-extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t tag, ::std::uint_least64_t value)
+extern "C" void wavm_throw_wasm_ehtag(::std::uintptr_t tag, ::std::uintptr_t value)
 {
-#if defined(__SEH__) && !defined(__USING_SJLJ_EXCEPTIONS__)
-	if constexpr(sizeof(::std::uintptr_t) < sizeof(::std::uint_least64_t))
-	{
-		constexpr ::std::uint_least64_t mxval{::std::numeric_limits<::std::uintptr_t>::max()};
-		if(mxval < tag || value < mxval) { ::std::abort(); }
-		*unwdexceptiontable.private_ = static_cast<::std::uintptr_t>(tag);
-		unwdexceptiontable.private_[1] = static_cast<::std::uintptr_t>(value);
-	}
-	else
-	{
-		*unwdexceptiontable.private_ = tag;
-		unwdexceptiontable.private_[1] = value;
-	}
-
-#else
-	if constexpr(sizeof(::std::uintptr_t) < sizeof(::std::uint_least64_t))
-	{
-		constexpr ::std::uint_least64_t mxval{::std::numeric_limits<::std::uintptr_t>::max()};
-		if(mxval < tag || value < mxval) { ::std::abort(); }
-		unwdexceptiontable.private_1 = static_cast<::std::uintptr_t>(tag);
-		unwdexceptiontable.private_2 = static_cast<::std::uintptr_t>(value);
-	}
-	else
-	{
-		unwdexceptiontable.private_1 = tag;
-		unwdexceptiontable.private_2 = value;
-	}
-#endif
-	_Unwind_RaiseException(__builtin_addressof(unwdexceptiontable));
+	unwdexceptiontable.ehtag = tag;
+	unwdexceptiontable.userdata = value;
+	_Unwind_RaiseException(__builtin_addressof(unwdexceptiontable.itaniumeh));
 }
 
 static llvm::Function* getWavmThrowWasmEhtagFunction(EmitModuleContext& moduleContext)
@@ -104,11 +77,19 @@ static llvm::Function* getWavmThrowWasmEhtagFunction(EmitModuleContext& moduleCo
 	if(!moduleContext.wavmThrowWasmEhtagFunction)
 	{
 		LLVMContext& llvmContext = moduleContext.llvmContext;
+		::llvm::Type* ptruinttype{};
+		if constexpr(sizeof(::std::uintptr_t) == sizeof(::std::uint_least32_t))
+		{
+			ptruinttype = ::llvm::Type::getInt32Ty(llvmContext);
+		}
+		else
+		{
+			static_assert(sizeof(::std::uintptr_t) == sizeof(::std::uint_least64_t));
+			ptruinttype = ::llvm::Type::getInt64Ty(llvmContext);
+		}
 		moduleContext.wavmThrowWasmEhtagFunction = llvm::Function::Create(
 			llvm::FunctionType::get(
-				llvm::Type::getVoidTy(llvmContext),
-				{::llvm::Type::getInt64Ty(llvmContext), ::llvm::Type::getInt64Ty(llvmContext)},
-				false),
+				llvm::Type::getVoidTy(llvmContext), {ptruinttype, ptruinttype}, false),
 			llvm::GlobalValue::LinkageTypes::ExternalLinkage,
 			"wavm_throw_wasm_ehtag",
 			moduleContext.llvmModule);
@@ -195,7 +176,18 @@ void EmitFunctionContext::try_(ControlStructureImm imm)
 	// Repush the try arguments.
 	pushMultiple(tryArgs, blockType.params().size());
 }
-
+#if 0
+[[maybe_unused]]
+static inline void foodebugging(EmitFunctionContext& functionContext, ::llvm::Value* memaddress)
+{
+	functionContext.emitRuntimeIntrinsic("wavmdebuggingprint",
+	FunctionType(
+		TypeTuple{ValueType::i64},
+		TypeTuple{ValueType::i64},
+		IR::CallingConvention::intrinsic),
+	{memaddress});
+}
+#endif
 void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 {
 	WAVM_ASSERT(!controlStack.empty());
@@ -230,10 +222,9 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	auto ehtagId = ::WAVM::LLVMJIT::wavmCreateLoad(
 		irBuilder,
 		llvmContext.i64Type,
-		irBuilder.CreateGEP(
-			llvmContext.i8Type,
-			unwindehptr,
-			{::llvm::ConstantInt::get(llvmContext.i64Type, Unwind_Exception_Private1_Offset)}));
+		irBuilder.CreateGEP(llvmContext.i8Type,
+							unwindehptr,
+							{::llvm::ConstantInt::get(llvmContext.i64Type, EhTagOffset)}));
 	auto isehtagId = irBuilder.CreateICmpEQ(
 		ehtagId, ::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex));
 
@@ -246,10 +237,9 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	auto argument = ::WAVM::LLVMJIT::wavmCreateLoad(
 		irBuilder,
 		llvmContext.i64Type,
-		irBuilder.CreateGEP(
-			llvmContext.i8Type,
-			unwindehptr,
-			{::llvm::ConstantInt::get(llvmContext.i64Type, Unwind_Exception_Private2_Offset)}));
+		irBuilder.CreateGEP(llvmContext.i8Type,
+							unwindehptr,
+							{::llvm::ConstantInt::get(llvmContext.i64Type, UserDataOffset)}));
 	push(argument);
 
 	// Change the top of the control stack to a catch clause.

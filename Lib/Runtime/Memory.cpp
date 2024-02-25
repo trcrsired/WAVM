@@ -444,3 +444,13 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics,
 
 	throwException(ExceptionTypes::outOfBoundsMemoryAccess, {memory, outOfBoundsAddress});
 }
+#if 0
+WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics,
+							   "wavmdebuggingprint",
+							   void,
+							   wavmdebuggingprint,
+							   size_t addr)
+{
+	fprintf(stderr,"wavmdebuggingprint: %p\n",reinterpret_cast<void*>(addr));
+}
+#endif
