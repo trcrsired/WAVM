@@ -40,19 +40,11 @@ PUSH_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 #include <llvm/Support/MemoryBuffer.h>
 POP_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 
-#ifdef _WIN32
+#if (defined(_WIN32) && !defined(__WINE__)) || defined(__CYGWIN__)
 #define USE_WINDOWS_SEH 1
 #else
 #define USE_WINDOWS_SEH 0
 #endif
-
-#if !USE_WINDOWS_SEH
-#include <cxxabi.h>
-#endif
-
-namespace WAVM { namespace Runtime {
-	struct ExceptionType;
-}}
 
 #define KEEP_UNLOADED_MODULE_ADDRESSES_RESERVED 0
 
@@ -428,20 +420,31 @@ Module::Module(const std::vector<U8>& objectBytes,
 	llvm::RuntimeDyld loader(*memoryManager, symbolResolver);
 	// Process all sections on non-Windows platforms. On Windows, this triggers errors due to
 	// unimplemented relocation types in the debug sections.
-#if !defined(_WIN32) || LAZY_PARSE_DWARF_LINE_INFO
+	// #if !defined(_WIN32) || LAZY_PARSE_DWARF_LINE_INFO
 	loader.setProcessAllSections(true);
+// #endif
+#if 0
+	for(auto section : object->sections())
+	{
+		llvm::Expected<llvm::StringRef> sectionNameOrError = section.getName();
+		if(sectionNameOrError)
+		{
+			::llvm::errs()<<sectionNameOrError.get()<<'\n';
+		}
+	}
 #endif
-
 	// The LLVM dynamic loader doesn't correctly apply the IMAGE_REL_AMD64_ADDR32NB relocations in
 	// the pdata and xdata sections
 	// (https://github.com/llvm-mirror/llvm/blob/e84d8c12d5157a926db15976389f703809c49aa5/lib/ExecutionEngine/RuntimeDyld/Targets/RuntimeDyldCOFFX86_64.h#L96)
 	// Make a copy of those sections before they are clobbered, so we can do the fixup ourselves
 	// later.
-	llvm::object::SectionRef pdataSection;
-	U8* pdataCopy = nullptr;
-	Uptr pdataNumBytes = 0;
-	llvm::object::SectionRef xdataSection;
-	U8* xdataCopy = nullptr;
+	struct xpdatainformation
+	{
+		llvm::object::SectionRef datasection;
+		::std::vector<U8> datacopy;
+	};
+	::std::vector<xpdatainformation> pdatainfos, xdatainfos;
+
 	if(USE_WINDOWS_SEH)
 	{
 		for(auto section : object->sections())
@@ -470,16 +473,15 @@ Module::Module(const std::vector<U8>& objectBytes,
 					const U8* loadedSection = (const U8*)sectionContents.data();
 					if(sectionName == ".pdata")
 					{
-						pdataCopy = new U8[section.getSize()];
-						pdataNumBytes = section.getSize();
-						pdataSection = section;
-						memcpy(pdataCopy, loadedSection, section.getSize());
+						pdatainfos.push_back(xpdatainformation{
+							section,
+							::std::vector<U8>(loadedSection, loadedSection + section.getSize())});
 					}
 					else if(sectionName == ".xdata")
 					{
-						xdataCopy = new U8[section.getSize()];
-						xdataSection = section;
-						memcpy(xdataCopy, loadedSection, section.getSize());
+						xdatainfos.push_back(xpdatainformation{
+							section,
+							::std::vector<U8>(loadedSection, loadedSection + section.getSize())});
 					}
 				}
 			}
@@ -494,7 +496,7 @@ Module::Module(const std::vector<U8>& objectBytes,
 		Errors::fatalf("RuntimeDyld failed: %s", loader.getErrorString().data());
 	}
 
-	if(USE_WINDOWS_SEH && pdataCopy)
+	if(USE_WINDOWS_SEH && (!pdatainfos.empty() || !xdatainfos.empty()))
 	{
 		// Lookup the real address of _CxxFrameHandler3.
 		const llvm::JITEvaluatedSymbol sehHandlerSymbol
@@ -510,31 +512,31 @@ Module::Module(const std::vector<U8>& objectBytes,
 		memset(trampolineBytes + 2, 0, 4);
 		memcpy(trampolineBytes + 6, &sehHandlerAddress, sizeof(U64));
 
-		processSEHTables(memoryManager->getImageBaseAddress(),
-						 *loadedObject,
-						 pdataSection,
-						 pdataCopy,
-						 pdataNumBytes,
-						 xdataSection,
-						 xdataCopy,
-						 reinterpret_cast<Uptr>(trampolineBytes));
+		for(auto& ele : pdatainfos)
+		{
+			auto& datacopy{ele.datacopy};
+			processSEHRelocateTables(memoryManager->getImageBaseAddress(),
+									 *loadedObject,
+									 ele.datasection,
+									 datacopy.data(),
+									 reinterpret_cast<Uptr>(trampolineBytes));
+			memoryManager->registerFixedSEHFrames(
+				reinterpret_cast<U8*>(Uptr(loadedObject->getSectionLoadAddress(ele.datasection))),
+				datacopy.size());
+		}
 
-		memoryManager->registerFixedSEHFrames(
-			reinterpret_cast<U8*>(Uptr(loadedObject->getSectionLoadAddress(pdataSection))),
-			pdataNumBytes);
+		for(auto& ele : xdatainfos)
+		{
+			auto& datacopy{ele.datacopy};
+			processSEHRelocateTables(memoryManager->getImageBaseAddress(),
+									 *loadedObject,
+									 ele.datasection,
+									 datacopy.data(),
+									 reinterpret_cast<Uptr>(trampolineBytes));
+		}
 	}
 
 	// Free the copies of the Windows SEH sections created above.
-	if(pdataCopy)
-	{
-		delete[] pdataCopy;
-		pdataCopy = nullptr;
-	}
-	if(xdataCopy)
-	{
-		delete[] xdataCopy;
-		xdataCopy = nullptr;
-	}
 
 	// After having a chance to manually apply relocations for the pdata/xdata sections, apply the
 	// final non-writable memory permissions.
@@ -785,24 +787,6 @@ std::shared_ptr<LLVMJIT::Module> LLVMJIT::loadModule(
 #if LLVM_VERSION_MAJOR < 10
 	// Bind the unoptimizableOne symbol to 1.
 	importedSymbolMap.addOrFail("unoptimizableOne", 1);
-#endif
-
-#if !USE_WINDOWS_SEH
-	// Use __cxxabiv1::__cxa_current_exception_type to get a reference to the std::type_info for
-	// Runtime::Exception* without enabling RTTI.
-	std::type_info* runtimeExceptionPointerTypeInfo = nullptr;
-	try
-	{
-		throw (Runtime::Exception*)nullptr;
-	}
-	catch(Runtime::Exception*)
-	{
-		runtimeExceptionPointerTypeInfo = __cxxabiv1::__cxa_current_exception_type();
-	}
-
-	// Bind the std::type_info for Runtime::Exception.
-	importedSymbolMap.addOrFail("runtimeExceptionTypeInfo",
-								reinterpret_cast<Uptr>(runtimeExceptionPointerTypeInfo));
 #endif
 
 	// Load the module.

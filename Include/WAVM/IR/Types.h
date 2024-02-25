@@ -590,6 +590,7 @@ namespace WAVM { namespace IR {
 		memory,
 		global,
 		exceptionType,
+		tag = exceptionType,
 	};
 	struct ExternType
 	{
@@ -651,8 +652,8 @@ namespace WAVM { namespace IR {
 		case ExternKind::table: return "table " + asString(asTableType(objectType));
 		case ExternKind::memory: return "memory " + asString(asMemoryType(objectType));
 		case ExternKind::global: return asString(asGlobalType(objectType));
-		case ExternKind::exceptionType:
-			return "exception_type " + asString(asExceptionType(objectType));
+		case ExternKind::tag:
+			return "tag " + asString(asExceptionType(objectType));
 
 		case ExternKind::invalid:
 		default: WAVM_UNREACHABLE();
@@ -668,7 +669,7 @@ namespace WAVM { namespace IR {
 		case ExternKind::table:
 		case ExternKind::memory:
 		case ExternKind::global:
-		case ExternKind::exceptionType:
+		case ExternKind::tag:
 		case ExternKind::invalid:
 		default: return ReferenceType::externref;
 		}

@@ -526,7 +526,7 @@ char *mdb_version(int *major, int *minor, int *patch);
 	 * @param[in] err The error code
 	 * @retval "error message" The description of the error
 	 */
-char *mdb_strerror(int err);
+char const* mdb_strerror(int err);
 
 	/** @brief Create an LMDB environment handle.
 	 *

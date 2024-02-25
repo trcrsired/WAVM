@@ -1265,9 +1265,6 @@ static void parseCustomSection(CursorState* cursor)
 			case OrderedSectionID::table: hasPrecedingSection = hasTableSection(module_); break;
 			case OrderedSectionID::memory: hasPrecedingSection = hasMemorySection(module_); break;
 			case OrderedSectionID::global: hasPrecedingSection = hasGlobalSection(module_); break;
-			case OrderedSectionID::exceptionType:
-				hasPrecedingSection = hasExceptionTypeSection(module_);
-				break;
 			case OrderedSectionID::export_: hasPrecedingSection = hasExportSection(module_); break;
 			case OrderedSectionID::start: hasPrecedingSection = hasStartSection(module_); break;
 			case OrderedSectionID::elem: hasPrecedingSection = hasElemSection(module_); break;
@@ -1276,6 +1273,7 @@ static void parseCustomSection(CursorState* cursor)
 				break;
 			case OrderedSectionID::code: hasPrecedingSection = hasCodeSection(module_); break;
 			case OrderedSectionID::data: hasPrecedingSection = hasDataSection(module_); break;
+			case OrderedSectionID::tag: hasPrecedingSection = hasTagSection(module_); break;
 			default: WAVM_UNREACHABLE();
 			};
 

@@ -92,8 +92,9 @@ namespace WAVM { namespace LLVMJIT {
 		// Operand stack manipulation
 		llvm::Value* pop()
 		{
-			WAVM_ASSERT(
-				stack.size() - (controlStack.size() ? controlStack.back().outerStackSize : 0) >= 1);
+			WAVM_ASSERT(stack.size()
+							- (!controlStack.empty() ? controlStack.back().outerStackSize : 0)
+						>= 1);
 			llvm::Value* result = stack.back();
 			stack.pop_back();
 			return result;
@@ -102,7 +103,7 @@ namespace WAVM { namespace LLVMJIT {
 		void popMultiple(llvm::Value** outValues, Uptr num)
 		{
 			WAVM_ASSERT(stack.size()
-							- (controlStack.size() ? controlStack.back().outerStackSize : 0)
+							- (!controlStack.empty() ? controlStack.back().outerStackSize : 0)
 						>= num);
 			std::copy(stack.end() - num, stack.end(), outValues);
 			stack.resize(stack.size() - num);
@@ -299,7 +300,6 @@ namespace WAVM { namespace LLVMJIT {
 
 		void endTryWithoutCatch();
 		void endTryCatch();
-		void exitCatch();
 
 #define VISIT_OPCODE(encoding, name, nameString, Imm, ...) void name(IR::Imm imm);
 		WAVM_ENUM_OPERATORS(VISIT_OPCODE)

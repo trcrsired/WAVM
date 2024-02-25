@@ -15,7 +15,7 @@ const char* IR::asString(OrderedSectionID id)
 	case OrderedSectionID::table: return "table";
 	case OrderedSectionID::memory: return "memory";
 	case OrderedSectionID::global: return "global";
-	case OrderedSectionID::exceptionType: return "exception_type";
+	case OrderedSectionID::tag: return "tag";
 	case OrderedSectionID::export_: return "export";
 	case OrderedSectionID::start: return "start";
 	case OrderedSectionID::elem: return "elem";
@@ -58,43 +58,43 @@ OrderedSectionID IR::getMaxPresentSection(const Module& module_, OrderedSectionI
 	{
 	case OrderedSectionID::data:
 		if(hasDataSection(module_)) { return OrderedSectionID::data; }
-		// fall through
+		[[fallthrough]];
 	case OrderedSectionID::code:
 		if(hasCodeSection(module_)) { return OrderedSectionID::code; }
-		// fall through
+		[[fallthrough]];
 	case OrderedSectionID::dataCount:
 		if(hasDataCountSection(module_)) { return OrderedSectionID::dataCount; }
-		// fall through
+		[[fallthrough]];
 	case OrderedSectionID::elem:
 		if(hasElemSection(module_)) { return OrderedSectionID::elem; }
-		// fall through
+		[[fallthrough]];
 	case OrderedSectionID::start:
 		if(hasStartSection(module_)) { return OrderedSectionID::start; }
-		// fall through
+		[[fallthrough]];
 	case OrderedSectionID::export_:
 		if(hasExportSection(module_)) { return OrderedSectionID::export_; }
-		// fall through
-	case OrderedSectionID::exceptionType:
-		if(hasExceptionTypeSection(module_)) { return OrderedSectionID::exceptionType; }
-		// fall through
+		[[fallthrough]];
+	case OrderedSectionID::tag:
+		if(hasTagSection(module_)) { return OrderedSectionID::tag; }
+		[[fallthrough]];
 	case OrderedSectionID::global:
 		if(hasGlobalSection(module_)) { return OrderedSectionID::global; }
-		// fall through
+		[[fallthrough]];
 	case OrderedSectionID::memory:
 		if(hasMemorySection(module_)) { return OrderedSectionID::memory; }
-		// fall through
+		[[fallthrough]];
 	case OrderedSectionID::table:
 		if(hasTableSection(module_)) { return OrderedSectionID::table; }
-		// fall through
+		[[fallthrough]];
 	case OrderedSectionID::function:
 		if(hasFunctionSection(module_)) { return OrderedSectionID::function; }
-		// fall through
+		[[fallthrough]];
 	case OrderedSectionID::import_:
 		if(hasImportSection(module_)) { return OrderedSectionID::import_; }
-		// fall through
+		[[fallthrough]];
 	case OrderedSectionID::type:
 		if(hasTypeSection(module_)) { return OrderedSectionID::type; }
-		// fall through
+		[[fallthrough]];
 	case OrderedSectionID::moduleBeginning: return OrderedSectionID::moduleBeginning;
 
 	default: WAVM_UNREACHABLE();

@@ -142,7 +142,7 @@ void EmitFunctionContext::else_(NoImm imm)
 }
 void EmitFunctionContext::end(NoImm)
 {
-	WAVM_ASSERT(controlStack.size());
+	WAVM_ASSERT(!controlStack.empty());
 	ControlContext& currentContext = controlStack.back();
 
 	if(currentContext.type == ControlContext::Type::try_) { endTryWithoutCatch(); }
@@ -172,7 +172,7 @@ void EmitFunctionContext::end(NoImm)
 	currentContext.endBlock->moveAfter(irBuilder.GetInsertBlock());
 	irBuilder.SetInsertPoint(currentContext.endBlock);
 
-	if(currentContext.endPHIs.size())
+	if(!currentContext.endPHIs.empty())
 	{
 		// If the control context yields results, take the PHIs that merges all the control flow to
 		// the end and push their values onto the operand stack.

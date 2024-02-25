@@ -562,23 +562,13 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics,
 
 	throwException(ExceptionTypes::outOfBoundsMemoryAccess, {memory, outOfBoundsAddress});
 }
-
-#if 0
+#if 1
 WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics,
-							   "memoryTagRandomTagRefillFunction",
+							   "wavmdebuggingprint",
 							   void,
-							   memoryTagRandomTagRefillFunction,
-							   ::std::size_t nativeaddress)
-{
-	wavm_random_tag_fill_buffer_function(reinterpret_cast<void*>(nativeaddress));
-}
-
-WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics,
-							   "memoryTagDebugging",
-							   void,
-							   memoryTagDebugging,
+							   wavmdebuggingprint,
 							   size_t addr)
 {
-	fprintf(stderr,"memoryTagDebugging: %p\n",reinterpret_cast<void*>(addr));
+	fprintf(stderr,"wavmdebuggingprint: %p\n",reinterpret_cast<void*>(addr));
 }
 #endif

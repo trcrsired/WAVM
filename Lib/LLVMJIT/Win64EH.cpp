@@ -285,7 +285,8 @@ void printFunctionSEH(U8* imageBase, const RuntimeFunction& function)
 	}
 }
 
-void LLVMJIT::processSEHTables(U8* imageBase,
+#if 0
+void LLVMJIT::processSEHRelocateTables(U8* imageBase,
 							   const llvm::LoadedObjectInfo& loadedObject,
 							   const llvm::object::SectionRef& pdataSection,
 							   const U8* pdataCopy,
@@ -322,3 +323,17 @@ void LLVMJIT::processSEHTables(U8* imageBase,
 		}
 	}
 }
+#else
+void LLVMJIT::processSEHRelocateTables(U8* imageBase,
+									   llvm::LoadedObjectInfo const& loadedObject,
+									   llvm::object::SectionRef const& datasection,
+									   U8 const* sectiondata,
+									   Uptr sehTrampolineAddress)
+{
+	applyImageRelativeRelocations(loadedObject,
+								  datasection,
+								  sectiondata,
+								  reinterpret_cast<Uptr>(imageBase),
+								  sehTrampolineAddress);
+}
+#endif

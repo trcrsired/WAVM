@@ -756,6 +756,14 @@ struct FunctionPrintContext
 		string += moduleContext.names.exceptionTypes[imm.exceptionTypeIndex];
 		string += INDENT_STRING;
 	}
+	void delegate(BranchImm imm)
+	{
+		string += DEDENT_STRING;
+		controlStack.back().type = ControlContext::Type::delegate;
+		string += "\ndelegate ";
+		// string += moduleContext.names.exceptionTypes[imm.exceptionTypeIndex];
+		string += INDENT_STRING;
+	}
 	void catch_all(NoImm)
 	{
 		string += DEDENT_STRING;
@@ -786,6 +794,7 @@ private:
 			loop,
 			try_,
 			catch_,
+			delegate
 		};
 		Type type;
 		std::string labelId;
@@ -910,13 +919,13 @@ void ModulePrintContext::printModule()
 						names.globals[import_.index].c_str(),
 						"global");
 			break;
-		case ExternKind::exceptionType:
+		case ExternKind::tag:
 			printImport(string,
 						module_,
 						module_.exceptionTypes.imports[import_.index],
 						import_.index,
 						names.exceptionTypes[import_.index].c_str(),
-						"exception_type");
+						"tag");
 			break;
 
 		case ExternKind::invalid:

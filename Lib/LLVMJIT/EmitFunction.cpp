@@ -272,7 +272,6 @@ struct UnreachableOpVisitor
 		if(!unreachableControlDepth) { context.end(imm); }
 		else { --unreachableControlDepth; }
 	}
-
 	void try_(ControlStructureImm imm) { ++unreachableControlDepth; }
 	void catch_(ExceptionTypeImm imm)
 	{
@@ -281,6 +280,11 @@ struct UnreachableOpVisitor
 	void catch_all(NoImm imm)
 	{
 		if(!unreachableControlDepth) { context.catch_all(imm); }
+	}
+	void delegate(BranchImm imm)
+	{
+		if(!unreachableControlDepth) { context.delegate(imm); }
+		else { --unreachableControlDepth; }
 	}
 
 private:

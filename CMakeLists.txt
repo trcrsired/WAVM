@@ -396,7 +396,7 @@ function(WAVM_SET_TARGET_LINKER_OPTIONS TARGET_NAME)
 	else()
 		target_link_libraries(${TARGET_NAME} PRIVATE ${WAVM_LINKER_FLAGS})
 	endif()
-	
+
 	if(NOT CMAKE_SYSTEM_NAME STREQUAL "Windows")
 		get_target_property(TARGET_TYPE ${TARGET_NAME} TYPE)
 		if(TARGET_TYPE STREQUAL "STATIC_LIBRARY" AND WAVM_ENABLE_STATIC_LIBRARY_PIC)
@@ -451,8 +451,7 @@ function(WAVM_SET_TARGET_SANITIZER_OPTIONS TARGET_NAME)
 	endif()
 endfunction()
 
-# A function that sets compile options that are common to all WAVM targets.
-function(WAVM_SET_TARGET_COMPILE_OPTIONS TARGET_NAME)
+function(WAVM_SET_TARGET_COMPILE_OPTIONS_EXTRA TARGET_NAME ENABLE_RTTI)
 	# Add the WAVM public include directory.
 	target_include_directories(
 		${TARGET_NAME}
@@ -466,7 +465,6 @@ function(WAVM_SET_TARGET_COMPILE_OPTIONS TARGET_NAME)
 	
 	# Set sanitizer options.
 	WAVM_SET_TARGET_SANITIZER_OPTIONS(${TARGET_NAME})
-	
 	if(MSVC)
 		# Compile files in parallel.
 		if(NOT (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
@@ -508,10 +506,10 @@ function(WAVM_SET_TARGET_COMPILE_OPTIONS TARGET_NAME)
 		# Compile with all+extra warnings and fatal warnings
 		target_compile_options(${TARGET_NAME} PRIVATE "-Wall")
 		target_compile_options(${TARGET_NAME} PRIVATE "-Wextra")
-
-		# Disable RTTI to allow linking against a build of LLVM that was compiled without it.
-		target_compile_options(${TARGET_NAME} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>)
-
+		if(NOT ${ENABLE_RTTI})
+			# Disable RTTI to allow linking against a build of LLVM that was compiled without it.
+			target_compile_options(${TARGET_NAME} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>)
+		endif()
 		# Don't eliminate frame pointers: this makes thread forking work robustly if one of the
 		# sanitizers requires a frame pointer, and makes ASAN's stack trace on malloc much better
 		# without using the slow libunwind path.
@@ -525,13 +523,18 @@ function(WAVM_SET_TARGET_COMPILE_OPTIONS TARGET_NAME)
 	endif()
 	
 	# Add the optional flags that the compiler was detected to support.
+	target_compile_options(${TARGET_NAME} PRIVATE ${WAVM_C_CXX_FLAGS})
 	# This needs to happen *AFTER* the above -Wall -Wextra to ensure that those flags don't
 	# re-enable warnings that are being disabled by these flags.
-	target_compile_options(${TARGET_NAME} PRIVATE ${WAVM_C_CXX_FLAGS})
 	target_compile_options(${TARGET_NAME} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${WAVM_CXX_FLAGS}>)
 
 	# Add the linker flags.
 	WAVM_SET_TARGET_LINKER_OPTIONS(${TARGET_NAME})
+endfunction()
+
+# A function that sets compile options that are common to all WAVM targets.
+function(WAVM_SET_TARGET_COMPILE_OPTIONS TARGET_NAME)
+	WAVM_SET_TARGET_COMPILE_OPTIONS_EXTRA(${TARGET_NAME} Off)
 endfunction()
 
 function(WAVM_INSTALL_TARGET TARGET_NAME)
@@ -688,6 +691,7 @@ if(WAVM_ENABLE_STATIC_LINKING)
 else()
 	add_library(libWAVM SHARED)
 endif()
+
 WAVM_SET_TARGET_COMPILE_OPTIONS(libWAVM)
 WAVM_INSTALL_TARGET(libWAVM)
 set_target_properties(libWAVM PROPERTIES
@@ -742,6 +746,7 @@ endif()
 
 # Add the library dependencies accumulated from the various library components as link dependencies
 # of the monolithic WAVM library.
+
 target_link_libraries(libWAVM PRIVATE ${WAVM_MONOLIB_PRIVATE_LIBS})
 target_link_libraries(libWAVM PUBLIC ${WAVM_MONOLIB_PUBLIC_LIBS})
 

@@ -28,7 +28,8 @@ enum class NameSubsectionType : U8
 	global = 7,
 	elemSegment = 8,
 	dataSegment = 9,
-	exceptionTypes = 10,
+	tag = 11,
+	exceptionTypes = tag,
 	invalid = 0xff
 };
 
@@ -84,6 +85,7 @@ static void deserializeNameSubsection(const Module& module_,
 
 	U32 numSubsectionBytes = 0;
 	serializeVarUInt32(stream, numSubsectionBytes);
+
 
 	MemoryInputStream substream(stream.advance(numSubsectionBytes), numSubsectionBytes);
 	switch((NameSubsectionType)subsectionType)

@@ -157,7 +157,9 @@ static void validateExternKind(const Module& module_, ExternKind externKind)
 	case ExternKind::global: break;
 
 	case ExternKind::exceptionType:
+#if 0
 		VALIDATE_FEATURE("exception type extern", exceptionHandling);
+#endif
 		break;
 
 	case ExternKind::invalid:
@@ -417,7 +419,7 @@ struct FunctionValidationContext
 	}
 	void else_(NoImm imm)
 	{
-		WAVM_ASSERT(controlStack.size());
+		WAVM_ASSERT(!controlStack.empty());
 
 		if(controlStack.back().type != ControlContext::Type::ifThen)
 		{
@@ -434,7 +436,7 @@ struct FunctionValidationContext
 	}
 	void end(NoImm)
 	{
-		WAVM_ASSERT(controlStack.size());
+		WAVM_ASSERT(!controlStack.empty());
 
 		if(controlStack.back().type == ControlContext::Type::try_)
 		{
@@ -452,19 +454,21 @@ struct FunctionValidationContext
 		validateStackEmptyAtEndOfControlStructure();
 
 		controlStack.pop_back();
-		if(controlStack.size()) { pushOperandTuple(results); }
+		if(!controlStack.empty()) { pushOperandTuple(results); }
 	}
 	void try_(ControlStructureImm imm)
 	{
 		const FunctionType type = validateBlockType(module_, imm.type);
+#if 0
 		VALIDATE_FEATURE("try", exceptionHandling);
+#endif
 		popAndValidateTypeTuple("try arguments", type.params());
 		pushControlStack(ControlContext::Type::try_, type.results(), type.results());
 		pushOperandTuple(type.params());
 	}
 	void validateCatch()
 	{
-		WAVM_ASSERT(controlStack.size());
+		WAVM_ASSERT(!controlStack.empty());
 
 		popAndValidateTypeTuple("try result", controlStack.back().results);
 		validateStackEmptyAtEndOfControlStructure();
@@ -479,15 +483,32 @@ struct FunctionValidationContext
 	}
 	void catch_(ExceptionTypeImm imm)
 	{
+#if 0
 		VALIDATE_FEATURE("catch", exceptionHandling);
-		VALIDATE_INDEX(imm.exceptionTypeIndex, module_.exceptionTypes.size());
-		const ExceptionType& type = module_.exceptionTypes.getType(imm.exceptionTypeIndex);
+#endif
+		VALIDATE_INDEX(imm.exceptionTypeIndex, module_.tagSegments.size());
 		validateCatch();
-		for(auto param : type.params) { pushOperand(param); }
+		const MemoryType& memoryType = module_.memories.getType(0);
+		ValueType stype = ValueType::i32;
+		if(memoryType.indexType == IndexType::i64) { stype = ValueType::i64; }
+		pushOperand(stype);
 	}
+	void delegate(BranchImm imm)
+	{
+		WAVM_ASSERT(!controlStack.empty());
+
+		if(controlStack.back().type != ControlContext::Type::try_)
+		{
+			throw ValidationException("delegate must occur in try context");
+		}
+		controlStack.pop_back();
+	}
+
 	void catch_all(NoImm)
 	{
+#if 0
 		VALIDATE_FEATURE("catch_all", exceptionHandling);
+#endif
 		validateCatch();
 	}
 
@@ -631,16 +652,18 @@ struct FunctionValidationContext
 
 	void throw_(ExceptionTypeImm imm)
 	{
-		VALIDATE_FEATURE("throw", exceptionHandling);
-		VALIDATE_INDEX(imm.exceptionTypeIndex, module_.exceptionTypes.size());
-		const ExceptionType& exceptionType = module_.exceptionTypes.getType(imm.exceptionTypeIndex);
-		popAndValidateTypeTuple("exception arguments", exceptionType.params);
+		VALIDATE_INDEX(imm.exceptionTypeIndex, module_.tagSegments.size());
+		auto& tagseg{module_.tagSegments[imm.exceptionTypeIndex]};
+		if(tagseg.attribute != 0) { std::abort(); }
+		popAndValidateOperand("throw exception tag", ValueType::i64);
 		enterUnreachable();
 	}
 
 	void rethrow(RethrowImm imm)
 	{
+#if 0
 		VALIDATE_FEATURE("rethrow", exceptionHandling);
+#endif
 		VALIDATE_UNLESS(
 			"rethrow must target a catch: ",
 			getBranchTargetByDepth(imm.catchDepth).type != ControlContext::Type::catch_);
@@ -843,7 +866,7 @@ private:
 			ifElse,
 			loop,
 			try_,
-			catch_
+			catch_,
 		};
 
 		Type type;
@@ -875,7 +898,7 @@ private:
 
 	void validateStackEmptyAtEndOfControlStructure()
 	{
-		WAVM_ASSERT(controlStack.size());
+		WAVM_ASSERT(!controlStack.empty());
 
 		if(stack.size() != controlStack.back().outerStackSize)
 		{
@@ -892,7 +915,7 @@ private:
 
 	void enterUnreachable()
 	{
-		WAVM_ASSERT(controlStack.size());
+		WAVM_ASSERT(!controlStack.empty());
 
 		stack.resize(controlStack.back().outerStackSize);
 		controlStack.back().isReachable = false;
@@ -920,7 +943,7 @@ private:
 									 Uptr operandDepth,
 									 const ValueType expectedType)
 	{
-		WAVM_ASSERT(controlStack.size());
+		WAVM_ASSERT(!controlStack.empty());
 
 		ValueType actualType;
 		if(stack.size() > controlStack.back().outerStackSize + operandDepth)
@@ -978,7 +1001,7 @@ private:
 	{
 		ValueType actualType = peekAndValidateOperand(context, 0, expectedType);
 
-		WAVM_ASSERT(controlStack.size());
+		WAVM_ASSERT(!controlStack.empty());
 		if(stack.size() > controlStack.back().outerStackSize) { stack.pop_back(); }
 
 		return actualType;
