@@ -374,7 +374,7 @@ namespace WAVM { namespace LLVMJIT {
 	// Reproduces how LLVM symbols are mangled to make object symbols for the current platform.
 	inline std::string mangleSymbol(std::string&& symbol)
 	{
-#if((defined(_WIN32) && !defined(_WIN64))) || defined(__APPLE__)
+#if ((defined(_WIN32) && !defined(_WIN64))) || defined(__APPLE__)
 		return std::string("_") + std::move(symbol);
 #else
 		return std::move(symbol);
@@ -384,7 +384,7 @@ namespace WAVM { namespace LLVMJIT {
 	// The inverse of mangleSymbol
 	inline std::string demangleSymbol(std::string&& symbol)
 	{
-#if((defined(_WIN32) && !defined(_WIN64))) || defined(__APPLE__)
+#if ((defined(_WIN32) && !defined(_WIN64))) || defined(__APPLE__)
 		WAVM_ASSERT(symbol[0] == '_');
 		return std::move(symbol).substr(1);
 #else
@@ -447,14 +447,11 @@ namespace WAVM { namespace LLVMJIT {
 											 bool shouldLogMetrics,
 											 llvm::TargetMachine* targetMachine);
 
-	extern void processSEHTables(U8* imageBase,
-								 const llvm::LoadedObjectInfo& loadedObject,
-								 const llvm::object::SectionRef& pdataSection,
-								 const U8* pdataCopy,
-								 Uptr pdataNumBytes,
-								 const llvm::object::SectionRef& xdataSection,
-								 const U8* xdataCopy,
-								 Uptr sehTrampolineAddress);
+	extern void processSEHRelocateTables(U8* imageBase,
+										 llvm::LoadedObjectInfo const& loadedObject,
+										 llvm::object::SectionRef const& datasection,
+										 U8 const* sectiondata,
+										 Uptr sehTrampolineAddress);
 
 	template<typename T>
 	inline ::llvm::LoadInst* wavmCreateLoad(T& obj,
