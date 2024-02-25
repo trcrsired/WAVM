@@ -194,7 +194,6 @@ static inline void generate_catch_common(EmitFunctionContext& emitFunctionContex
 	irBuilder.SetInsertPoint(landingPadBlock);
 	auto landingPadInst = irBuilder.CreateLandingPad(
 		llvm::StructType::get(llvmContext, {llvmContext.i8PtrType, llvmContext.i32Type}), 1);
-	//	landingPadInst->setCleanup(true);
 
 	tryStack.push_back(TryContext{landingPadBlock});
 	catchStack.push_back(CatchContext{nullptr, landingPadInst, nullptr, landingPadBlock, nullptr});
@@ -282,7 +281,7 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	llvm::Constant* catchTypeId = ::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex);
 
 	catchContext.landingPadInst->setCleanup(false);
-	//	catchContext.landingPadInst->addClause(moduleContext.runtimeExceptionTypeInfo);
+	catchContext.landingPadInst->addClause(::llvm::ConstantPointerNull::get(irBuilder.getPtrTy()));
 
 	// Change the top of the control stack to a catch clause.
 	controlContext.type = ControlContext::Type::catch_;
@@ -305,7 +304,7 @@ void EmitFunctionContext::catch_all(NoImm)
 	else { exitCatch(); }
 
 	branchToEndOfControlContext();
-
+	catchContext.landingPadInst->addClause(::llvm::ConstantPointerNull::get(irBuilder.getPtrTy()));
 	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
 	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catchall", function);
 	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "unhandledall", function);
