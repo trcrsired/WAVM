@@ -209,41 +209,6 @@ void LLVMJIT::emitModule(const IR::Module& irModule,
 		createImportedConstant(outLLVMModule, "unoptimizableOne"), moduleContext.iptrType);
 #endif
 
-	// Create a LLVM external global that will point to the std::type_info for Runtime::Exception.
-	if(moduleContext.useWindowsSEH)
-	{
-		// The Windows type_info is referenced by the exception handling tables with a 32-bit
-		// image-relative offset, so we have to create a copy of it in the image.
-		const char* typeMangledName = ".PEAUException@Runtime@WAVM@@";
-		llvm::Type* typeDescriptorTypeElements[3]
-			= {llvmContext.i8PtrType->getPointerTo(),
-			   llvmContext.i8PtrType,
-			   llvm::ArrayType::get(llvmContext.i8Type, strlen(typeMangledName) + 1)};
-		llvm::StructType* typeDescriptorType = llvm::StructType::create(typeDescriptorTypeElements);
-		llvm::Constant* typeDescriptorElements[3]
-			= {llvm::ConstantPointerNull::get(llvmContext.i8PtrType->getPointerTo()),
-			   llvm::ConstantPointerNull::get(llvmContext.i8PtrType),
-			   llvm::ConstantDataArray::getString(llvmContext, typeMangledName, true)};
-		llvm::Constant* typeDescriptor
-			= llvm::ConstantStruct::get(typeDescriptorType, typeDescriptorElements);
-		llvm::GlobalVariable* typeDescriptorVariable
-			= new llvm::GlobalVariable(*moduleContext.llvmModule,
-									   typeDescriptorType,
-									   false,
-									   llvm::GlobalVariable::LinkOnceODRLinkage,
-									   typeDescriptor,
-									   "??_R0PEAUException@Runtime@WAVM@@@8");
-		typeDescriptorVariable->setComdat(
-			moduleContext.llvmModule->getOrInsertComdat("??_R0PEAUException@Runtime@WAVM@@@8"));
-		moduleContext.runtimeExceptionTypeInfo = typeDescriptorVariable;
-	}
-	else
-	{
-		moduleContext.runtimeExceptionTypeInfo = llvm::ConstantExpr::getPointerCast(
-			createImportedConstant(*moduleContext.llvmModule, "runtimeExceptionTypeTagInfo"),
-			llvmContext.i8PtrType);
-	}
-
 	// Create the LLVM functions.
 	moduleContext.functions.resize(irModule.functions.size());
 	for(Uptr functionIndex = 0; functionIndex < irModule.functions.size(); ++functionIndex)

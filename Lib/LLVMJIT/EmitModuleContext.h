@@ -52,10 +52,6 @@ namespace WAVM { namespace LLVMJIT {
 		llvm::Value* fpRoundingModeMetadata;
 		llvm::Value* fpExceptionMetadata;
 
-		llvm::Function* cxaBeginCatchFunction = nullptr;
-		llvm::Function* cxaEndCatchFunction = nullptr;
-		llvm::Constant* runtimeExceptionTypeInfo = nullptr;
-
 		llvm::Function* wavmThrowWasmEhtagFunction = nullptr;
 
 		EmitModuleContext(const IR::Module& inModule,
