@@ -44,8 +44,8 @@ namespace {
 	struct wavm_eh_tag_unwind_eh
 	{
 		_Unwind_Exception itaniumeh;
-		::std::uintptr_t ehtag;
-		::std::uintptr_t userdata;
+		::std::uint_least64_t ehtag;
+		::std::uint_least64_t userdata;
 	};
 
 	inline
@@ -65,7 +65,7 @@ namespace {
 
 }
 
-extern "C" void wavm_throw_wasm_ehtag(::std::uintptr_t tag, ::std::uintptr_t value)
+extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t tag, ::std::uint_least64_t value)
 {
 	unwdexceptiontable.ehtag = tag;
 	unwdexceptiontable.userdata = value;
@@ -77,16 +77,7 @@ static llvm::Function* getWavmThrowWasmEhtagFunction(EmitModuleContext& moduleCo
 	if(!moduleContext.wavmThrowWasmEhtagFunction)
 	{
 		LLVMContext& llvmContext = moduleContext.llvmContext;
-		::llvm::Type* ptruinttype{};
-		if constexpr(sizeof(::std::uintptr_t) == sizeof(::std::uint_least32_t))
-		{
-			ptruinttype = ::llvm::Type::getInt32Ty(llvmContext);
-		}
-		else
-		{
-			static_assert(sizeof(::std::uintptr_t) == sizeof(::std::uint_least64_t));
-			ptruinttype = ::llvm::Type::getInt64Ty(llvmContext);
-		}
+		::llvm::Type* ptruinttype{::llvm::Type::getInt64Ty(llvmContext)};
 		moduleContext.wavmThrowWasmEhtagFunction = llvm::Function::Create(
 			llvm::FunctionType::get(
 				llvm::Type::getVoidTy(llvmContext), {ptruinttype, ptruinttype}, false),
