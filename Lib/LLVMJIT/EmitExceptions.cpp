@@ -320,12 +320,10 @@ void EmitFunctionContext::delegate(BranchImm imm)
 	CatchContext& catchContext = catchStack.back();
 	{
 		::llvm::IRBuilderBase::InsertPointGuard guard(irBuilder);
-		//	llvm::BasicBlock* savedInsertionPoint = irBuilder.GetInsertBlock();
 		irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
 
 		catchContext.landingPadInst->setCleanup(true);
 		irBuilder.CreateResume(catchContext.landingPadInst);
-		//	catchContext.nextHandlerBlock=nullptr;
 	}
 	this->end(NoImm{});
 }
