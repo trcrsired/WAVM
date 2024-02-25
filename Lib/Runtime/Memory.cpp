@@ -444,7 +444,7 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics,
 
 	throwException(ExceptionTypes::outOfBoundsMemoryAccess, {memory, outOfBoundsAddress});
 }
-#if 0
+#if 1
 WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics,
 							   "wavmdebuggingprint",
 							   void,

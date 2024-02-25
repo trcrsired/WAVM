@@ -167,7 +167,7 @@ void EmitFunctionContext::try_(ControlStructureImm imm)
 	// Repush the try arguments.
 	pushMultiple(tryArgs, blockType.params().size());
 }
-#if 0
+#if 1
 [[maybe_unused]]
 static inline void foodebugging(EmitFunctionContext& functionContext, ::llvm::Value* memaddress)
 {
@@ -204,11 +204,14 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
 	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catchtag", function);
 	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "unhandledtag", function);
-
 	auto unwindehptr = irBuilder.CreateExtractValue(catchContext.landingPadInst, {0});
 	auto magic = ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, llvmContext.i64Type, unwindehptr);
 	auto isUserExceptionType = irBuilder.CreateICmpEQ(
 		magic, ::llvm::ConstantInt::get(llvmContext.i64Type, exceptionclass));
+
+	auto catchchecktagBlock = llvm::BasicBlock::Create(llvmContext, "catchchecktag", function);
+	irBuilder.CreateCondBr(isUserExceptionType, catchchecktagBlock, unhandledBlock);
+	irBuilder.SetInsertPoint(catchchecktagBlock);
 
 	auto ehtagId = ::WAVM::LLVMJIT::wavmCreateLoad(
 		irBuilder,
@@ -219,9 +222,7 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	auto isehtagId = irBuilder.CreateICmpEQ(
 		ehtagId, ::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex));
 
-	auto isehtagandusereh = irBuilder.CreateAnd(isUserExceptionType, isehtagId);
-
-	irBuilder.CreateCondBr(isehtagandusereh, catchBlock, unhandledBlock);
+	irBuilder.CreateCondBr(isehtagId, catchBlock, unhandledBlock);
 	catchContext.nextHandlerBlock = unhandledBlock;
 	irBuilder.SetInsertPoint(catchBlock);
 
@@ -289,7 +290,12 @@ void EmitFunctionContext::rethrow(RethrowImm imm)
 	WAVM_ASSERT(imm.catchDepth < catchStack.size());
 	CatchContext& catchContext = catchStack[catchStack.size() - imm.catchDepth - 1];
 	catchContext.landingPadInst->setCleanup(true);
+#if 0
+	catchContext.landingPadInst->addClause(::llvm::ConstantPointerNull::get(irBuilder.getPtrTy()));
 
+	auto unwindehptr = irBuilder.CreateExtractValue(catchContext.landingPadInst, {0});
+	foodebugging(*this, unwindehptr);
+#endif
 	irBuilder.CreateResume(catchContext.landingPadInst);
 	irBuilder.CreateUnreachable();
 	enterUnreachable();
