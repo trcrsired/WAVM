@@ -323,7 +323,6 @@ void EmitFunctionContext::delegate(BranchImm imm)
 		irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
 
 		catchContext.landingPadInst->setCleanup(true);
-		irBuilder.CreateResume(catchContext.landingPadInst);
 	}
 	this->end(NoImm{});
 }
