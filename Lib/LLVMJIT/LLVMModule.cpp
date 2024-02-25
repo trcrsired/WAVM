@@ -40,10 +40,10 @@ PUSH_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 #include <llvm/Support/MemoryBuffer.h>
 POP_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 
-#if(defined(_WIN32) && !defined(__WINE__)) || defined(__CYGWIN__)
-#define USE_MSVC_SEH 1
+#if (defined(_WIN32) && !defined(__WINE__)) || defined(__CYGWIN__)
+#define USE_WINDOWS_SEH 1
 #else
-#define USE_MSVC_SEH 0
+#define USE_WINDOWS_SEH 0
 #endif
 
 #define KEEP_UNLOADED_MODULE_ADDRESSES_RESERVED 0
@@ -114,7 +114,7 @@ struct LLVMJIT::ModuleMemoryManager : llvm::RTDyldMemoryManager
 
 	void registerEHFrames(U8* addr, U64 loadAddr, uintptr_t numBytes) override
 	{
-		if(!USE_MSVC_SEH)
+		if(!USE_WINDOWS_SEH)
 		{
 			Platform::registerEHFrames(imageBaseAddress, addr, numBytes);
 			hasRegisteredEHFrames = true;
@@ -155,7 +155,7 @@ struct LLVMJIT::ModuleMemoryManager : llvm::RTDyldMemoryManager
 										U32 readWriteAlignment) override
 #endif
 	{
-		if(USE_MSVC_SEH)
+		if(USE_WINDOWS_SEH)
 		{
 			// Pad the code section to allow for the SEH trampoline.
 			numCodeBytes += 32;
@@ -434,7 +434,7 @@ Module::Module(const std::vector<U8>& objectBytes,
 	Uptr pdataNumBytes = 0;
 	llvm::object::SectionRef xdataSection;
 	std::unique_ptr<U8[]> xdataCopy;
-	if(USE_MSVC_SEH)
+	if(USE_WINDOWS_SEH)
 	{
 		for(auto section : object->sections())
 		{
@@ -486,7 +486,7 @@ Module::Module(const std::vector<U8>& objectBytes,
 		Errors::fatalf("RuntimeDyld failed: %s", loader.getErrorString().data());
 	}
 
-	if(USE_MSVC_SEH && pdataCopy)
+	if(USE_WINDOWS_SEH && pdataCopy)
 	{
 		// Lookup the real address of _CxxFrameHandler3.
 		const llvm::JITEvaluatedSymbol sehHandlerSymbol
