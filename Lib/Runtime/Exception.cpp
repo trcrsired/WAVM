@@ -176,14 +176,15 @@ Exception* Runtime::createException(ExceptionType* type,
 									Platform::CallStack&& callStack)
 {
 	const IR::TypeTuple& params = type->sig.params;
-	WAVM_ASSERT(numArguments == params.size());
+	::std::size_t paramsize{params.size()};
+	WAVM_ASSERT(numArguments == paramsize);
 
 	const bool isUserException = type->compartment != nullptr;
-	Exception* exception = new(malloc(Exception::calcNumBytes(params.size())))
+	Exception* exception = new(malloc(Exception::calcNumBytes(paramsize)))
 		Exception(type->id, type, isUserException, std::move(callStack));
-	if(params.size())
+	if(!paramsize && arguments != nullptr)
 	{
-		memcpy(exception->arguments, arguments, sizeof(IR::UntaggedValue) * params.size());
+		memcpy(exception->arguments, arguments, sizeof(IR::UntaggedValue) * paramsize);
 	}
 	return exception;
 }
@@ -277,48 +278,6 @@ std::string Runtime::describeException(const Exception* exception)
 	WAVM_ASSERT(type->sig.params.size() == arguments.size());
 	throwException(
 		createException(type, arguments.data(), arguments.size(), Platform::captureCallStack(1)));
-}
-
-WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsException,
-							   "createException",
-							   Uptr,
-							   intrinsicCreateException,
-							   Uptr exceptionTypeId,
-							   Uptr argsBits,
-							   U32 isUserException)
-{
-	ExceptionType* exceptionType;
-	{
-		Compartment* compartment = getCompartmentRuntimeData(contextRuntimeData)->compartment;
-		Platform::RWMutex::ExclusiveLock compartmentLock(compartment->mutex);
-		exceptionType = compartment->exceptionTypes[exceptionTypeId];
-	}
-	auto args = reinterpret_cast<const IR::UntaggedValue*>(Uptr(argsBits));
-
-	Exception* exception = createException(
-		exceptionType, args, exceptionType->sig.params.size(), Platform::captureCallStack(1));
-
-	return reinterpret_cast<Uptr>(exception);
-}
-
-WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsException,
-							   "destroyException",
-							   void,
-							   intrinsicDestroyException,
-							   Uptr exceptionBits)
-{
-	Exception* exception = reinterpret_cast<Exception*>(exceptionBits);
-	destroyException(exception);
-}
-
-WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsException,
-							   "throwException",
-							   void,
-							   intrinsicThrowException,
-							   Uptr exceptionBits)
-{
-	Exception* exception = reinterpret_cast<Exception*>(exceptionBits);
-	throw exception;
 }
 
 static bool isRuntimeException(const Platform::Signal& signal)
@@ -436,14 +395,4 @@ void Runtime::unwindSignalsAsExceptions(const std::function<void()>& thunk)
 		translateSignalToRuntimeException(context.signal, std::move(context.callStack), exception);
 		throw exception;
 	}
-}
-
-WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsException,
-							   "throwExceptionTag",
-							   void,
-							   intrinsicThrowExceptionTag,
-							   uint64_t tag,
-							   uint64_t ehptr)
-{
-	throw ::WAVM::Runtime::ExceptionTypeTag{tag, ehptr};
 }
