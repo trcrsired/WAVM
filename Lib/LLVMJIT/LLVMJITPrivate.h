@@ -41,11 +41,7 @@ PUSH_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 #include <llvm/Target/TargetMachine.h>
 POP_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 
-#ifdef __MINGW32__
 #define WINDOWS_SEH_HANDLER_NAME "__gxx_personality_seh0"
-#else
-#define WINDOWS_SEH_HANDLER_NAME "__CxxFrameHandler3"
-#endif
 
 #define LAZY_PARSE_DWARF_LINE_INFO (LLVM_VERSION_MAJOR >= 9)
 
@@ -450,7 +446,7 @@ namespace WAVM { namespace LLVMJIT {
 											 llvm::Module&& llvmModule,
 											 bool shouldLogMetrics,
 											 llvm::TargetMachine* targetMachine);
-
+#if 0
 	extern void processSEHTables(U8* imageBase,
 								 const llvm::LoadedObjectInfo& loadedObject,
 								 const llvm::object::SectionRef& pdataSection,
@@ -459,7 +455,7 @@ namespace WAVM { namespace LLVMJIT {
 								 const llvm::object::SectionRef& xdataSection,
 								 const U8* xdataCopy,
 								 Uptr sehTrampolineAddress);
-
+#endif
 	template<typename T>
 	inline ::llvm::LoadInst* wavmCreateLoad(T& obj,
 											[[maybe_unused]] ::llvm::Type* valuetype,

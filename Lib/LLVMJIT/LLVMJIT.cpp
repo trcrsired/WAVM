@@ -34,14 +34,21 @@ namespace LLVMRuntimeSymbols {
 
 	extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t, ::std::uint_least64_t);
 
-#ifdef _WIN32
+#if(defined(_WIN32) && !defined(__WINE__)) || defined(__CYGWIN__)
 	// the LLVM X86 code generator calls __chkstk when allocating more than 4KB of stack space
-#ifdef __MINGW32__
+#if defined(__MINGW32__) || defined(__CYGWIN__)
 	extern "C" void ___chkstk_ms();
 	extern "C" void __gxx_personality_seh0();
 #else
 	extern "C" void __chkstk();
-	extern "C" void __CxxFrameHandler3();
+	extern "C" void pseudo_gxx_personality_seh0(PEXCEPTION_RECORD ms_exc,
+												void* this_frame,
+												PCONTEXT ms_orig_context,
+												PDISPATCHER_CONTEXT ms_disp)
+	{
+		return _GCC_specific_handler(
+			ms_exc, this_frame, ms_orig_context, ms_disp, __gxx_personality_imp);
+	}
 #endif
 #else
 #if defined(__APPLE__)
@@ -67,7 +74,7 @@ namespace LLVMRuntimeSymbols {
 		{"__gxx_personality_seh0", (void*)&__gxx_personality_seh0},
 #else
 		{"__chkstk", (void*)&__chkstk},
-		{"__CxxFrameHandler3", (void*)&__CxxFrameHandler3},
+		{"__gxx_personality_seh0", (void*)&pseudo_gxx_personality_seh0},
 #endif
 #else
 #if defined(__APPLE__)

@@ -746,15 +746,6 @@ endif()
 
 # Add the library dependencies accumulated from the various library components as link dependencies
 # of the monolithic WAVM library.
-add_library(RuntimeExceptionTypeInfo OBJECT ${CMAKE_SOURCE_DIR}/Lib/Utils/RuntimeExceptionTypeInfo.cpp)
-WAVM_SET_TARGET_COMPILE_OPTIONS_EXTRA(RuntimeExceptionTypeInfo On)
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-	if(NOT WAVM_ENABLE_STATIC_LINKING OR WAVM_ENABLE_STATIC_LIBRARY_PIC)
-		# Ensure that even static libraries are relocatable so they can be linked into a .so
-		target_compile_options(RuntimeExceptionTypeInfo PRIVATE "-fPIC")
-	endif()
-endif()
-list(APPEND WAVM_MONOLIB_PRIVATE_LIBS RuntimeExceptionTypeInfo)
 
 target_link_libraries(libWAVM PRIVATE ${WAVM_MONOLIB_PRIVATE_LIBS})
 target_link_libraries(libWAVM PUBLIC ${WAVM_MONOLIB_PUBLIC_LIBS})

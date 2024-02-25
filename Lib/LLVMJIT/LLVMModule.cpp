@@ -40,22 +40,7 @@ PUSH_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 #include <llvm/Support/MemoryBuffer.h>
 POP_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 
-#ifdef _MSC_VER
-#define USE_MSVC_SEH 1
-#else
 #define USE_MSVC_SEH 0
-#endif
-
-#if !USE_MSVC_SEH
-#include <cxxabi.h>
-#endif
-
-namespace WAVM { namespace Runtime {
-	struct ExceptionType;
-#if !USE_MSVC_SEH
-	::std::type_info const* getRttiFromExceptionTypeTag();
-#endif
-}}
 
 #define KEEP_UNLOADED_MODULE_ADDRESSES_RESERVED 0
 
@@ -435,6 +420,7 @@ Module::Module(const std::vector<U8>& objectBytes,
 	loader.setProcessAllSections(true);
 #endif
 
+#if 0
 	// The LLVM dynamic loader doesn't correctly apply the IMAGE_REL_AMD64_ADDR32NB relocations in
 	// the pdata and xdata sections
 	// (https://github.com/llvm-mirror/llvm/blob/e84d8c12d5157a926db15976389f703809c49aa5/lib/ExecutionEngine/RuntimeDyld/Targets/RuntimeDyldCOFFX86_64.h#L96)
@@ -488,7 +474,7 @@ Module::Module(const std::vector<U8>& objectBytes,
 			}
 		}
 	}
-
+#endif
 	// Use the LLVM object loader to load the object.
 	std::unique_ptr<llvm::RuntimeDyld::LoadedObjectInfo> loadedObject = loader.loadObject(*object);
 	loader.finalizeWithMemoryManagerLocking();
@@ -496,7 +482,7 @@ Module::Module(const std::vector<U8>& objectBytes,
 	{
 		Errors::fatalf("RuntimeDyld failed: %s", loader.getErrorString().data());
 	}
-
+#if 0
 	if(USE_MSVC_SEH && pdataCopy)
 	{
 		// Lookup the real address of _CxxFrameHandler3.
@@ -538,7 +524,7 @@ Module::Module(const std::vector<U8>& objectBytes,
 		delete[] xdataCopy;
 		xdataCopy = nullptr;
 	}
-
+#endif
 	// After having a chance to manually apply relocations for the pdata/xdata sections, apply the
 	// final non-writable memory permissions.
 	memoryManager->reallyFinalizeMemory();
@@ -788,15 +774,6 @@ std::shared_ptr<LLVMJIT::Module> LLVMJIT::loadModule(
 #if LLVM_VERSION_MAJOR < 10
 	// Bind the unoptimizableOne symbol to 1.
 	importedSymbolMap.addOrFail("unoptimizableOne", 1);
-#endif
-
-#if !USE_MSVC_SEH
-	std::type_info const* runtimeExceptionTypeTagInfo
-		= ::WAVM::Runtime::getRttiFromExceptionTypeTag();
-	// Bind the std::type_info for Runtime::ExceptionTypeTag.
-	importedSymbolMap.addOrFail("runtimeExceptionTypeTagInfo",
-								reinterpret_cast<Uptr>(runtimeExceptionTypeTagInfo));
-
 #endif
 
 	// Load the module.

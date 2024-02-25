@@ -44,8 +44,7 @@ EmitModuleContext::EmitModuleContext(const IR::Module& inIRModule,
 , diBuilder(*inLLVMModule)
 {
 	targetArch = targetMachine->getTargetTriple().getArch();
-	useWindowsSEH
-		= targetMachine->getTargetTriple().getEnvironment() == llvm::Triple::EnvironmentType::MSVC;
+	useWindowsSEH = targetMachine->getTargetTriple().isOSWindows();
 
 #if LLVM_VERSION_MAJOR >= 7
 	const U32 numPointerBytes = targetMachine->getProgramPointerSize();
