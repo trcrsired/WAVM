@@ -298,7 +298,6 @@ namespace WAVM { namespace LLVMJIT {
 
 		void endTryWithoutCatch();
 		void endTryCatch();
-		void exitCatch();
 
 #define VISIT_OPCODE(encoding, name, nameString, Imm, ...) void name(IR::Imm imm);
 		WAVM_ENUM_OPERATORS(VISIT_OPCODE)
