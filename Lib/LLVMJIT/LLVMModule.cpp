@@ -438,11 +438,6 @@ Module::Module(const std::vector<U8>& objectBytes,
 	// (https://github.com/llvm-mirror/llvm/blob/e84d8c12d5157a926db15976389f703809c49aa5/lib/ExecutionEngine/RuntimeDyld/Targets/RuntimeDyldCOFFX86_64.h#L96)
 	// Make a copy of those sections before they are clobbered, so we can do the fixup ourselves
 	// later.
-#if 0
-	llvm::object::SectionRef pdataSection;
-	std::unique_ptr<U8[]> pdataCopy;
-	Uptr pdataNumBytes = 0;
-#endif
 	struct xpdatainformation
 	{
 		llvm::object::SectionRef datasection;
@@ -450,8 +445,6 @@ Module::Module(const std::vector<U8>& objectBytes,
 	};
 	::std::vector<xpdatainformation> pdatainfos, xdatainfos;
 
-	llvm::object::SectionRef xdataSection;
-	std::unique_ptr<U8[]> xdataCopy;
 	if(USE_WINDOWS_SEH)
 	{
 		for(auto section : object->sections())
