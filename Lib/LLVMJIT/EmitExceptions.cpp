@@ -217,41 +217,7 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 	WAVM_ASSERT(imm.exceptionTypeIndex < irModule.tagSegments.size());
 
 	auto& tagseg{irModule.tagSegments[imm.exceptionTypeIndex]};
-#if 0
-	catchContext.landingPadInst->addClause(::llvm::ConstantPointerNull::get(irBuilder.getPtrTy()));
 
-	auto unwindehptr = irBuilder.CreateExtractValue(catchContext.landingPadInst, {0});
-	auto magic = ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, llvmContext.i64Type, unwindehptr);
-	auto isUserExceptionType = irBuilder.CreateICmpEQ(
-		magic, ::llvm::ConstantInt::get(llvmContext.i64Type, exceptionclass));
-
-	auto ehtagId = ::WAVM::LLVMJIT::wavmCreateLoad(
-		irBuilder,
-		llvmContext.i64Type,
-		irBuilder.CreateGEP(
-			llvmContext.i8Type,
-			unwindehptr,
-			{::llvm::ConstantInt::get(llvmContext.i64Type, Unwind_Exception_Private1_Offset)}));
-	auto isehtagId = irBuilder.CreateICmpEQ(
-		ehtagId, ::llvm::ConstantInt::get(llvmContext.i64Type, imm.exceptionTypeIndex));
-
-	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catch", function);
-	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "unhandled", function);
-	irBuilder.CreateCondBr(isehtagId, catchBlock, unhandledBlock);
-	catchContext.nextHandlerBlock = unhandledBlock;
-
-	irBuilder.SetInsertPoint(catchBlock);
-
-	auto argument = ::WAVM::LLVMJIT::wavmCreateLoad(
-		irBuilder,
-		llvmContext.i64Type,
-		irBuilder.CreateGEP(
-			llvmContext.i8Type,
-			unwindehptr,
-			{::llvm::ConstantInt::get(llvmContext.i64Type, Unwind_Exception_Private2_Offset)}));
-	push(argument);
-
-#else
 	catchContext.landingPadInst->addClause(::llvm::ConstantPointerNull::get(irBuilder.getPtrTy()));
 	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
 	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catchtag", function);
@@ -286,7 +252,7 @@ void EmitFunctionContext::catch_(ExceptionTypeImm imm)
 			unwindehptr,
 			{::llvm::ConstantInt::get(llvmContext.i64Type, Unwind_Exception_Private2_Offset)}));
 	push(argument);
-#endif
+
 	// Change the top of the control stack to a catch clause.
 	controlContext.type = ControlContext::Type::catch_;
 	controlContext.isReachable = true;
