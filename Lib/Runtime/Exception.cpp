@@ -14,7 +14,6 @@
 #include "WAVM/Platform/Diagnostics.h"
 #include "WAVM/Platform/RWMutex.h"
 #include "WAVM/Platform/Signal.h"
-#include "WAVM/Runtime/ExceptionTypeTag.h"
 #include "WAVM/Runtime/Intrinsics.h"
 #include "WAVM/Runtime/Runtime.h"
 #include "WAVM/RuntimeABI/RuntimeABI.h"
