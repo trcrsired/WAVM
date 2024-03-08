@@ -345,7 +345,15 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 				return GrowResult::outOfMemory;
 			}
 			auto randombuffer{memory->memtagRandomBuffer};
-			if(randombuffer.Base != randombuffer.End) { *baseAddressTags = randombuffer.End[-1]; }
+			if(randombuffer.Base != randombuffer.End)
+			{
+				auto ch{randombuffer.End[-1]};
+				if(ch == 0) // ensure ch is never a 0
+				{
+					ch = 127;
+				}
+				*baseAddressTags = ch;
+			}
 		}
 		Platform::registerVirtualAllocation(grownpages);
 
@@ -569,6 +577,6 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics,
 							   wavmdebuggingprint,
 							   size_t addr)
 {
-	fprintf(stderr,"wavmdebuggingprint: %p\n",reinterpret_cast<void*>(addr));
+	fprintf(stderr, "wavmdebuggingprint: %p\n", reinterpret_cast<void*>(addr));
 }
 #endif
