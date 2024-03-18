@@ -84,6 +84,7 @@ static llvm::Function* getWavmThrowWasmEhtagFunction(EmitModuleContext& moduleCo
 			llvm::GlobalValue::LinkageTypes::ExternalLinkage,
 			"wavm_throw_wasm_ehtag",
 			moduleContext.llvmModule);
+		moduleContext.wavmThrowWasmEhtagFunction->addFnAttr(::llvm::Attribute::AttrKind::NoReturn);
 	}
 	return moduleContext.wavmThrowWasmEhtagFunction;
 }
