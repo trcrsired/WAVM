@@ -55,6 +55,7 @@ namespace WAVM { namespace LLVMJIT {
 		llvm::Function* wavmThrowWasmEhtagFunction = nullptr;
 
 		llvm::Function* randomTagFillBufferFunction = nullptr;
+		llvm::Function* wavmMemtagTrapFunction = nullptr;
 
 		EmitModuleContext(const IR::Module& inModule,
 						  LLVMContext& inLLVMContext,

@@ -123,6 +123,53 @@ static void createconditionaltrap(EmitFunctionContext& functionContext, ::llvm::
 	}
 }
 
+static llvm::Function* getWavmMemtagTrapFunction(EmitFunctionContext& functionContext)
+{
+	auto& moduleContext{functionContext.moduleContext};
+	if(!moduleContext.wavmMemtagTrapFunction)
+	{
+		LLVMContext& llvmContext = moduleContext.llvmContext;
+		auto mtgfunc = llvm::Function::Create(
+			llvm::FunctionType::get(llvm::Type::getVoidTy(llvmContext), {}, false),
+			llvm::GlobalValue::LinkageTypes::ExternalLinkage,
+			"wavm_memtag_trap_function",
+			moduleContext.llvmModule);
+		mtgfunc->addFnAttr(::llvm::Attribute::AttrKind::NoReturn);
+		moduleContext.wavmMemtagTrapFunction = mtgfunc;
+	}
+	return moduleContext.wavmMemtagTrapFunction;
+}
+
+static void createmtgconditionaltrap(EmitFunctionContext& functionContext, ::llvm::Value* cmpres)
+{
+	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
+	::llvm::BasicBlock* trapBlock{functionContext.MtgTrapBlock};
+	auto* function = functionContext.function;
+	if(trapBlock != nullptr)
+	{
+		::llvm::BasicBlock* normalBlock
+			= ::llvm::BasicBlock::Create(functionContext.moduleContext.llvmContext, "", function);
+		irBuilder.CreateCondBr(cmpres, trapBlock, normalBlock);
+		// irBuilder.CreateBr(normalBlock);
+		irBuilder.SetInsertPoint(normalBlock);
+	}
+	else
+	{
+		trapBlock
+			= ::llvm::BasicBlock::Create(functionContext.moduleContext.llvmContext, "", function);
+		::llvm::BasicBlock* normalBlock
+			= ::llvm::BasicBlock::Create(functionContext.moduleContext.llvmContext, "", function);
+		irBuilder.CreateCondBr(cmpres, trapBlock, normalBlock);
+		// irBuilder.CreateBr(trapBlock);
+		irBuilder.SetInsertPoint(trapBlock);
+		irBuilder.CreateCall(getWavmMemtagTrapFunction(functionContext));
+		irBuilder.CreateUnreachable();
+		// irBuilder.CreateBr(normalBlock);
+		irBuilder.SetInsertPoint(normalBlock);
+		functionContext.MtgTrapBlock = trapBlock;
+	}
+}
+
 // Bounds checks a sandboxed memory address + offset, and returns an offset relative to the memory
 // base address that is guaranteed to be within the virtual address space allocated for the linear
 // memory object.
@@ -285,7 +332,7 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 	// checking code for consecutive loads/stores to the same address.
 	if(!istagging && memtagBasePointerVariable)
 	{
-		if((fullcheck||knownNumBytes==0) && knownNumBytes != 1)
+		if((fullcheck || knownNumBytes == 0) && knownNumBytes != 1)
 		{
 			if(1 < knownNumBytes && knownNumBytes <= 16u)
 			{
@@ -315,7 +362,8 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 #endif
 				taggedval = irBuilder.CreateAnd(taggedval, c);
 				taginmem = irBuilder.CreateAnd(taginmem, c);
-				createconditionaltrap(functionContext, irBuilder.CreateICmpNE(taggedval, taginmem));
+				createmtgconditionaltrap(functionContext,
+										 irBuilder.CreateICmpNE(taggedval, taginmem));
 			}
 			else
 			{
@@ -354,8 +402,8 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 					taggedval,
 					::WAVM::LLVMJIT::wavmCreateLoad(
 						irBuilder, functionContext.llvmContext.i8Type, lasttagbytePointer));
-				createconditionaltrap(functionContext,
-									  irBuilder.CreateLogicalOr(firstcmpres, lastcmpres));
+				createmtgconditionaltrap(functionContext,
+										 irBuilder.CreateLogicalOr(firstcmpres, lastcmpres));
 				irBuilder.CreateBr(mergeblock);
 				irBuilder.SetInsertPoint(mergeblock);
 			}
@@ -367,7 +415,7 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 				irBuilder, functionContext.llvmContext.i8PtrType, memtagBasePointerVariable);
 			::llvm::Value* tagbytePointer = ::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
 				irBuilder, functionContext.llvmContext.i8Type, tagbaseptrval, addressrshift);
-			createconditionaltrap(
+			createmtgconditionaltrap(
 				functionContext,
 				irBuilder.CreateICmpNE(
 					taggedval,

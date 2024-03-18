@@ -182,7 +182,7 @@ namespace WAVM { namespace Runtime {
 	visit(outOfMemory);                                                                            \
 	visit(misalignedAtomicMemoryAccess, WAVM::IR::ValueType::i64);                                 \
 	visit(waitOnUnsharedMemory, WAVM::IR::ValueType::externref);                                   \
-	visit(invalidMemoryTagAccess, WAVM::IR::ValueType::externref, WAVM::IR::ValueType::i64);       \
+	visit(invalidMemoryTagAccess);                                                                 \
 	visit(invalidArgument);
 
 	// Information about a runtime exception.

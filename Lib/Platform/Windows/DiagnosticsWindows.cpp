@@ -15,6 +15,12 @@
 
 #include <dbghelp.h>
 #include <string>
+#if !defined(_MSC_VER) && __has_include(<cxxabi.h>)
+#include <cxxabi.h>
+#define USE_CXXABI_DEMANGLE 1
+#else
+#define USE_CXXABI_DEMANGLE 0
+#endif
 
 using namespace WAVM;
 using namespace WAVM::Platform;
@@ -108,7 +114,30 @@ bool Platform::getInstructionSourceByAddress(Uptr ip, InstructionSource& outSour
 	{
 		outSource.module_
 			= trimModuleName(getModuleName(getModuleFromBaseAddress(Uptr(symbolInfo->ModBase))));
+#if USE_CXXABI_DEMANGLE
+		::std::string symbol(1, '_');
+		symbol.append(symbolInfo->Name, symbolInfo->NameLen);
+		int demangleStatus = 0;
+		char* demangledBuffer
+			= abi::__cxa_demangle(symbol.c_str(), nullptr, nullptr, &demangleStatus);
+		if(demangledBuffer)
+		{
+			try
+			{
+				outSource.function = demangledBuffer;
+			}
+			catch(...)
+			{
+				free(demangledBuffer);
+				throw;
+			}
+			free(demangledBuffer);
+		}
+		else { outSource.function = std::string(symbolInfo->Name, symbolInfo->NameLen); }
+#else
 		outSource.function = std::string(symbolInfo->Name, symbolInfo->NameLen);
+#endif
+
 		outSource.instructionOffset = Uptr(displacement);
 		return true;
 	}

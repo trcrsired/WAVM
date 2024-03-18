@@ -384,7 +384,7 @@ namespace WAVM { namespace LLVMJIT {
 	// The inverse of mangleSymbol
 	inline std::string demangleSymbol(std::string&& symbol)
 	{
-#if ((defined(_WIN32) && !defined(_WIN64))) || defined(__APPLE__)
+#if (((defined(_WIN32) && !defined(_WIN64))) || defined(__APPLE__))
 		WAVM_ASSERT(symbol[0] == '_');
 		return std::move(symbol).substr(1);
 #else

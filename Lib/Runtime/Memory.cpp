@@ -425,8 +425,7 @@ static U8* getValidatedMemoryOffsetRangeImpl(Memory* memory,
 		Uptr tagaddresslast = (address + numBytes - 1) >> 4;
 		if(baseaddrestags[tagaddress] != color || baseaddrestags[tagaddresslast] != color)
 		{
-			throwException(ExceptionTypes::invalidMemoryTagAccess,
-						   {asObject(memory), U64(address)});
+			throwException(ExceptionTypes::invalidMemoryTagAccess, {});
 		}
 	}
 	WAVM_ASSERT(memoryBase);
@@ -580,3 +579,8 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics,
 	fprintf(stderr, "wavmdebuggingprint: %p\n", reinterpret_cast<void*>(addr));
 }
 #endif
+
+extern "C" void wavm_memtag_trap_function()
+{
+	throwException(ExceptionTypes::invalidMemoryTagAccess, {});
+}
