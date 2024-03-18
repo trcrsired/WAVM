@@ -35,6 +35,18 @@ namespace LLVMRuntimeSymbols {
 	extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t, ::std::uint_least64_t);
 	extern "C" void wavm_memtag_trap_function();
 
+#if defined(__ANDROID__)
+	extern "C" _Unwind_Reason_Code __gxx_personality_v0(_Unwind_State state,
+														_Unwind_Exception* unwind_exception,
+														_Unwind_Context* context);
+	extern "C" _Unwind_Reason_Code my_gxx_personality_v0(_Unwind_State state,
+														 _Unwind_Exception* unwind_exception,
+														 _Unwind_Context* context)
+	{
+		return __gxx_personality_v0(state, unwind_exception, context);
+	}
+#endif
+
 #if (defined(_WIN32) && !defined(__WINE__)) || defined(__CYGWIN__)
 	// the LLVM X86 code generator calls __chkstk when allocating more than 4KB of stack space
 #if defined(__MINGW32__) || defined(__CYGWIN__)
@@ -85,7 +97,11 @@ namespace LLVMRuntimeSymbols {
 #if defined(__i386__) || defined(__x86_64__)
 		{"wavm_probe_stack", (void*)&wavm_probe_stack},
 #endif
+#ifdef __ANDROID__
+		{"__gxx_personality_v0", (void*)&my_gxx_personality_v0},
+#else
 		{"__gxx_personality_v0", (void*)&__gxx_personality_v0},
+#endif
 		{"__cxa_begin_catch", (void*)&__cxa_begin_catch},
 		{"__cxa_end_catch", (void*)&__cxa_end_catch},
 #endif
