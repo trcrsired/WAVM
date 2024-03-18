@@ -44,7 +44,7 @@ namespace LLVMRuntimeSymbols {
 														 _Unwind_Exception* unwind_exception,
 														 _Unwind_Context* context)
 	{
-		return __gxx_personality_v0(state, unwind_exception, context);
+		return pesudo_gxx_personality_v0(state, unwind_exception, context);
 	}
 #endif
 
