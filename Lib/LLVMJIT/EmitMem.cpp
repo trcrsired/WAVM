@@ -162,8 +162,7 @@ static void createmtgconditionaltrap(EmitFunctionContext& functionContext, ::llv
 		irBuilder.CreateCondBr(cmpres, trapBlock, normalBlock);
 		// irBuilder.CreateBr(trapBlock);
 		irBuilder.SetInsertPoint(trapBlock);
-		irBuilder.CreateIntrinsic(::llvm::Intrinsic::trap, {}, {});
-		//irBuilder.CreateCall(getWavmMemtagTrapFunction(functionContext));
+		irBuilder.CreateCall(getWavmMemtagTrapFunction(functionContext));
 		irBuilder.CreateUnreachable();
 		// irBuilder.CreateBr(normalBlock);
 		irBuilder.SetInsertPoint(normalBlock);
