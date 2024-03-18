@@ -36,10 +36,11 @@ namespace LLVMRuntimeSymbols {
 	extern "C" void wavm_memtag_trap_function();
 
 #if defined(__ANDROID__)
-	extern "C" _Unwind_Reason_Code __gxx_personality_v0(_Unwind_State state,
-														_Unwind_Exception* unwind_exception,
-														_Unwind_Context* context);
-	extern "C" _Unwind_Reason_Code my_gxx_personality_v0(_Unwind_State state,
+	_Unwind_Reason_Code pesudo_gxx_personality_v0(
+		uint32_t state,
+		_Unwind_Exception* unwind_exception,
+		_Unwind_Context* context) __asm__("__gxx_personality_v0");
+	extern "C" _Unwind_Reason_Code my_gxx_personality_v0(uint32_t state,
 														 _Unwind_Exception* unwind_exception,
 														 _Unwind_Context* context)
 	{
