@@ -57,7 +57,7 @@ namespace {
 #else
 		thread_local
 #endif
-		wavm_eh_tag_unwind_eh unwdexceptiontable{0, 0, {exceptionclass}};
+		wavm_eh_tag_unwind_eh unwdexceptiontable{{exceptionclass}, 0, 0};
 
 	inline constexpr ::std::size_t EhTagOffset{__builtin_offsetof(wavm_eh_tag_unwind_eh, ehtag)};
 	inline constexpr ::std::size_t UserDataOffset{
@@ -171,12 +171,11 @@ void EmitFunctionContext::try_(ControlStructureImm imm)
 [[maybe_unused]]
 static inline void foodebugging(EmitFunctionContext& functionContext, ::llvm::Value* memaddress)
 {
-	functionContext.emitRuntimeIntrinsic("wavmdebuggingprint",
-	FunctionType(
-		TypeTuple{ValueType::i64},
-		TypeTuple{ValueType::i64},
-		IR::CallingConvention::intrinsic),
-	{memaddress});
+	functionContext.emitRuntimeIntrinsic(
+		"wavmdebuggingprint",
+		FunctionType(
+			TypeTuple{ValueType::i64}, TypeTuple{ValueType::i64}, IR::CallingConvention::intrinsic),
+		{memaddress});
 }
 #endif
 void EmitFunctionContext::catch_(ExceptionTypeImm imm)
@@ -297,7 +296,6 @@ void EmitFunctionContext::rethrow(RethrowImm imm)
 	foodebugging(*this, unwindehptr);
 #endif
 	irBuilder.CreateResume(catchContext.landingPadInst);
-	irBuilder.CreateUnreachable();
 	enterUnreachable();
 }
 
