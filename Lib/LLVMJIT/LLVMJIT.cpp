@@ -34,7 +34,7 @@ namespace LLVMRuntimeSymbols {
 
 	extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t, ::std::uint_least64_t);
 
-#if(defined(_WIN32) && !defined(__WINE__)) || defined(__CYGWIN__)
+#if (defined(_WIN32) && !defined(__WINE__)) || defined(__CYGWIN__)
 	// the LLVM X86 code generator calls __chkstk when allocating more than 4KB of stack space
 #if defined(__MINGW32__) || defined(__CYGWIN__)
 	extern "C" void ___chkstk_ms();
@@ -82,6 +82,9 @@ namespace LLVMRuntimeSymbols {
 #endif
 #if defined(__i386__) || defined(__x86_64__)
 		{"wavm_probe_stack", (void*)&wavm_probe_stack},
+#endif
+#ifdef __ANDROID__
+		{"DW.ref.__gxx_personality_v0", (void*)&__gxx_personality_v0},
 #endif
 		{"__gxx_personality_v0", (void*)&__gxx_personality_v0},
 		{"__cxa_begin_catch", (void*)&__cxa_begin_catch},
