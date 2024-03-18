@@ -87,9 +87,8 @@ namespace LLVMRuntimeSymbols {
 #endif
 #ifdef __ANDROID__
 		{"DW.ref.__gxx_personality_v0", (void*)&__gxx_personality_v0},
-#else
-		{"__gxx_personality_v0", (void*)&__gxx_personality_v0},
 #endif
+		{"__gxx_personality_v0", (void*)&__gxx_personality_v0},
 		{"__cxa_begin_catch", (void*)&__cxa_begin_catch},
 		{"__cxa_end_catch", (void*)&__cxa_end_catch},
 #endif
