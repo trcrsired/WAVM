@@ -920,7 +920,7 @@ void EmitFunctionContext::memory_hintstoreztag(MemoryImm imm)
 		memtag_zero_memory(*this, imm.memoryIndex, hintres.untaggedmemaddress, taggedbytes);
 		memaddress = hintres.taggedmemaddress;
 	}
-	else { memtag_zero_memory(*this, imm.memoryIndex, hintres.untaggedmemaddress, taggedbytes); }
+	else { memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes); }
 	push(memaddress);
 }
 
