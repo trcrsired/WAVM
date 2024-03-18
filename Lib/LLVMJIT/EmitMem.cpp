@@ -769,6 +769,7 @@ void EmitFunctionContext::memory_randomstoreztag(MemoryImm imm)
 		memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes);
 		memaddress = TagMemPointer(*this, imm.memoryIndex, memaddress, color, true);
 	}
+	else { memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes); }
 	push(memaddress);
 }
 
@@ -791,6 +792,7 @@ void EmitFunctionContext::memory_storeztag(MemoryImm imm)
 		StoreTagIntoMem(*this, imm.memoryIndex, memaddress, taggedbytes, nullptr);
 		memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes);
 	}
+	else { memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes); }
 }
 
 void EmitFunctionContext::memory_randomtag(MemoryImm imm)
@@ -918,6 +920,7 @@ void EmitFunctionContext::memory_hintstoreztag(MemoryImm imm)
 		memtag_zero_memory(*this, imm.memoryIndex, hintres.untaggedmemaddress, taggedbytes);
 		memaddress = hintres.taggedmemaddress;
 	}
+	else { memtag_zero_memory(*this, imm.memoryIndex, hintres.untaggedmemaddress, taggedbytes); }
 	push(memaddress);
 }
 
