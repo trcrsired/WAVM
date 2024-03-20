@@ -84,6 +84,7 @@ static llvm::Function* getWavmThrowWasmEhtagFunction(EmitModuleContext& moduleCo
 			llvm::GlobalValue::LinkageTypes::ExternalLinkage,
 			"wavm_throw_wasm_ehtag",
 			moduleContext.llvmModule);
+		moduleContext.wavmThrowWasmEhtagFunction->addFnAttr(::llvm::Attribute::AttrKind::NoReturn);
 	}
 	return moduleContext.wavmThrowWasmEhtagFunction;
 }
@@ -284,28 +285,19 @@ void EmitFunctionContext::throw_(ExceptionTypeImm imm)
 	enterUnreachable();
 }
 
-void EmitFunctionContext::rethrow(RethrowImm imm)
+void EmitFunctionContext::rethrow(RethrowImm)
 {
-	WAVM_ASSERT(imm.catchDepth < catchStack.size());
-	CatchContext& catchContext = catchStack[catchStack.size() - imm.catchDepth - 1];
-	catchContext.landingPadInst->setCleanup(true);
-#if 0
-	catchContext.landingPadInst->addClause(::llvm::ConstantPointerNull::get(irBuilder.getPtrTy()));
-
-	auto unwindehptr = irBuilder.CreateExtractValue(catchContext.landingPadInst, {0});
-	foodebugging(*this, unwindehptr);
-#endif
+	CatchContext& catchContext = catchStack.back();
 	irBuilder.CreateResume(catchContext.landingPadInst);
 	enterUnreachable();
 }
 
-void EmitFunctionContext::delegate(BranchImm imm)
+void EmitFunctionContext::delegate(BranchImm)
 {
 	CatchContext& catchContext = catchStack.back();
 	{
 		::llvm::IRBuilderBase::InsertPointGuard guard(irBuilder);
 		irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
-
 		catchContext.landingPadInst->setCleanup(true);
 	}
 	this->end(NoImm{});
