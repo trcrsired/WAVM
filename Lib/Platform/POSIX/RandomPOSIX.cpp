@@ -31,7 +31,7 @@ static void readDevRandom(U8* outRandomBytes, Uptr numBytes)
 	}
 }
 
-#if defined(__linux__) && __has_include(<sys/random.h>)
+#if defined(__linux__) && __has_include(<sys/random.h>) && !defined(__ANDROID__)
 #include <sys/random.h>
 void Platform::getCryptographicRNG(U8* outRandomBytes, Uptr numBytes)
 {
