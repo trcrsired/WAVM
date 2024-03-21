@@ -255,7 +255,7 @@ Instance* Intrinsics::instantiateModule(
 	std::string&& debugName)
 {
 	::WAVM::IR::FeatureSpec featureSpec(::FeatureLevel::wavm);
-	featureSpec.memtag = false;
+	featureSpec.memtagFull = featureSpec.memtag = false;
 	return Intrinsics::instantiateModuleWithFeatureSpec(
 		compartment, moduleRefs, ::std::move(debugName), featureSpec);
 }

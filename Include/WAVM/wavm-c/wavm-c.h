@@ -119,6 +119,7 @@ WASM_DECLARE_FEATURE(any_extern_kind_elems)
 WASM_DECLARE_FEATURE(wat_quoted_names)
 WASM_DECLARE_FEATURE(wat_custom_sections)
 WASM_DECLARE_FEATURE(memtag)
+WASM_DECLARE_FEATURE(memtagFull)
 
 #undef WASM_DECLARE_FEATURE
 

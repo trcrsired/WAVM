@@ -635,12 +635,14 @@ struct State
 		Function* startFunction = getStartFunction(instance);
 		if(startFunction)
 		{
-			invokeFunctionWithMemTag(context,
-									 startFunction,
-									 IR::FunctionType(),
-									 nullptr,
-									 nullptr,
-									 irModule.featureSpec.memtag);
+			::WAVM::LLVMJIT::memtagStatus mtgstatus{::WAVM::LLVMJIT::memtagStatus::none};
+			if(irModule.featureSpec.memtagFull) { mtgstatus = ::WAVM::LLVMJIT::memtagStatus::full; }
+			else if(irModule.featureSpec.memtag)
+			{
+				mtgstatus = ::WAVM::LLVMJIT::memtagStatus::basic;
+			}
+			invokeFunctionWithMemTag(
+				context, startFunction, IR::FunctionType(), nullptr, nullptr, mtgstatus);
 		}
 
 		if(emscriptenProcess)
@@ -730,14 +732,19 @@ struct State
 		// Allocate an array to receive the invoke results.
 		std::vector<UntaggedValue> untaggedInvokeResults;
 		untaggedInvokeResults.resize(invokeSig.results().size());
-
+		::WAVM::LLVMJIT::memtagStatus memtagstatus{};
+		if(irModule.featureSpec.memtagFull) { memtagstatus = ::WAVM::LLVMJIT::memtagStatus::full; }
+		else if(irModule.featureSpec.memtag)
+		{
+			memtagstatus = ::WAVM::LLVMJIT::memtagStatus::basic;
+		}
 		// Invoke the function.
 		invokeFunctionWithMemTag(context,
 								 function,
 								 invokeSig,
 								 untaggedInvokeArgs.data(),
 								 untaggedInvokeResults.data(),
-								 irModule.featureSpec.memtag);
+								 memtagstatus);
 
 		if(untaggedInvokeResults.size() == 1 && invokeSig.results()[0] == ValueType::i32)
 		{

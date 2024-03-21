@@ -20,7 +20,7 @@ void Runtime::invokeFunctionWithMemTag(Context* context,
 									   FunctionType invokeSig,
 									   const UntaggedValue arguments[],
 									   UntaggedValue outResults[],
-									   bool isMemTagged)
+									   ::WAVM::LLVMJIT::memtagStatus isMemTagged)
 {
 	FunctionType functionType{function->encodedType};
 
@@ -104,5 +104,6 @@ void Runtime::invokeFunction(Context* context,
 							 const UntaggedValue arguments[],
 							 UntaggedValue outResults[])
 {
-	Runtime::invokeFunctionWithMemTag(context, function, invokeSig, arguments, outResults, false);
+	Runtime::invokeFunctionWithMemTag(
+		context, function, invokeSig, arguments, outResults, ::WAVM::LLVMJIT::memtagStatus::none);
 }

@@ -193,7 +193,11 @@ Instance* Runtime::instantiateModuleInternal(Compartment* compartment,
 		}
 		tables.push_back(table);
 	}
-	bool const ismemtagged{module_->ir.featureSpec.memtag};
+
+	::WAVM::LLVMJIT::memtagStatus ismemtagged{::WAVM::LLVMJIT::memtagStatus::none};
+	if(module_->ir.featureSpec.memtagFull) { ismemtagged = ::WAVM::LLVMJIT::memtagStatus::full; }
+	else if(module_->ir.featureSpec.memtag) { ismemtagged = ::WAVM::LLVMJIT::memtagStatus::basic; }
+
 	for(Uptr memoryDefIndex = 0; memoryDefIndex < module_->ir.memories.defs.size();
 		++memoryDefIndex)
 	{
@@ -234,8 +238,7 @@ Instance* Runtime::instantiateModuleInternal(Compartment* compartment,
 	}
 
 	// Instantiate the module's exception types.
-	for(Uptr exceptionTypeDefIndex = 0;
-		exceptionTypeDefIndex < module_->ir.exceptionTypes.size();
+	for(Uptr exceptionTypeDefIndex = 0; exceptionTypeDefIndex < module_->ir.exceptionTypes.size();
 		++exceptionTypeDefIndex)
 	{
 		const ExceptionTypeDef& exceptionTypeDef

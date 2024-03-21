@@ -86,7 +86,6 @@ static void deserializeNameSubsection(const Module& module_,
 	U32 numSubsectionBytes = 0;
 	serializeVarUInt32(stream, numSubsectionBytes);
 
-
 	MemoryInputStream substream(stream.advance(numSubsectionBytes), numSubsectionBytes);
 	switch((NameSubsectionType)subsectionType)
 	{

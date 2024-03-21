@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include "WAVM/IR/IR.h"
+#include "WAVM/IR/Memtag.h"
 #include "WAVM/Inline/Assert.h"
 #include "WAVM/Inline/BasicTypes.h"
 #include "WAVM/Inline/Errors.h"
@@ -487,10 +488,7 @@ namespace WAVM { namespace IR {
 		SizeConstraints size{0, UINT64_MAX};
 
 		MemoryType() : isShared(false), indexType(IndexType::i32), size({0, UINT64_MAX}) {}
-		MemoryType(bool inIsShared,
-				   IndexType inIndexType,
-				   const SizeConstraints& inSize,
-				   bool inIsMemTagged)
+		MemoryType(bool inIsShared, IndexType inIndexType, const SizeConstraints& inSize)
 		: isShared(inIsShared), indexType(inIndexType), size(inSize)
 		{
 		}
@@ -652,8 +650,7 @@ namespace WAVM { namespace IR {
 		case ExternKind::table: return "table " + asString(asTableType(objectType));
 		case ExternKind::memory: return "memory " + asString(asMemoryType(objectType));
 		case ExternKind::global: return asString(asGlobalType(objectType));
-		case ExternKind::tag:
-			return "tag " + asString(asExceptionType(objectType));
+		case ExternKind::tag: return "tag " + asString(asExceptionType(objectType));
 
 		case ExternKind::invalid:
 		default: WAVM_UNREACHABLE();

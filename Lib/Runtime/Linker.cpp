@@ -1,5 +1,6 @@
 #include "WAVM/Runtime/Linker.h"
 #include "WAVM/IR/FeatureSpec.h"
+#include "WAVM/IR/Memtag.h"
 #include "WAVM/IR/Module.h"
 #include "WAVM/IR/Validate.h"
 #include "WAVM/Inline/Assert.h"
@@ -119,8 +120,11 @@ bool Runtime::generateStub(const std::string& moduleName,
 		return true;
 	}
 	case IR::ExternKind::memory: {
-		outObject = asObject(Runtime::createMemory(
-			compartment, asMemoryType(type), std::string(exportName), false, resourceQuota));
+		outObject = asObject(Runtime::createMemory(compartment,
+												   asMemoryType(type),
+												   std::string(exportName),
+												   ::WAVM::LLVMJIT::memtagStatus::none,
+												   resourceQuota));
 		return outObject != nullptr;
 	}
 	case IR::ExternKind::table: {

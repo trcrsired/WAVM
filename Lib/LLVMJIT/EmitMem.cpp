@@ -196,7 +196,7 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
 	auto& meminfo{functionContext.memoryInfos[memoryIndex]};
 
-	constexpr bool fullcheck{false};
+	bool fullcheck{functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::full};
 
 	auto memtagBasePointerVariable = meminfo.memtagBasePointerVariable;
 	::llvm::Value* taggedval{};

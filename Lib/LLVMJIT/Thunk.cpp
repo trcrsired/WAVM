@@ -61,7 +61,8 @@ private:
 	InvokeThunkCache() {}
 };
 
-InvokeThunkPointer LLVMJIT::getInvokeThunkWithMemtagged(FunctionType functionType, bool ismemtagged)
+InvokeThunkPointer LLVMJIT::getInvokeThunkWithMemtagged(FunctionType functionType,
+														::WAVM::LLVMJIT::memtagStatus ismemtagged)
 {
 	InvokeThunkCache& invokeThunkCache = InvokeThunkCache::get();
 	// First, take a shareable lock on the cache mutex, and check if the thunk is cached.
@@ -192,5 +193,5 @@ InvokeThunkPointer LLVMJIT::getInvokeThunkWithMemtagged(FunctionType functionTyp
 
 InvokeThunkPointer LLVMJIT::getInvokeThunk(FunctionType functionType)
 {
-	return LLVMJIT::getInvokeThunkWithMemtagged(functionType, false);
+	return LLVMJIT::getInvokeThunkWithMemtagged(functionType, ::WAVM::LLVMJIT::memtagStatus::none);
 }

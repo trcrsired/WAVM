@@ -69,7 +69,7 @@ static MemtagRandomBufferInMemory createMemoryTagRandomBufferImpl() noexcept
 static Memory* createMemoryImpl(Compartment* compartment,
 								IR::MemoryType type,
 								std::string&& debugName,
-								bool isMemTagged,
+								::WAVM::LLVMJIT::memtagStatus isMemTagged,
 								ResourceQuotaRefParam resourceQuota)
 {
 	::std::unique_ptr<Memory> memoryuptr(
@@ -101,7 +101,7 @@ static Memory* createMemoryImpl(Compartment* compartment,
 	const Uptr numGuardPages = memoryNumGuardBytes >> pageBytesLog2;
 	auto totalpages = memoryMaxPages + numGuardPages;
 	memory->baseAddress = Platform::allocateVirtualPages(totalpages);
-	if(isMemTagged)
+	if(isMemTagged != ::WAVM::LLVMJIT::memtagStatus::none)
 	{
 		auto totaltaggedpages = (totalpages >> 4u) + (totalpages & 15u);
 		auto baseAddressTags = Platform::allocateVirtualPages(totaltaggedpages);
@@ -127,7 +127,7 @@ static Memory* createMemoryImpl(Compartment* compartment,
 Memory* Runtime::createMemory(Compartment* compartment,
 							  IR::MemoryType type,
 							  std::string&& debugName,
-							  bool isMemTagged,
+							  ::WAVM::LLVMJIT::memtagStatus isMemTagged,
 							  ResourceQuotaRefParam resourceQuota)
 {
 	WAVM_ASSERT(type.size.min <= UINTPTR_MAX);
@@ -145,7 +145,8 @@ Memory* Runtime::createMemory(Compartment* compartment,
 		runtimeData.base = memory->baseAddress;
 		runtimeData.endAddress = memory->numReservedBytes;
 		runtimeData.memtagBase = memory->baseAddressTags;
-		if(isMemTagged)
+		memoryuptr->memtagstatus = isMemTagged;
+		if(isMemTagged != ::WAVM::LLVMJIT::memtagStatus::none)
 		{
 			auto memtagrdbf{memory->memtagRandomBuffer};
 			runtimeData.memtagRandomBuffer = {memtagrdbf.Base, memtagrdbf.End, memtagrdbf.End};
@@ -164,8 +165,11 @@ Memory* Runtime::cloneMemory(Memory* memory, Compartment* newCompartment)
 	const IR::MemoryType memoryType = getMemoryType(memory);
 	std::string debugName = memory->debugName;
 	bool const ismemtagged{memory->baseAddressTags != nullptr};
-	Memory* newMemory = createMemoryImpl(
-		newCompartment, memoryType, std::move(debugName), ismemtagged, memory->resourceQuota);
+	Memory* newMemory = createMemoryImpl(newCompartment,
+										 memoryType,
+										 std::move(debugName),
+										 memory->memtagstatus,
+										 memory->resourceQuota);
 	if(!newMemory) { return nullptr; }
 
 	// Copy the memory contents to the new memory.
@@ -290,8 +294,7 @@ IR::MemoryType Runtime::getMemoryType(const Memory* memory)
 {
 	return IR::MemoryType{memory->isShared,
 						  memory->indexType,
-						  IR::SizeConstraints{getMemoryNumPages(memory), memory->maxPages},
-						  memory->baseAddressTags != nullptr};
+						  IR::SizeConstraints{getMemoryNumPages(memory), memory->maxPages}};
 }
 
 GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOldNumPages)

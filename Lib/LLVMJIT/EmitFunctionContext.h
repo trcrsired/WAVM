@@ -85,7 +85,15 @@ namespace WAVM { namespace LLVMJIT {
 		, functionType(inIRModule.types[inFunctionDef.type.index])
 		, function(inLLVMFunction)
 		{
-			this->isMemTagged = irModule.featureSpec.memtag;
+			this->isMemTagged = ::WAVM::LLVMJIT::memtagStatus::none;
+			if(irModule.featureSpec.memtagFull)
+			{
+				this->isMemTagged = ::WAVM::LLVMJIT::memtagStatus::full;
+			}
+			else if(irModule.featureSpec.memtag)
+			{
+				this->isMemTagged = ::WAVM::LLVMJIT::memtagStatus::basic;
+			}
 		}
 
 		void emit();

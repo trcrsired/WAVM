@@ -1521,8 +1521,7 @@ static void serializeModule(OutputStream& moduleStream, Module& module_)
 	if(hasMemorySection(module_)) { serializeMemorySection(moduleStream, module_); }
 	serializeCustomSectionsAfterKnownSection(moduleStream, module_, OrderedSectionID::memory);
 	if(hasTagSection(module_)) { serializeTagSection(moduleStream, module_); }
-	serializeCustomSectionsAfterKnownSection(
-		moduleStream, module_, OrderedSectionID::tag);
+	serializeCustomSectionsAfterKnownSection(moduleStream, module_, OrderedSectionID::tag);
 	if(hasGlobalSection(module_)) { serializeGlobalSection(moduleStream, module_); }
 	serializeCustomSectionsAfterKnownSection(moduleStream, module_, OrderedSectionID::global);
 	if(hasExportSection(module_)) { serializeExportSection(moduleStream, module_); }
@@ -1575,9 +1574,7 @@ static void serializeModule(InputStream& moduleStream, Module& module_)
 			case SectionID::code: orderedSectionID = OrderedSectionID::code; break;
 			case SectionID::data: orderedSectionID = OrderedSectionID::data; break;
 			case SectionID::dataCount: orderedSectionID = OrderedSectionID::dataCount; break;
-			case SectionID::tag:
-				orderedSectionID = OrderedSectionID::tag;
-				break;
+			case SectionID::tag: orderedSectionID = OrderedSectionID::tag; break;
 			case SectionID::custom: WAVM_UNREACHABLE();
 			default:
 				throw FatalSerializationException("unknown section ID ("

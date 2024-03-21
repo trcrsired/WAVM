@@ -1,6 +1,7 @@
 #pragma once
 
 #include "LLVMJITPrivate.h"
+#include "WAVM/IR/Memtag.h"
 #include "WAVM/IR/Module.h"
 #include "WAVM/IR/Types.h"
 #include "WAVM/IR/Value.h"
@@ -62,7 +63,7 @@ namespace WAVM { namespace LLVMJIT {
 			llvm::BasicBlock* unwindToBlock;
 		};
 		std::vector<TryContext> tryStack;
-		bool isMemTagged = false;
+		::WAVM::LLVMJIT::memtagStatus isMemTagged = ::WAVM::LLVMJIT::memtagStatus::none;
 
 		EmitContext(LLVMContext& inLLVMContext, const std::vector<llvm::Constant*>& inMemoryOffsets)
 		: llvmContext(inLLVMContext)
@@ -116,7 +117,7 @@ namespace WAVM { namespace LLVMJIT {
 		void reloadMemoryBases()
 		{
 			llvm::Value* compartmentAddress = getCompartmentAddress();
-			bool ismemtagged = this->isMemTagged;
+			auto ismemtagged = this->isMemTagged;
 			// Reload the memory base pointer and num reserved bytes values from the
 			// CompartmentRuntimeData.
 			for(Uptr memoryIndex = 0; memoryIndex < memoryOffsets.size(); ++memoryIndex)
@@ -144,7 +145,7 @@ namespace WAVM { namespace LLVMJIT {
 															 memoryOffset->getType()),
 									  memoryInfo.endAddressVariable);
 
-				if(ismemtagged)
+				if(ismemtagged != ::WAVM::LLVMJIT::memtagStatus::none)
 				{
 					::llvm::Value* memoryTagPointerBaseOffset = ::llvm::ConstantExpr::getAdd(
 						memoryOffset,
@@ -176,7 +177,7 @@ namespace WAVM { namespace LLVMJIT {
 		void initContextVariables(llvm::Value* initialContextPointer, llvm::Type* iptrType)
 		{
 			memoryInfos.resize(memoryOffsets.size());
-			bool ismemtagged = this->isMemTagged;
+			auto ismemtagged = this->isMemTagged;
 			for(Uptr memoryIndex = 0; memoryIndex < memoryOffsets.size(); ++memoryIndex)
 			{
 				MemoryInfo& memoryInfo = memoryInfos[memoryIndex];
@@ -189,7 +190,7 @@ namespace WAVM { namespace LLVMJIT {
 					nullptr,
 					"memoryNumReservedBytesMinusGuardBytes" + llvm::Twine(memoryIndex));
 
-				if(ismemtagged)
+				if(ismemtagged != WAVM::LLVMJIT::memtagStatus::none)
 				{
 					memoryInfo.memtagBasePointerVariable = irBuilder.CreateAlloca(
 						iptrType, nullptr, "memtagBasePointer" + llvm::Twine(memoryIndex));

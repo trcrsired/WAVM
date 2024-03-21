@@ -3,6 +3,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include "WAVM/IR/Memtag.h"
 #include "WAVM/IR/Module.h"
 #include "WAVM/Inline/BasicTypes.h"
 #include "WAVM/Inline/DenseStaticIntSet.h"
@@ -104,6 +105,7 @@ namespace WAVM { namespace Runtime {
 		std::atomic<Uptr> numPages{0};
 
 		ResourceQuotaRef resourceQuota;
+		::WAVM::LLVMJIT::memtagStatus memtagstatus = ::WAVM::LLVMJIT::memtagStatus::none;
 
 		Memory(Compartment* inCompartment,
 			   const IR::MemoryType& inType,

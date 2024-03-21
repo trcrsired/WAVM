@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include "WAVM/IR/FeatureSpec.h"
+#include "WAVM/IR/Memtag.h"
 #include "WAVM/IR/Types.h"
 #include "WAVM/IR/Value.h"
 #include "WAVM/Inline/Assert.h"
@@ -323,10 +324,10 @@ namespace WAVM { namespace Runtime {
 	// the actual type of the function, then an invokeSignatureMismatch exception is thrown.
 	WAVM_API void invokeFunctionWithMemTag(Context* context,
 										   const Function* function,
-										   IR::FunctionType invokeSig = IR::FunctionType(),
-										   const IR::UntaggedValue arguments[] = nullptr,
-										   IR::UntaggedValue results[] = nullptr,
-										   bool ismemtagged = false);
+										   IR::FunctionType invokeSig,
+										   const IR::UntaggedValue arguments[],
+										   IR::UntaggedValue results[],
+										   WAVM::LLVMJIT::memtagStatus ismemtagged);
 
 	// Returns the type of a Function.
 	WAVM_API IR::FunctionType getFunctionType(const Function* function);
@@ -370,7 +371,7 @@ namespace WAVM { namespace Runtime {
 	WAVM_API Memory* createMemory(Compartment* compartment,
 								  IR::MemoryType type,
 								  std::string&& debugName,
-								  bool isMemTagged,
+								  WAVM::LLVMJIT::memtagStatus isMemTagged,
 								  ResourceQuotaRefParam resourceQuota = ResourceQuotaRef());
 
 	// Gets the base address of the memory's data.
