@@ -18,7 +18,7 @@ static void readDevRandom(U8* outRandomBytes, Uptr numBytes)
 
 	while(numBytes > 0)
 	{
-		I32 result = read(randomFD, outRandomBytes, numBytes);
+		ssize_t result = read(randomFD, outRandomBytes, numBytes);
 		if(result >= 0)
 		{
 			outRandomBytes += result;
@@ -31,7 +31,7 @@ static void readDevRandom(U8* outRandomBytes, Uptr numBytes)
 	}
 }
 
-#if 0 // __linux__
+#if defined(__linux__) && __has_include(<sys/random.h>)
 #include <sys/random.h>
 void Platform::getCryptographicRNG(U8* outRandomBytes, Uptr numBytes)
 {
@@ -48,10 +48,7 @@ void Platform::getCryptographicRNG(U8* outRandomBytes, Uptr numBytes)
 			readDevRandom(outRandomBytes, numBytes);
 			break;
 		}
-		else if(errno != EINTR)
-		{
-			Errors::fatalf("getrandom failed: %s", strerror(errno));
-		}
+		else if(errno != EINTR) { Errors::fatalf("getrandom failed: %s", strerror(errno)); }
 	};
 }
 #else
