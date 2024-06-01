@@ -413,12 +413,13 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 				irBuilder, functionContext.llvmContext.i8PtrType, memtagBasePointerVariable);
 			::llvm::Value* tagbytePointer = ::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
 				irBuilder, functionContext.llvmContext.i8Type, tagbaseptrval, addressrshift);
-			createmtgconditionaltrap(
-				functionContext,
-				irBuilder.CreateICmpNE(
-					taggedval,
-					::WAVM::LLVMJIT::wavmCreateLoad(
-						irBuilder, functionContext.llvmContext.i8Type, tagbytePointer)));
+			if constexpr(false)
+				createmtgconditionaltrap(
+					functionContext,
+					irBuilder.CreateICmpNE(
+						taggedval,
+						::WAVM::LLVMJIT::wavmCreateLoad(
+							irBuilder, functionContext.llvmContext.i8Type, tagbytePointer)));
 		}
 	}
 	return address;
