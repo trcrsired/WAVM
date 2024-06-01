@@ -405,15 +405,15 @@ static U8* getValidatedMemoryOffsetRangeImpl(Memory* memory,
 	U8 color = 0;
 	if(baseaddrestags)
 	{
-		if constexpr(sizeof(Uptr) == sizeof(uint_least64_t))
-		{
-			color = static_cast<U8>(address >> 56);
-			address &= 0x00FFFFFFFFFFFFFF;
-		}
-		else
+		if(memory->indexType == IR::IndexType::i32)
 		{
 			color = static_cast<U8>(address >> 30);
 			address &= 0x3FFFFFFF;
+		}
+		else
+		{
+			color = static_cast<U8>(address >> 56);
+			address &= 0x00FFFFFFFFFFFFFF;
 		}
 	}
 	if(address + numBytes > memoryNumBytes || address + numBytes < address)
