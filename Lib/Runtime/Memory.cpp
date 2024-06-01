@@ -54,7 +54,7 @@ static inline void wavm_random_tag_fill_buffer_function(U8* base, U8* ed) noexce
 	}
 }
 
-static MemtagRandomBufferInMemory createMemoryTagRandomBufferImpl() noexcept
+static MemtagRandomBufferInMemory createMemoryTagRandomBufferImpl(U8 mask) noexcept
 {
 	::std::random_device eng;
 	::std::uniform_int_distribution<::std::size_t> dis(4096, 16384);
@@ -63,7 +63,17 @@ static MemtagRandomBufferInMemory createMemoryTagRandomBufferImpl() noexcept
 	if(ptr == nullptr) { ::std::abort(); }
 	U8* ed = ptr + buffersize;
 	wavm_random_tag_fill_buffer_function(ptr, ed);
+	constexpr U8 u8mx{::std::numeric_limits<U8>::max()};
+	if(mask != u8mx)
+	{
+		for(auto it{ptr}; it != ed; ++it) { *it &= mask; }
+	}
 	return {ptr, ed};
+}
+
+static inline constexpr U8 computeMemtagBufferMask(IR::IndexType idx) noexcept
+{
+	return idx == IR::IndexType::i32 ? 0x3 : 0xFF;
 }
 
 static Memory* createMemoryImpl(Compartment* compartment,
@@ -107,7 +117,8 @@ static Memory* createMemoryImpl(Compartment* compartment,
 		auto baseAddressTags = Platform::allocateVirtualPages(totaltaggedpages);
 		if(!baseAddressTags) { return nullptr; }
 		memory->baseAddressTags = baseAddressTags;
-		memory->memtagRandomBuffer = createMemoryTagRandomBufferImpl();
+		memory->memtagRandomBuffer
+			= createMemoryTagRandomBufferImpl(computeMemtagBufferMask(type.indexType));
 	}
 	memory->numReservedBytes = memoryMaxPages << pageBytesLog2;
 	if(!memory->baseAddress) { return nullptr; }
@@ -179,7 +190,8 @@ Memory* Runtime::cloneMemory(Memory* memory, Compartment* newCompartment)
 		memcpy(newMemory->baseAddressTags,
 			   memory->baseAddressTags,
 			   memoryType.size.min * (IR::numBytesPerPage >> 4u));
-		newMemory->memtagRandomBuffer = createMemoryTagRandomBufferImpl();
+		newMemory->memtagRandomBuffer
+			= createMemoryTagRandomBufferImpl(computeMemtagBufferMask(memoryType.indexType));
 	}
 	resizingLock.unlock();
 
