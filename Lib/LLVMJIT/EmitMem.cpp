@@ -66,14 +66,14 @@ static llvm::Value* getMemoryNumBytes(EmitFunctionContext& functionContext, Uptr
 
 #if 0
 [[maybe_unused]]
-static inline void foomemorytagdebugging(EmitFunctionContext& functionContext, ::llvm::Value* memaddress)
+static inline void foomemorytagdebugging(EmitFunctionContext& functionContext,
+										 ::llvm::Value* memaddress)
 {
-	functionContext.emitRuntimeIntrinsic("memoryTagDebugging",
-	FunctionType(
-		TypeTuple{ValueType::i64},
-		TypeTuple{ValueType::i64},
-		IR::CallingConvention::intrinsic),
-	{memaddress});
+	functionContext.emitRuntimeIntrinsic(
+		"wavmdebuggingprint",
+		FunctionType(
+			TypeTuple{ValueType::i64}, TypeTuple{ValueType::i64}, IR::CallingConvention::intrinsic),
+		{functionContext.irBuilder.CreateZExt(memaddress, functionContext.llvmContext.i64Type)});
 }
 
 static void createconditionaltrapcond(EmitFunctionContext& functionContext, ::llvm::Value* cmpres, ::llvm::Value* addressrshift)
@@ -301,16 +301,14 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 				irBuilder,
 				functionContext.moduleContext.iptrType,
 				functionContext.memoryInfos[memoryIndex].endAddressVariable);
-			if constexpr(false)
-			{
-				createconditionaltrap(functionContext,
-									  irBuilder.CreateICmpUGE(address, endAddress));
-			}
-			else
-			{
-				address = irBuilder.CreateSelect(
-					irBuilder.CreateICmpULT(address, endAddress), address, endAddress);
-			}
+
+#if 0
+			createconditionaltrap(functionContext,
+									irBuilder.CreateICmpUGE(address, endAddress));
+#else
+			address = irBuilder.CreateSelect(
+				irBuilder.CreateICmpULT(address, endAddress), address, endAddress);
+#endif
 		}
 	}
 	if(offset && offset < Runtime::memoryNumGuardBytes)
