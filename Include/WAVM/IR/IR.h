@@ -24,6 +24,7 @@ namespace WAVM { namespace IR {
 
 	template<typename T, std::size_t Bits> struct memtagConstants
 	{
+		static_assert(Bits!=0&&Bits<=8);
 		using value_type = T;
 		static inline constexpr U32 bits = Bits;
 		static inline constexpr U32 shifter = ::std::numeric_limits<T>::digits - bits;
