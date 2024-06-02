@@ -25,8 +25,8 @@ namespace WAVM { namespace IR {
 	template<typename T, std::size_t Bits> struct memtagConstants
 	{
 		using value_type = T;
-		static inline constexpr U64 bits = Bits;
-		static inline constexpr U64 shifter = ::std::numeric_limits<T>::digits - bits;
+		static inline constexpr U32 bits = Bits;
+		static inline constexpr U32 shifter = ::std::numeric_limits<T>::digits - bits;
 		static inline constexpr U64 mask = (::std::numeric_limits<T>::max()) >> bits;
 		static inline constexpr U64 hint_mask = static_cast<U64>(~static_cast<value_type>(mask));
 		static inline constexpr U64 index_mask = (U64(1) << bits) - 1;
