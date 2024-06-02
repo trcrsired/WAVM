@@ -5,6 +5,7 @@ namespace WAVM::LLVMJIT {
 	{
 		none,
 		basic,
-		full
+		full,
+		armmte
 	};
 }
