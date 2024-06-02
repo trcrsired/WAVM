@@ -205,13 +205,15 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 		uint_least64_t shifter, mask;
 		if(memoryType.indexType == IndexType::i64)
 		{
-			shifter = 56;
-			mask = 0x00FFFFFFFFFFFFFF;
+			using constanttype = ::WAVM::IR::memtag64constants;
+			shifter = constanttype::shifter;
+			mask = constanttype::mask;
 		}
 		else
 		{
-			shifter = 30;
-			mask = 0x3FFFFFFF;
+			using constanttype = ::WAVM::IR::memtag32constants;
+			shifter = constanttype::shifter;
+			mask = constanttype::mask;
 		}
 		if(fullcheck && 1 < knownNumBytes && knownNumBytes <= 16u)
 		{
@@ -623,14 +625,16 @@ static inline ::llvm::Value* TagMemPointer(EmitFunctionContext& functionContext,
 	::llvm::Type* extendtype;
 	if(memoryType.indexType == IndexType::i64)
 	{
-		shifter = 56;
-		mask = 0x00FFFFFFFFFFFFFF;
+		using constanttype = ::WAVM::IR::memtag64constants;
+		shifter = constanttype::shifter;
+		mask = constanttype::mask;
 		extendtype = functionContext.llvmContext.i64Type;
 	}
 	else
 	{
-		shifter = 30;
-		mask = 0x3FFFFFFF;
+		using constanttype = ::WAVM::IR::memtag32constants;
+		shifter = constanttype::shifter;
+		mask = constanttype::mask;
 		extendtype = functionContext.llvmContext.i32Type;
 	}
 	color = irBuilder.CreateZExt(color, extendtype);
@@ -648,8 +652,8 @@ static inline ::llvm::Value* UntagAddress(EmitFunctionContext& functionContext,
 		= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
 	uint_least64_t mask;
-	if(memoryType.indexType == IndexType::i64) { mask = 0x00FFFFFFFFFFFFFF; }
-	else { mask = 0x3FFFFFFF; }
+	if(memoryType.indexType == IndexType::i64) { mask = ::WAVM::IR::memtag64constants::mask; }
+	else { mask = ::WAVM::IR::memtag32constants::mask; }
 	address = irBuilder.CreateAnd(address, mask);
 	return address;
 }
@@ -684,13 +688,15 @@ static inline ::llvm::Value* StoreTagIntoMem(EmitFunctionContext& functionContex
 	uint_least64_t shifter, mask;
 	if(memoryType.indexType == IndexType::i64)
 	{
-		shifter = 56;
-		mask = 0x00FFFFFFFFFFFFFF;
+		using constanttype = ::WAVM::IR::memtag64constants;
+		shifter = constanttype::shifter;
+		mask = constanttype::mask;
 	}
 	else
 	{
-		shifter = 30;
-		mask = 0x3FFFFFFF;
+		using constanttype = ::WAVM::IR::memtag32constants;
+		shifter = constanttype::shifter;
+		mask = constanttype::mask;
 	}
 	if(color == nullptr)
 	{
@@ -824,15 +830,17 @@ static hint_addr_result compute_hint_addr_seperate(EmitFunctionContext& function
 	uint_least64_t shifter, mask, tagindexmask;
 	if(memoryType.indexType == IndexType::i64)
 	{
-		shifter = 56;
-		mask = 0x00FFFFFFFFFFFFFF;
-		tagindexmask = 255u;
+		using constanttype = ::WAVM::IR::memtag64constants;
+		shifter = constanttype::shifter;
+		mask = constanttype::mask;
+		tagindexmask = constanttype::index_mask;
 	}
 	else
 	{
-		shifter = 30;
-		mask = 0x3FFFFFFF;
-		tagindexmask = 3u;
+		using constanttype = ::WAVM::IR::memtag32constants;
+		shifter = constanttype::shifter;
+		mask = constanttype::mask;
+		tagindexmask = constanttype::index_mask;
 	}
 	hintindex = irBuilder.CreateAnd(hintindex, tagindexmask);
 	hintptr = irBuilder.CreateLShr(hintptr, shifter);
@@ -855,17 +863,19 @@ static ::llvm::Value* compute_hint_addr(EmitFunctionContext& functionContext,
 	uint_least64_t shifter, mask, hintmask, tagindexmask;
 	if(memoryType.indexType == IndexType::i64)
 	{
-		shifter = 56;
-		mask = 0x00FFFFFFFFFFFFFF;
-		hintmask = 0xFF00000000000000;
-		tagindexmask = 255u;
+		using constanttype = ::WAVM::IR::memtag64constants;
+		shifter = constanttype::shifter;
+		mask = constanttype::mask;
+		hintmask = constanttype::hint_mask;
+		tagindexmask = constanttype::index_mask;
 	}
 	else
 	{
-		shifter = 30;
-		mask = 0x3FFFFFFF;
-		hintmask = 0xC0000000;
-		tagindexmask = 3u;
+		using constanttype = ::WAVM::IR::memtag32constants;
+		shifter = constanttype::shifter;
+		mask = constanttype::mask;
+		hintmask = constanttype::hint_mask;
+		tagindexmask = constanttype::index_mask;
 	}
 	hintindex = irBuilder.CreateAnd(hintindex, tagindexmask);
 	hintindex = irBuilder.CreateShl(hintindex, shifter);
@@ -934,8 +944,8 @@ void EmitFunctionContext::memory_subtag(MemoryImm imm)
 		const MemoryType& memoryType
 			= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
 		uint_least64_t mask;
-		if(memoryType.indexType == IndexType::i64) { mask = 0x00FFFFFFFFFFFFFF; }
-		else { mask = 0x3FFFFFFF; }
+		if(memoryType.indexType == IndexType::i64) { mask = ::WAVM::IR::memtag64constants::mask; }
+		else { mask = ::WAVM::IR::memtag32constants::mask; }
 		ptra = irBuilder.CreateAnd(ptra, mask);
 		ptrb = irBuilder.CreateAnd(ptrb, mask);
 	}
@@ -953,13 +963,15 @@ void EmitFunctionContext::memory_copytag(MemoryImm imm)
 		uint_least64_t maskcolor, mask;
 		if(memoryType.indexType == IndexType::i64)
 		{
-			maskcolor = 0xFF00000000000000;
-			mask = 0x00FFFFFFFFFFFFFF;
+			using constanttype = ::WAVM::IR::memtag64constants;
+			maskcolor = constanttype::hint_mask;
+			mask = constanttype::mask;
 		}
 		else
 		{
-			maskcolor = 0xC0000000;
-			mask = 0x3FFFFFFF;
+			using constanttype = ::WAVM::IR::memtag32constants;
+			maskcolor = constanttype::hint_mask;
+			mask = constanttype::mask;
 		}
 		memaddress1 = irBuilder.CreateOr(irBuilder.CreateAnd(memaddress2, maskcolor),
 										 irBuilder.CreateAnd(memaddress1, mask));
@@ -986,12 +998,12 @@ void EmitFunctionContext::memory_loadtag(MemoryImm imm)
 		if(memoryType.indexType == IndexType::i64)
 		{
 			extendtype = this->llvmContext.i64Type;
-			shiftval = 56;
+			shiftval = ::WAVM::IR::memtag64constants::shifter;
 		}
 		else
 		{
 			extendtype = this->llvmContext.i32Type;
-			shiftval = 30;
+			shiftval = ::WAVM::IR::memtag32constants::shifter;
 		}
 		color = irBuilder.CreateZExt(color, extendtype);
 		color = irBuilder.CreateShl(color, shiftval);
