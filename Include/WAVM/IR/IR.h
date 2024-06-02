@@ -34,5 +34,5 @@ namespace WAVM { namespace IR {
 	};
 
 	using memtag64constants = memtagConstants<U64, 8>;
-	using memtag32constants = memtagConstants<U32, 2>;
+	using memtag32constants = memtagConstants<U32, 4>;
 }}
