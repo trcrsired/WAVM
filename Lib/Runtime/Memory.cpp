@@ -73,7 +73,8 @@ static MemtagRandomBufferInMemory createMemoryTagRandomBufferImpl(U8 mask) noexc
 
 static inline constexpr U8 computeMemtagBufferMask(IR::IndexType idx) noexcept
 {
-	return idx == IR::IndexType::i32 ? 0x3 : 0xFF;
+	return static_cast<U8>(idx == IR::IndexType::i32 ? ::WAVM::IR::memtag32constants::index_mask
+													 : ::WAVM::IR::memtag64constants::index_mask);
 }
 
 static Memory* createMemoryImpl(Compartment* compartment,
@@ -419,13 +420,15 @@ static U8* getValidatedMemoryOffsetRangeImpl(Memory* memory,
 	{
 		if(memory->indexType == IR::IndexType::i32)
 		{
-			color = static_cast<U8>(address >> 30);
-			address &= 0x3FFFFFFF;
+			using constanttype = ::WAVM::IR::memtag32constants;
+			color = static_cast<U8>(address >> (constanttype::shifter));
+			address &= constanttype::mask;
 		}
 		else
 		{
-			color = static_cast<U8>(address >> 56);
-			address &= 0x00FFFFFFFFFFFFFF;
+			using constanttype = ::WAVM::IR::memtag64constants;
+			color = static_cast<U8>(address >> (constanttype::shifter));
+			address &= constanttype::mask;
 		}
 	}
 	if(address + numBytes > memoryNumBytes || address + numBytes < address)
