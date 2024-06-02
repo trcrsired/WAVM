@@ -327,9 +327,19 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 
 		// If the number of pages to grow would cause the memory's size to exceed its maximum,
 		// return GrowResult::outOfMaxSize.
-		const U64 maxMemoryPages = memory->indexType == IR::IndexType::i32
-									   ? IR::maxMemory32Pages
-									   : std::min(maxMemory64WASMPages, IR::maxMemory64Pages);
+		U64 maxMemoryPages;
+		auto baseAddressTags = memory->baseAddressTags;
+		if(memory->indexType == IR::IndexType::i32)
+		{
+			if(baseAddressTags)
+			{
+				constexpr U64 maxmemtag32pages{IR::maxMemory32Pages
+											   >> ::WAVM::IR::memtag32constants::bits};
+				maxMemoryPages = maxmemtag32pages;
+			}
+			else { maxMemoryPages = IR::maxMemory32Pages; }
+		}
+		else { maxMemoryPages = std::min(maxMemory64WASMPages, IR::maxMemory64Pages); }
 		if(numPagesToGrow > memory->maxPages || oldNumPages > memory->maxPages - numPagesToGrow
 		   || numPagesToGrow > maxMemoryPages || oldNumPages > maxMemoryPages - numPagesToGrow)
 		{
@@ -346,7 +356,6 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 			if(memory->resourceQuota) { memory->resourceQuota->memoryPages.free(numPagesToGrow); }
 			return GrowResult::outOfMemory;
 		}
-		auto baseAddressTags = memory->baseAddressTags;
 		if(baseAddressTags)
 		{
 			auto wasmlog2m4 = wasmlog2 - 4u;
