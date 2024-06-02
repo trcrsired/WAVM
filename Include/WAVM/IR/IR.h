@@ -1,5 +1,6 @@
 #pragma once
 
+#include <limits>
 #include "WAVM/Inline/BasicTypes.h"
 
 namespace WAVM { namespace IR {
@@ -20,4 +21,17 @@ namespace WAVM { namespace IR {
 #endif
 	inline constexpr U64 maxMemory64WASMPages = maxMemory64WASMBytes >> IR::numBytesPerPageLog2;
 	inline constexpr U64 maxMemory64WASMMask = maxMemory64WASMBytes - 1u;
+
+	template<typename T, std::size_t Bits> struct memtagConstants
+	{
+		using value_type = T;
+		static inline constexpr U64 bits = Bits;
+		static inline constexpr U64 shifter = ::std::numeric_limits<T>::digits - bits;
+		static inline constexpr U64 mask = (::std::numeric_limits<T>::max()) >> bits;
+		static inline constexpr U64 hint_mask = static_cast<U64>(~static_cast<value_type>(mask));
+		static inline constexpr U64 index_mask = (U64(1) << bits) - 1;
+	};
+
+	using memtag64constants = memtagConstants<U64, 8>;
+	using memtag32constants = memtagConstants<U32, 2>;
 }}
