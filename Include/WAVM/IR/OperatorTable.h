@@ -202,7 +202,7 @@
 	visitOp(0xfe4d, i64_atomic_rmw16_cmpxchg_u, "i64.atomic.rmw16.cmpxchg_u", AtomicLoadOrStoreImm<1>             , atomiccmpxchg_i64         , atomics                )   \
 	visitOp(0xfe4e, i64_atomic_rmw32_cmpxchg_u, "i64.atomic.rmw32.cmpxchg_u", AtomicLoadOrStoreImm<2>             , atomiccmpxchg_i64         , atomics                )   \
 	visitOp(0xfc20, memtag_status             , "memtag.status"             , MemoryImm                           , memtag_1r0a             , mvp                    )   \
-	visitOp(0xfc21, memory_extract            , "memtag.extract"            , MemoryImm                           , memtag_1r1a            , mvp                    )   \
+	visitOp(0xfc21, memtag_extract            , "memtag.extract"            , MemoryImm                           , memtag_1r1a            , mvp                    )   \
 	visitOp(0xfc22, memtag_insert             , "memtag.insert"             , MemoryImm                           , memtag_1r2a             , mvp                    )   \
 	visitOp(0xfc23, memtag_tagbits            , "memtag.tagbits"            , MemoryImm                           , memtag_1r0a            , mvp                    )   \
 	visitOp(0xfc24, memtag_startbit           , "memtag.startbit"           , MemoryImm                           , memtag_1r0a           , mvp                    )   \
