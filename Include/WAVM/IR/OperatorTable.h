@@ -201,17 +201,29 @@
 	visitOp(0xfe4c, i64_atomic_rmw8_cmpxchg_u , "i64.atomic.rmw8.cmpxchg_u" , AtomicLoadOrStoreImm<0>             , atomiccmpxchg_i64         , atomics                )   \
 	visitOp(0xfe4d, i64_atomic_rmw16_cmpxchg_u, "i64.atomic.rmw16.cmpxchg_u", AtomicLoadOrStoreImm<1>             , atomiccmpxchg_i64         , atomics                )   \
 	visitOp(0xfe4e, i64_atomic_rmw32_cmpxchg_u, "i64.atomic.rmw32.cmpxchg_u", AtomicLoadOrStoreImm<2>             , atomiccmpxchg_i64         , atomics                )   \
-	visitOp(0xfc20, memory_randomtag          , "memory.randomtag"          , MemoryImm                           , memory_randomtag          , mvp                    )   \
-	visitOp(0xfc21, memory_copytag            , "memory.copytag"            , MemoryImm                           , memory_copytag            , mvp                    )   \
-	visitOp(0xfc22, memory_subtag             , "memory.subtag"             , MemoryImm                           , memory_subtag             , mvp                    )   \
-	visitOp(0xfc23, memory_loadtag            , "memory.loadtag"            , MemoryImm                           , memory_loadtag            , mvp                    )   \
-	visitOp(0xfc24, memory_storetag           , "memory.storetag"           , MemoryImm                           , memory_storetag           , mvp                    )   \
-	visitOp(0xfc25, memory_storeztag          , "memory.storeztag"          , MemoryImm                           , memory_storetag           , mvp                    )   \
-	visitOp(0xfc28, memory_randomstoretag     , "memory.randomstoretag"     , MemoryImm                           , memory_randomstoretag     , mvp                    )   \
-	visitOp(0xfc29, memory_randomstoreztag    , "memory.randomstoreztag"    , MemoryImm                           , memory_randomstoreztag    , mvp                    )   \
-	visitOp(0xfc2c, memory_hinttag            , "memory.hinttag"            , MemoryImm                           , memory_hinttag            , mvp                    )   \
-	visitOp(0xfc2d, memory_hintstoretag       , "memory.hintstoretag"       , MemoryImm                           , memory_hintstoretag       , mvp                    )   \
-	visitOp(0xfc2e, memory_hintstoreztag      , "memory.hintstoreztag"      , MemoryImm                           , memory_hintstoreztag      , mvp                    )
+	visitOp(0xfc20, memtag_status             , "memtag.status"             , MemoryImm                           , memtag_1r0a             , mvp                    )   \
+	visitOp(0xfc21, memory_extract            , "memtag.extract"            , MemoryImm                           , memtag_1r1a            , mvp                    )   \
+	visitOp(0xfc22, memtag_insert             , "memtag.insert"             , MemoryImm                           , memtag_1r2a             , mvp                    )   \
+	visitOp(0xfc23, memtag_tagbits            , "memtag.tagbits"            , MemoryImm                           , memtag_1r0a            , mvp                    )   \
+	visitOp(0xfc24, memtag_startbit           , "memtag.startbit"           , MemoryImm                           , memtag_1r0a           , mvp                    )   \
+	visitOp(0xfc25, memtag_copy               , "memtag.copy"               , MemoryImm                           , memtag_1r2a            , mvp                    )   \
+	visitOp(0xfc26, memtag_sub                , "memtag.sub"                , MemoryImm                           , memtag_1r2a            , mvp                    )   \
+	visitOp(0xfc27, memtag_load               , "memtag.load"               , MemoryImm                           , memtag_1r1a            , mvp                    )   \
+	visitOp(0xfc28, memtag_untag              , "memtag.untag"              , MemoryImm                           , memtag_1r1a            , mvp                    )   \
+	visitOp(0xfc29, memtag_untagstore         , "memtag.untagstore"         , MemoryImm                           , memtag_1r3a            , mvp                    )   \
+	visitOp(0xfc2a, memtag_untagstorez        , "memtag.untagstorez"        , MemoryImm                           , memtag_1r3a            , mvp                    )   \
+	visitOp(0xfc2b, memtag_store              , "memtag.store"              , MemoryImm                           , memtag_0r1a            , mvp                    )   \
+	visitOp(0xfc2c, memtag_storez             , "memtag.storez"             , MemoryImm                           , memtag_0r3a            , mvp                    )   \
+	visitOp(0xfc2d, memtag_random             , "memtag.random"             , MemoryImm                           , memtag_1r1a            , mvp                    )   \
+	visitOp(0xfc2e, memtag_randomstore        , "memtag.randomstore"        , MemoryImm                           , memtag_1r2a            , mvp                    )   \
+	visitOp(0xfc2f, memtag_randomstorez       , "memtag.randomstorez"       , MemoryImm                           , memtag_1r2a            , mvp                    )   \
+	visitOp(0xfc30, memtag_randommask         , "memtag.randommask"         , MemoryImm                           , memtag_1r2a            , mvp                    )   \
+	visitOp(0xfc31, memtag_randommaskstore    , "memtag.randommaskstore"    , MemoryImm                           , memtag_1r3a            , mvp                    )   \
+	visitOp(0xfc32, memtag_randommaskstorez   , "memtag.randommaskstorez"   , MemoryImm                           , memtag_1r3a            , mvp                    )   \
+	visitOp(0xfc36, memtag_hint               , "memtag.hint"               , MemoryImm                           , memtag_1r3a            , mvp                    )   \
+	visitOp(0xfc37, memtag_hintstore          , "memtag.hintstore"          , MemoryImm                           , memtag_1r4a            , mvp                    )   \
+	visitOp(0xfc38, memtag_hintstorez         , "memtag.hintstorez"         , MemoryImm                           , memtag_1r4a            , mvp                    )
+
 
 #define WAVM_ENUM_NONCONTROL_NONPARAMETRIC_OPERATORS(visitOp)                                                                                                            \
 	visitOp(0x0001, nop                           , "nop"                           , NoImm                     , none_to_none              , mvp                    )   \
