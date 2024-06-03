@@ -749,7 +749,106 @@ static void memtag_zero_memory(EmitFunctionContext& functionContext,
 	irBuilder.CreateMemSet(realaddr, zeroconstant, taggedbytes, LLVM_ALIGNMENT(1), false);
 }
 
-void EmitFunctionContext::memory_randomstoretag(MemoryImm imm)
+void EmitFunctionContext::memtag_status(MemoryImm imm)
+{
+	MemoryType const& memoryType
+		= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
+	if(memoryType.indexType == IndexType::i64)
+	{
+		push(this->irBuilder.getInt64(static_cast<::std::uint64_t>(this->isMemTagged)));
+	}
+	else
+	{
+		push(this->irBuilder.getInt32(static_cast<::std::uint64_t>(this->isMemTagged)));
+	}
+}
+
+void EmitFunctionContext::memtag_tagbits(MemoryImm imm)
+{
+	MemoryType const& memoryType
+		= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
+	if(isMemTaggedEnabled(*this, imm.memoryIndex))
+	{
+		if(memoryType.indexType == IndexType::i64)
+		{
+			if (this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			{
+				push(this->irBuilder.getInt64(4));
+			}
+			else
+			{
+				push(this->irBuilder.getInt64(::WAVM::IR::memtag64constants::bits));
+			}
+		}
+		else
+		{
+			if constexpr(::WAVM::IR::memtag32constants::bits!=4)
+			{
+				if (this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+				{
+					push(this->irBuilder.getInt32(4));
+					return;
+				}
+			}
+			push(this->irBuilder.getInt32(::WAVM::IR::memtag32constants::bits));
+		}
+	}
+	else
+	{
+		if(memoryType.indexType == IndexType::i64)
+		{
+			push(this->irBuilder.getInt64(0));
+		}
+		else
+		{
+			push(this->irBuilder.getInt32(0));
+		}
+	}
+}
+
+void EmitFunctionContext::memtag_startbit(MemoryImm imm)
+{
+	MemoryType const& memoryType
+		= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
+	if(isMemTaggedEnabled(*this, imm.memoryIndex))
+	{
+		if(memoryType.indexType == IndexType::i64)
+		{
+			if (this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			{
+				push(this->irBuilder.getInt64(56));
+			}
+			else
+			{
+				push(this->irBuilder.getInt64(::WAVM::IR::memtag32constants::shifter));
+			}
+		}
+		else
+		{
+			if (this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			{
+				push(this->irBuilder.getInt64(28));
+			}
+			else
+			{
+				push(this->irBuilder.getInt32(::WAVM::IR::memtag32constants::shifter));
+			}
+		}
+	}
+	else
+	{
+		if(memoryType.indexType == IndexType::i64)
+		{
+			push(this->irBuilder.getInt64(64));
+		}
+		else
+		{
+			push(this->irBuilder.getInt32(32));
+		}
+	}
+}
+
+void EmitFunctionContext::memtag_randomstore(MemoryImm imm)
 {
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
@@ -762,7 +861,7 @@ void EmitFunctionContext::memory_randomstoretag(MemoryImm imm)
 	push(memaddress);
 }
 
-void EmitFunctionContext::memory_randomstoreztag(MemoryImm imm)
+void EmitFunctionContext::memtag_randomstorez(MemoryImm imm)
 {
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
@@ -777,7 +876,114 @@ void EmitFunctionContext::memory_randomstoreztag(MemoryImm imm)
 	push(memaddress);
 }
 
-void EmitFunctionContext::memory_storetag(MemoryImm imm)
+void EmitFunctionContext::memtag_randommaskstore(MemoryImm imm)
+{
+	::llvm::Value* mask = pop();
+	::llvm::Value* taggedbytes = pop();
+	::llvm::Value* memaddress = pop();
+	if(isMemTaggedEnabled(*this, imm.memoryIndex))
+	{
+		auto color = generateMemRandomTagByte(*this, imm.memoryIndex);
+		memaddress = StoreTagIntoMem(*this, imm.memoryIndex, memaddress, taggedbytes, color);
+		memaddress = TagMemPointer(*this, imm.memoryIndex, memaddress, color, true);
+	}
+	push(memaddress);
+}
+
+void EmitFunctionContext::memtag_randommaskstorez(MemoryImm imm)
+{
+	::llvm::Value* mask = pop();
+	::llvm::Value* taggedbytes = pop();
+	::llvm::Value* memaddress = pop();
+	if(isMemTaggedEnabled(*this, imm.memoryIndex))
+	{
+		auto color = generateMemRandomTagByte(*this, imm.memoryIndex);
+		memaddress = StoreTagIntoMem(*this, imm.memoryIndex, memaddress, taggedbytes, color);
+		memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes);
+		memaddress = TagMemPointer(*this, imm.memoryIndex, memaddress, color, true);
+	}
+	else { memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes); }
+	push(memaddress);
+}
+
+
+void EmitFunctionContext::memtag_extract(MemoryImm imm)
+{
+	::llvm::Value* memaddress = pop();
+	if(isMemTaggedEnabled(*this, imm.memoryIndex))
+	{
+		push(memaddress);
+	}
+	else
+	{
+		MemoryType const& memoryType
+			= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
+		if(memoryType.indexType == IndexType::i64)
+		{
+			push(this->irBuilder.getInt64(0));
+		}
+		else
+		{
+			push(this->irBuilder.getInt32(0));
+		}
+	}
+}
+
+void EmitFunctionContext::memtag_insert(MemoryImm imm)
+{
+	::llvm::Value* newcolor = pop();
+	::llvm::Value* memaddress = pop();
+	if(isMemTaggedEnabled(*this, imm.memoryIndex))
+	{
+		memaddress = UntagAddress(*this, imm.memoryIndex, memaddress);
+		MemoryType const& memoryType
+			= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
+		::std::uint64_t mask{};
+		
+		memaddress = irBuilder.CreateOr(memaddress,
+			irBuilder.CreateShl(newcolor,56));//Todo: Fix it
+	}
+	push(memaddress);
+}
+
+void EmitFunctionContext::memtag_untag(MemoryImm imm)
+{
+	::llvm::Value* memaddress = pop();
+	if(isMemTaggedEnabled(*this, imm.memoryIndex))
+	{
+		memaddress = UntagAddress(*this, imm.memoryIndex, memaddress);
+	}
+	push(memaddress);
+}
+
+void EmitFunctionContext::memtag_untagstore(MemoryImm imm)
+{
+	::llvm::Value* taggedbytes = pop();
+	::llvm::Value* memaddress = pop();
+	if(isMemTaggedEnabled(*this, imm.memoryIndex))
+	{
+		memaddress = UntagAddress(*this, imm.memoryIndex, memaddress);
+		StoreTagIntoMem(*this, imm.memoryIndex, memaddress, taggedbytes,
+			llvm::ConstantInt::get(irBuilder.getInt8Ty(), 0));
+	}
+	push(memaddress);
+}
+
+void EmitFunctionContext::memtag_untagstorez(MemoryImm imm)
+{
+	::llvm::Value* taggedbytes = pop();
+	::llvm::Value* memaddress = pop();
+	if(isMemTaggedEnabled(*this, imm.memoryIndex))
+	{
+		memaddress = UntagAddress(*this, imm.memoryIndex, memaddress);
+		StoreTagIntoMem(*this, imm.memoryIndex, memaddress, taggedbytes,
+			llvm::ConstantInt::get(irBuilder.getInt8Ty(), 0));
+		memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes);
+	}
+	push(memaddress);
+}
+
+void EmitFunctionContext::memtag_store(MemoryImm imm)
 {
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
@@ -787,7 +993,7 @@ void EmitFunctionContext::memory_storetag(MemoryImm imm)
 	}
 }
 
-void EmitFunctionContext::memory_storeztag(MemoryImm imm)
+void EmitFunctionContext::memtag_storez(MemoryImm imm)
 {
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
@@ -799,8 +1005,21 @@ void EmitFunctionContext::memory_storeztag(MemoryImm imm)
 	else { memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes); }
 }
 
-void EmitFunctionContext::memory_randomtag(MemoryImm imm)
+void EmitFunctionContext::memtag_random(MemoryImm imm)
 {
+	::llvm::Value* memaddress = pop();
+	if(isMemTaggedEnabled(*this, imm.memoryIndex))
+	{
+		auto color = generateMemRandomTagByte(*this, imm.memoryIndex);
+		memaddress = TagMemPointer(*this, imm.memoryIndex, memaddress, color, false);
+	}
+	push(memaddress);
+}
+
+
+void EmitFunctionContext::memtag_randommask(MemoryImm imm)	//Todo
+{
+	::llvm::Value* mask = pop();
 	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this, imm.memoryIndex))
 	{
@@ -884,7 +1103,7 @@ static ::llvm::Value* compute_hint_addr(EmitFunctionContext& functionContext,
 	return irBuilder.CreateAdd(memaddress, hintptr);
 }
 
-void EmitFunctionContext::memory_hinttag(MemoryImm imm)
+void EmitFunctionContext::memtag_hint(MemoryImm imm)
 {
 	::llvm::Value* hintindex = pop();
 	::llvm::Value* hintptr = pop();
@@ -896,7 +1115,7 @@ void EmitFunctionContext::memory_hinttag(MemoryImm imm)
 	push(memaddress);
 }
 
-void EmitFunctionContext::memory_hintstoretag(MemoryImm imm)
+void EmitFunctionContext::memtag_hintstore(MemoryImm imm)
 {
 	::llvm::Value* hintindex = pop();
 	::llvm::Value* hintptr = pop();
@@ -913,7 +1132,7 @@ void EmitFunctionContext::memory_hintstoretag(MemoryImm imm)
 	push(memaddress);
 }
 
-void EmitFunctionContext::memory_hintstoreztag(MemoryImm imm)
+void EmitFunctionContext::memtag_hintstorez(MemoryImm imm)
 {
 	::llvm::Value* hintindex = pop();
 	::llvm::Value* hintptr = pop();
@@ -932,7 +1151,7 @@ void EmitFunctionContext::memory_hintstoreztag(MemoryImm imm)
 	push(memaddress);
 }
 
-void EmitFunctionContext::memory_subtag(MemoryImm imm)
+void EmitFunctionContext::memtag_sub(MemoryImm imm)
 {
 	::llvm::Value* ptrb = pop();
 	::llvm::Value* ptra = pop();
@@ -950,7 +1169,7 @@ void EmitFunctionContext::memory_subtag(MemoryImm imm)
 	}
 	push(irBuilder.CreateSub(ptra, ptrb));
 }
-void EmitFunctionContext::memory_copytag(MemoryImm imm)
+void EmitFunctionContext::memtag_copy(MemoryImm imm)
 {
 	::llvm::Value* memaddress2 = pop();
 	::llvm::Value* memaddress1 = pop();
@@ -977,7 +1196,7 @@ void EmitFunctionContext::memory_copytag(MemoryImm imm)
 	}
 	push(memaddress1);
 }
-void EmitFunctionContext::memory_loadtag(MemoryImm imm)
+void EmitFunctionContext::memtag_load(MemoryImm imm)
 {
 	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this, imm.memoryIndex))
