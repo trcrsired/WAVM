@@ -52,12 +52,16 @@ static Value evaluateInitializer(const std::vector<Global*>& moduleGlobals,
 
 static Uptr getIndexValue(const Value& value, IndexType indexType)
 {
+#if 0
 	switch(indexType)
 	{
 	case IndexType::i32: WAVM_ASSERT(value.type == ValueType::i32); return value.u32;
 	case IndexType::i64: WAVM_ASSERT(value.type == ValueType::i64); return value.u64;
 	default: WAVM_UNREACHABLE();
 	};
+#else
+	return value.u32;
+#endif
 }
 
 Instance::~Instance()
@@ -233,7 +237,7 @@ Instance* Runtime::instantiateModuleInternal(Compartment* compartment,
 
 	// Instantiate the module's exception types.
 	for(Uptr exceptionTypeDefIndex = 0;
-		exceptionTypeDefIndex < module_->ir.exceptionTypes.size();
+		exceptionTypeDefIndex < module_->ir.exceptionTypes.defs.size();
 		++exceptionTypeDefIndex)
 	{
 		const ExceptionTypeDef& exceptionTypeDef
