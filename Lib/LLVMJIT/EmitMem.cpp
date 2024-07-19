@@ -751,40 +751,32 @@ static void memtag_zero_memory(EmitFunctionContext& functionContext,
 
 void EmitFunctionContext::memtag_status(MemoryImm imm)
 {
-	MemoryType const& memoryType
-		= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
+	MemoryType const& memoryType = this->moduleContext.irModule.memories.getType(imm.memoryIndex);
 	if(memoryType.indexType == IndexType::i64)
 	{
 		push(this->irBuilder.getInt64(static_cast<::std::uint64_t>(this->isMemTagged)));
 	}
-	else
-	{
-		push(this->irBuilder.getInt32(static_cast<::std::uint64_t>(this->isMemTagged)));
-	}
+	else { push(this->irBuilder.getInt32(static_cast<::std::uint64_t>(this->isMemTagged))); }
 }
 
 void EmitFunctionContext::memtag_tagbits(MemoryImm imm)
 {
-	MemoryType const& memoryType
-		= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
+	MemoryType const& memoryType = this->moduleContext.irModule.memories.getType(imm.memoryIndex);
 	if(isMemTaggedEnabled(*this, imm.memoryIndex))
 	{
 		if(memoryType.indexType == IndexType::i64)
 		{
-			if (this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 			{
 				push(this->irBuilder.getInt64(4));
 			}
-			else
-			{
-				push(this->irBuilder.getInt64(::WAVM::IR::memtag64constants::bits));
-			}
+			else { push(this->irBuilder.getInt64(::WAVM::IR::memtag64constants::bits)); }
 		}
 		else
 		{
-			if constexpr(::WAVM::IR::memtag32constants::bits!=4)
+			if constexpr(::WAVM::IR::memtag32constants::bits != 4)
 			{
-				if (this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+				if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 				{
 					push(this->irBuilder.getInt32(4));
 					return;
@@ -795,56 +787,37 @@ void EmitFunctionContext::memtag_tagbits(MemoryImm imm)
 	}
 	else
 	{
-		if(memoryType.indexType == IndexType::i64)
-		{
-			push(this->irBuilder.getInt64(0));
-		}
-		else
-		{
-			push(this->irBuilder.getInt32(0));
-		}
+		if(memoryType.indexType == IndexType::i64) { push(this->irBuilder.getInt64(0)); }
+		else { push(this->irBuilder.getInt32(0)); }
 	}
 }
 
 void EmitFunctionContext::memtag_startbit(MemoryImm imm)
 {
-	MemoryType const& memoryType
-		= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
+	MemoryType const& memoryType = this->moduleContext.irModule.memories.getType(imm.memoryIndex);
 	if(isMemTaggedEnabled(*this, imm.memoryIndex))
 	{
 		if(memoryType.indexType == IndexType::i64)
 		{
-			if (this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 			{
 				push(this->irBuilder.getInt64(56));
 			}
-			else
-			{
-				push(this->irBuilder.getInt64(::WAVM::IR::memtag32constants::shifter));
-			}
+			else { push(this->irBuilder.getInt64(::WAVM::IR::memtag32constants::shifter)); }
 		}
 		else
 		{
-			if (this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 			{
 				push(this->irBuilder.getInt64(28));
 			}
-			else
-			{
-				push(this->irBuilder.getInt32(::WAVM::IR::memtag32constants::shifter));
-			}
+			else { push(this->irBuilder.getInt32(::WAVM::IR::memtag32constants::shifter)); }
 		}
 	}
 	else
 	{
-		if(memoryType.indexType == IndexType::i64)
-		{
-			push(this->irBuilder.getInt64(64));
-		}
-		else
-		{
-			push(this->irBuilder.getInt32(32));
-		}
+		if(memoryType.indexType == IndexType::i64) { push(this->irBuilder.getInt64(64)); }
+		else { push(this->irBuilder.getInt32(32)); }
 	}
 }
 
@@ -906,26 +879,16 @@ void EmitFunctionContext::memtag_randommaskstorez(MemoryImm imm)
 	push(memaddress);
 }
 
-
 void EmitFunctionContext::memtag_extract(MemoryImm imm)
 {
 	::llvm::Value* memaddress = pop();
-	if(isMemTaggedEnabled(*this, imm.memoryIndex))
-	{
-		push(memaddress);
-	}
+	if(isMemTaggedEnabled(*this, imm.memoryIndex)) { push(memaddress); }
 	else
 	{
 		MemoryType const& memoryType
 			= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
-		if(memoryType.indexType == IndexType::i64)
-		{
-			push(this->irBuilder.getInt64(0));
-		}
-		else
-		{
-			push(this->irBuilder.getInt32(0));
-		}
+		if(memoryType.indexType == IndexType::i64) { push(this->irBuilder.getInt64(0)); }
+		else { push(this->irBuilder.getInt32(0)); }
 	}
 }
 
@@ -939,9 +902,9 @@ void EmitFunctionContext::memtag_insert(MemoryImm imm)
 		MemoryType const& memoryType
 			= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
 		::std::uint64_t mask{};
-		
-		memaddress = irBuilder.CreateOr(memaddress,
-			irBuilder.CreateShl(newcolor,56));//Todo: Fix it
+
+		memaddress
+			= irBuilder.CreateOr(memaddress, irBuilder.CreateShl(newcolor, 56)); // Todo: Fix it
 	}
 	push(memaddress);
 }
@@ -963,8 +926,11 @@ void EmitFunctionContext::memtag_untagstore(MemoryImm imm)
 	if(isMemTaggedEnabled(*this, imm.memoryIndex))
 	{
 		memaddress = UntagAddress(*this, imm.memoryIndex, memaddress);
-		StoreTagIntoMem(*this, imm.memoryIndex, memaddress, taggedbytes,
-			llvm::ConstantInt::get(irBuilder.getInt8Ty(), 0));
+		StoreTagIntoMem(*this,
+						imm.memoryIndex,
+						memaddress,
+						taggedbytes,
+						llvm::ConstantInt::get(irBuilder.getInt8Ty(), 0));
 	}
 	push(memaddress);
 }
@@ -976,8 +942,11 @@ void EmitFunctionContext::memtag_untagstorez(MemoryImm imm)
 	if(isMemTaggedEnabled(*this, imm.memoryIndex))
 	{
 		memaddress = UntagAddress(*this, imm.memoryIndex, memaddress);
-		StoreTagIntoMem(*this, imm.memoryIndex, memaddress, taggedbytes,
-			llvm::ConstantInt::get(irBuilder.getInt8Ty(), 0));
+		StoreTagIntoMem(*this,
+						imm.memoryIndex,
+						memaddress,
+						taggedbytes,
+						llvm::ConstantInt::get(irBuilder.getInt8Ty(), 0));
 		memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes);
 	}
 	push(memaddress);
@@ -1016,8 +985,7 @@ void EmitFunctionContext::memtag_random(MemoryImm imm)
 	push(memaddress);
 }
 
-
-void EmitFunctionContext::memtag_randommask(MemoryImm imm)	//Todo
+void EmitFunctionContext::memtag_randommask(MemoryImm imm) // Todo
 {
 	::llvm::Value* mask = pop();
 	::llvm::Value* memaddress = pop();
@@ -1045,10 +1013,12 @@ static hint_addr_result compute_hint_addr_seperate(EmitFunctionContext& function
 	MemoryType const& memoryType
 		= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
+	uint_least32_t bits;
 	uint_least64_t shifter, mask, tagindexmask;
 	if(memoryType.indexType == IndexType::i64)
 	{
 		using constanttype = ::WAVM::IR::memtag64constants;
+		bits = constanttype::bits;
 		shifter = constanttype::shifter;
 		mask = constanttype::mask;
 		tagindexmask = constanttype::index_mask;
@@ -1056,6 +1026,7 @@ static hint_addr_result compute_hint_addr_seperate(EmitFunctionContext& function
 	else
 	{
 		using constanttype = ::WAVM::IR::memtag32constants;
+		bits = constanttype::bits;
 		shifter = constanttype::shifter;
 		mask = constanttype::mask;
 		tagindexmask = constanttype::index_mask;
@@ -1064,6 +1035,7 @@ static hint_addr_result compute_hint_addr_seperate(EmitFunctionContext& function
 	hintptr = irBuilder.CreateLShr(hintptr, shifter);
 	hintptr = irBuilder.CreateAdd(hintptr, hintindex);
 	memaddress = irBuilder.CreateAnd(memaddress, mask);
+	if(bits != 8) { hintptr = irBuilder.CreateAnd(hintptr, tagindexmask); }
 	return {irBuilder.CreateTrunc(hintptr, functionContext.llvmContext.i8Type),
 			memaddress,
 			irBuilder.CreateAdd(irBuilder.CreateShl(hintptr, shifter), memaddress)};
