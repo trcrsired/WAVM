@@ -655,7 +655,10 @@ struct FunctionValidationContext
 		VALIDATE_INDEX(imm.exceptionTypeIndex, module_.tagSegments.size());
 		auto& tagseg{module_.tagSegments[imm.exceptionTypeIndex]};
 		if(tagseg.attribute != 0) { std::abort(); }
-		popAndValidateOperand("throw exception tag", ValueType::i64);
+		const MemoryType& memoryType = module_.memories.getType(0);
+		ValueType stype = ValueType::i32;
+		if(memoryType.indexType == IndexType::i64) { stype = ValueType::i64; }
+		popAndValidateOperand("throw exception tag", stype);
 		enterUnreachable();
 	}
 
