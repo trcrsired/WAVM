@@ -41,7 +41,8 @@
 	V(interleavedLoadStore, "interleaved-load-store", "Interleaved SIMD load&store instructions")  \
 	V(table64, "table64", "Tables with 64-bit indices")                                            \
 	V(memtag, "memtag", "Memory Tagging")                                                          \
-	V(memtagFull, "memtag-full", "Memory Tagging Full Checking (Expensive but more effective)")
+	V(memtagFull, "memtag-full", "Memory Tagging Full Checking (Expensive but more effective)")    \
+	V(memtagMte, "memtag-mte", "Memory Tagging by MTE instructions like ARM MTE")
 
 // WAVM extensions meant for internal use only (not exposed to users).
 #define WAVM_ENUM_INTERNAL_FEATURES(V)                                                             \

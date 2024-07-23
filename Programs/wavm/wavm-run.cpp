@@ -636,7 +636,14 @@ struct State
 		if(startFunction)
 		{
 			::WAVM::LLVMJIT::memtagStatus mtgstatus{::WAVM::LLVMJIT::memtagStatus::none};
-			if(irModule.featureSpec.memtagFull) { mtgstatus = ::WAVM::LLVMJIT::memtagStatus::full; }
+			if(irModule.featureSpec.memtagMte)
+			{
+				mtgstatus = ::WAVM::LLVMJIT::memtagStatus::armmte;
+			}
+			else if(irModule.featureSpec.memtagFull)
+			{
+				mtgstatus = ::WAVM::LLVMJIT::memtagStatus::full;
+			}
 			else if(irModule.featureSpec.memtag)
 			{
 				mtgstatus = ::WAVM::LLVMJIT::memtagStatus::basic;
@@ -733,7 +740,11 @@ struct State
 		std::vector<UntaggedValue> untaggedInvokeResults;
 		untaggedInvokeResults.resize(invokeSig.results().size());
 		::WAVM::LLVMJIT::memtagStatus memtagstatus{};
-		if(irModule.featureSpec.memtagFull) { memtagstatus = ::WAVM::LLVMJIT::memtagStatus::full; }
+		if(irModule.featureSpec.memtagMte) { memtagstatus = ::WAVM::LLVMJIT::memtagStatus::armmte; }
+		else if(irModule.featureSpec.memtagFull)
+		{
+			memtagstatus = ::WAVM::LLVMJIT::memtagStatus::full;
+		}
 		else if(irModule.featureSpec.memtag)
 		{
 			memtagstatus = ::WAVM::LLVMJIT::memtagStatus::basic;

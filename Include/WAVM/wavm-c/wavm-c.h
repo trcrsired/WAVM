@@ -94,7 +94,7 @@ WASM_DECLARE_OWN(config)
 WASM_C_API own wasm_config_t* wasm_config_new();
 
 #define WASM_DECLARE_FEATURE(feature)                                                              \
-	WASM_C_API void wasm_config_feature_set_##feature(wasm_config_t* config, bool enable);
+	WASM_C_API void wasm_config_feature_set_##feature(wasm_config_t * config, bool enable);
 
 // Standardized, or mature proposed standard extensions that are expected to be standardized without
 // breaking backward compatibility: enabled by default.
@@ -120,6 +120,7 @@ WASM_DECLARE_FEATURE(wat_quoted_names)
 WASM_DECLARE_FEATURE(wat_custom_sections)
 WASM_DECLARE_FEATURE(memtag)
 WASM_DECLARE_FEATURE(memtagFull)
+WASM_DECLARE_FEATURE(memtagMte)
 
 #undef WASM_DECLARE_FEATURE
 
