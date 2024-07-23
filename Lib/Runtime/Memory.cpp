@@ -375,7 +375,11 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 				auto ch{randombuffer.End[-1]};
 				if(ch == 0) // ensure ch is never a 0
 				{
-					ch = 127;
+					if(memory->indexType == IR::IndexType::i32)
+					{
+						ch = ::WAVM::IR::memtag32constants::nullptrtag;
+					}
+					else { ch = ::WAVM::IR::memtag64constants::nullptrtag; }
 				}
 				*baseAddressTags = ch;
 			}

@@ -31,6 +31,7 @@ namespace WAVM { namespace IR {
 		static inline constexpr U64 mask = (::std::numeric_limits<T>::max()) >> bits;
 		static inline constexpr U64 hint_mask = static_cast<U64>(~static_cast<value_type>(mask));
 		static inline constexpr U64 index_mask = (U64(1) << bits) - 1;
+		static inline constexpr U8 nullptrtag = (U8(1) << (bits-1)) - 1;
 	};
 
 	using memtag64constants = memtagConstants<U64, 8>;
