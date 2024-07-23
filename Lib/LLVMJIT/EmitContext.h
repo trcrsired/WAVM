@@ -145,7 +145,8 @@ namespace WAVM { namespace LLVMJIT {
 															 memoryOffset->getType()),
 									  memoryInfo.endAddressVariable);
 
-				if(ismemtagged != ::WAVM::LLVMJIT::memtagStatus::none)
+				if(ismemtagged == ::WAVM::LLVMJIT::memtagStatus::basic
+				   || ismemtagged == ::WAVM::LLVMJIT::memtagStatus::full)
 				{
 					::llvm::Value* memoryTagPointerBaseOffset = ::llvm::ConstantExpr::getAdd(
 						memoryOffset,

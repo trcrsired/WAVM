@@ -112,7 +112,8 @@ static Memory* createMemoryImpl(Compartment* compartment,
 	const Uptr numGuardPages = memoryNumGuardBytes >> pageBytesLog2;
 	auto totalpages = memoryMaxPages + numGuardPages;
 	memory->baseAddress = Platform::allocateVirtualPages(totalpages);
-	if(isMemTagged != ::WAVM::LLVMJIT::memtagStatus::none)
+	if(isMemTagged == ::WAVM::LLVMJIT::memtagStatus::basic
+	   || isMemTagged == ::WAVM::LLVMJIT::memtagStatus::full)
 	{
 		auto totaltaggedpages = (totalpages >> 4u) + (totalpages & 15u);
 		auto baseAddressTags = Platform::allocateVirtualPages(totaltaggedpages);
@@ -158,7 +159,8 @@ Memory* Runtime::createMemory(Compartment* compartment,
 		runtimeData.endAddress = memory->numReservedBytes;
 		runtimeData.memtagBase = memory->baseAddressTags;
 		memoryuptr->memtagstatus = isMemTagged;
-		if(isMemTagged != ::WAVM::LLVMJIT::memtagStatus::none)
+		if(isMemTagged == ::WAVM::LLVMJIT::memtagStatus::basic
+		   || isMemTagged == ::WAVM::LLVMJIT::memtagStatus::full)
 		{
 			auto memtagrdbf{memory->memtagRandomBuffer};
 			runtimeData.memtagRandomBuffer = {memtagrdbf.Base, memtagrdbf.End, memtagrdbf.End};
