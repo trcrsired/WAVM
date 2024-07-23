@@ -8,10 +8,13 @@ namespace WAVM { namespace Platform {
 	enum class MemoryAccess
 	{
 		none,
-		readOnly,
-		readWrite,
-		readExecute,
-		readWriteExecute
+		readOnly = 1,
+		writeOnly = 2,
+		execute = 4,
+		mte = 8,
+		readWrite = readOnly | writeOnly,
+		readExecute = readOnly | execute,
+		readWriteExecute = readWrite | execute
 	};
 
 	// Returns the base 2 logarithm of the number of bytes in the smallest virtual page.
