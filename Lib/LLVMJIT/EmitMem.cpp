@@ -703,37 +703,54 @@ static inline ::llvm::Value* StoreTagIntoMem(EmitFunctionContext& functionContex
 									  functionContext.llvmContext.i8Type);
 	}
 	if(!addressisuntagged) { address = irBuilder.CreateAnd(address, mask); }
-	auto* memtagBasePointerVariable
-		= functionContext.memoryInfos[memoryIndex].memtagBasePointerVariable;
-	auto* memtagbase = ::WAVM::LLVMJIT::wavmCreateLoad(
-		irBuilder, functionContext.llvmContext.i8PtrType, memtagBasePointerVariable);
-	auto* realtagaddress = irBuilder.CreateGEP(
-		functionContext.llvmContext.i8Type, memtagbase, {irBuilder.CreateLShr(address, 4)});
-	if(memoryType.indexType == IndexType::i64)
+
+	if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 	{
-		auto* cndpageprotect = irBuilder.CreateICmpUGE(
-			taggedbytes,
-			::llvm::ConstantInt::get(functionContext.llvmContext.i64Type,
-									 ::WAVM::Runtime::memoryNumGuardBytes));
-		llvm::Value* addressPlusOffsetAndOverflow
-			= functionContext.callLLVMIntrinsic({functionContext.moduleContext.iptrType},
-												llvm::Intrinsic::uadd_with_overflow,
-												{address, taggedbytes});
-		llvm::Value* addressPlusOffset
-			= irBuilder.CreateExtractValue(addressPlusOffsetAndOverflow, {0});
-		llvm::Value* addressPlusOffsetOverflowed
-			= irBuilder.CreateExtractValue(addressPlusOffsetAndOverflow, {1});
-		auto* cndbig
-			= irBuilder.CreateICmpUGE(addressPlusOffset,
-									  ::llvm::ConstantInt::get(functionContext.llvmContext.i64Type,
-															   ::WAVM::IR::maxMemory64WASMBytes));
-		createconditionaltrap(
-			functionContext,
-			irBuilder.CreateAnd(cndpageprotect,
-								irBuilder.CreateAnd(cndbig, addressPlusOffsetOverflowed)));
+		if(functionContext.moduleContext.targetArch == ::llvm::Triple::aarch64)
+		{
+			auto SetTagFn = ::llvm::Intrinsic::getDeclaration(
+				functionContext.moduleContext.llvmModule, ::llvm::Intrinsic::aarch64_stgp);
+
+			llvm::Value* sourcePointer = functionContext.coerceAddressToPointer(
+				address, functionContext.llvmContext.i8Type, memoryIndex);
+			// todo bounds checking
+			irBuilder.CreateCall(SetTagFn, {sourcePointer, taggedbytes});
+		}
 	}
-	irBuilder.CreateMemSet(
-		realtagaddress, color, irBuilder.CreateLShr(taggedbytes, 4), LLVM_ALIGNMENT(1), false);
+	else
+	{
+		auto* memtagBasePointerVariable
+			= functionContext.memoryInfos[memoryIndex].memtagBasePointerVariable;
+		auto* memtagbase = ::WAVM::LLVMJIT::wavmCreateLoad(
+			irBuilder, functionContext.llvmContext.i8PtrType, memtagBasePointerVariable);
+		auto* realtagaddress = irBuilder.CreateGEP(
+			functionContext.llvmContext.i8Type, memtagbase, {irBuilder.CreateLShr(address, 4)});
+		if(memoryType.indexType == IndexType::i64)
+		{
+			auto* cndpageprotect = irBuilder.CreateICmpUGE(
+				taggedbytes,
+				::llvm::ConstantInt::get(functionContext.llvmContext.i64Type,
+										 ::WAVM::Runtime::memoryNumGuardBytes));
+			llvm::Value* addressPlusOffsetAndOverflow
+				= functionContext.callLLVMIntrinsic({functionContext.moduleContext.iptrType},
+													llvm::Intrinsic::uadd_with_overflow,
+													{address, taggedbytes});
+			llvm::Value* addressPlusOffset
+				= irBuilder.CreateExtractValue(addressPlusOffsetAndOverflow, {0});
+			llvm::Value* addressPlusOffsetOverflowed
+				= irBuilder.CreateExtractValue(addressPlusOffsetAndOverflow, {1});
+			auto* cndbig = irBuilder.CreateICmpUGE(
+				addressPlusOffset,
+				::llvm::ConstantInt::get(functionContext.llvmContext.i64Type,
+										 ::WAVM::IR::maxMemory64WASMBytes));
+			createconditionaltrap(
+				functionContext,
+				irBuilder.CreateAnd(cndpageprotect,
+									irBuilder.CreateAnd(cndbig, addressPlusOffsetOverflowed)));
+		}
+		irBuilder.CreateMemSet(
+			realtagaddress, color, irBuilder.CreateLShr(taggedbytes, 4), LLVM_ALIGNMENT(1), false);
+	}
 	return address;
 }
 
