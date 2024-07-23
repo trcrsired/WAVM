@@ -333,8 +333,10 @@ namespace WAVM { namespace LLVMJIT {
 
 	inline void setFunctionAttributes(llvm::TargetMachine* targetMachine, llvm::Function* function)
 	{
+		llvm::Triple targetTriple = targetMachine->getTargetTriple();
 		// For now, no attributes need to be set on Win32.
-		if(targetMachine->getTargetTriple().getOS() != llvm::Triple::Win32)
+		if(targetTriple.getOS() != llvm::Triple::Win32
+		   && targetTriple.getArch() == llvm::Triple::x86)
 		{
 			auto attrs = function->getAttributes();
 
