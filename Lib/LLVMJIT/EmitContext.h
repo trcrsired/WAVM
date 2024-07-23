@@ -191,7 +191,8 @@ namespace WAVM { namespace LLVMJIT {
 					nullptr,
 					"memoryNumReservedBytesMinusGuardBytes" + llvm::Twine(memoryIndex));
 
-				if(ismemtagged != WAVM::LLVMJIT::memtagStatus::none)
+				if(ismemtagged == ::WAVM::LLVMJIT::memtagStatus::basic
+				   || ismemtagged == ::WAVM::LLVMJIT::memtagStatus::full)
 				{
 					memoryInfo.memtagBasePointerVariable = irBuilder.CreateAlloca(
 						iptrType, nullptr, "memtagBasePointer" + llvm::Twine(memoryIndex));
