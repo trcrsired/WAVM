@@ -723,8 +723,8 @@ static inline ::llvm::Value* StoreTagIntoMemAndZeroing(EmitFunctionContext& func
 		{
 			auto decl = ::llvm::Intrinsic::aarch64_stgp;
 			if(zeroing) { decl = ::llvm::Intrinsic::aarch64_settag_zero; }
-			auto SetTagFn = ::llvm::Intrinsic::getDeclaration(
-				functionContext.moduleContext.llvmModule, ::llvm::Intrinsic::aarch64_stgp);
+			auto SetTagFn
+				= ::llvm::Intrinsic::getDeclaration(functionContext.moduleContext.llvmModule, decl);
 			// todo bounds checking
 			llvm::Value* sourcePointer = functionContext.coerceAddressToPointer(
 				address, functionContext.llvmContext.i8Type, memoryIndex);
@@ -923,7 +923,24 @@ void EmitFunctionContext::memtag_randommaskstorez(MemoryImm imm)
 void EmitFunctionContext::memtag_extract(MemoryImm imm)
 {
 	::llvm::Value* memaddress = pop();
-	if(isMemTaggedEnabled(*this)) { push(memaddress); }
+	if(isMemTaggedEnabled(*this))
+	{
+		MemoryType const& memoryType
+			= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
+		llvm::IRBuilder<>& irBuilder = this->irBuilder;
+		uint_least64_t shifter;
+		if(memoryType.indexType == IndexType::i64)
+		{
+			using constanttype = ::WAVM::IR::memtag64constants;
+			shifter = constanttype::shifter;
+		}
+		else
+		{
+			using constanttype = ::WAVM::IR::memtag32constants;
+			shifter = constanttype::shifter;
+		}
+		push(irBuilder.CreateLShr(memaddress, shifter));
+	}
 	else
 	{
 		MemoryType const& memoryType
@@ -939,13 +956,32 @@ void EmitFunctionContext::memtag_insert(MemoryImm imm)
 	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this))
 	{
-		memaddress = UntagAddress(*this, imm.memoryIndex, memaddress);
 		MemoryType const& memoryType
 			= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
-		::std::uint64_t mask{};
-
-		memaddress
-			= irBuilder.CreateOr(memaddress, irBuilder.CreateShl(newcolor, 56)); // Todo: Fix it
+		llvm::IRBuilder<>& irBuilder = this->irBuilder;
+		uint_least64_t shifter, mask, tagindexmask;
+		::llvm::Type* vtype;
+		if(memoryType.indexType == IndexType::i64)
+		{
+			using constanttype = ::WAVM::IR::memtag64constants;
+			shifter = constanttype::shifter;
+			mask = constanttype::mask;
+			tagindexmask = constanttype::index_mask;
+			vtype = irBuilder.getInt64Ty();
+		}
+		else
+		{
+			using constanttype = ::WAVM::IR::memtag32constants;
+			shifter = constanttype::shifter;
+			mask = constanttype::mask;
+			tagindexmask = constanttype::index_mask;
+			vtype = irBuilder.getInt32Ty();
+		}
+		memaddress = irBuilder.CreateOr(
+			irBuilder.CreateAnd(memaddress, ::llvm::ConstantInt::get(vtype, mask)),
+			irBuilder.CreateShl(
+				irBuilder.CreateAnd(::llvm::ConstantInt::get(vtype, tagindexmask), newcolor),
+				shifter)); // Todo: Fix it
 	}
 	push(memaddress);
 }
