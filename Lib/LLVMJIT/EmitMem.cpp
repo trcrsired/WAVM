@@ -723,11 +723,20 @@ static inline ::llvm::Value* StoreTagIntoMemAndZeroing(EmitFunctionContext& func
 		{
 			auto decl = ::llvm::Intrinsic::aarch64_stgp;
 			if(zeroing) { decl = ::llvm::Intrinsic::aarch64_settag_zero; }
-			auto SetTagFn
-				= ::llvm::Intrinsic::getDeclaration(functionContext.moduleContext.llvmModule, decl);
+			auto SetTagFn = ::llvm::Intrinsic::getDeclaration(
+				functionContext.moduleContext.llvmModule, decl, {irBuilder.getInt64Ty()});
 			// todo bounds checking
 			llvm::Value* sourcePointer = functionContext.coerceAddressToPointer(
-				address, functionContext.llvmContext.i8Type, memoryIndex);
+				getOffsetAndBoundedAddress(functionContext,
+										   memoryIndex,
+										   address,
+										   0,
+										   0,
+										   BoundsCheckOp::clampToGuardRegion,
+										   nullptr,
+										   true),
+				functionContext.llvmContext.i8Type,
+				memoryIndex);
 			irBuilder.CreateCall(SetTagFn, {sourcePointer, taggedbytes});
 		}
 		else if(zeroing) { memtag_zero_memory(functionContext, memoryIndex, address, taggedbytes); }
@@ -1244,31 +1253,57 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this))
 	{
-		memaddress = UntagAddress(*this, imm.memoryIndex, memaddress);
-
-		auto realaddr = ComputeMemTagIndex(*this, imm.memoryIndex, memaddress, true);
-		llvm::IRBuilder<>& irBuilder = this->irBuilder;
-
-		const MemoryType& memoryType
-			= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
-		::llvm::Value* color
-			= ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, this->llvmContext.i8Type, realaddr);
-
-		uint32_t shiftval{};
-		::llvm::Type* extendtype;
-		if(memoryType.indexType == IndexType::i64)
+		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
-			extendtype = this->llvmContext.i64Type;
-			shiftval = ::WAVM::IR::memtag64constants::shifter;
+			if(this->moduleContext.targetArch == ::llvm::Triple::aarch64)
+			{
+				memaddress = coerceAddressToPointer(
+					getOffsetAndBoundedAddress(*this,
+											   imm.memoryIndex,
+											   memaddress,
+											   0,
+											   0,
+											   BoundsCheckOp::clampToGuardRegion,
+											   nullptr,
+											   true),
+					this->llvmContext.i8Type,
+					imm.memoryIndex);
+				memaddress = irBuilder.CreateCall(
+					::llvm::Intrinsic::getDeclaration(
+						this->moduleContext.llvmModule,
+						::llvm::Intrinsic::aarch64_ldg,
+						{irBuilder.getInt64Ty(), irBuilder.getInt64Ty()}),
+					{memaddress, ::llvm::ConstantInt::get(irBuilder.getInt64Ty(), 0)});
+			}
+			else { memaddress = UntagAddress(*this, imm.memoryIndex, memaddress); }
 		}
 		else
 		{
-			extendtype = this->llvmContext.i32Type;
-			shiftval = ::WAVM::IR::memtag32constants::shifter;
+			memaddress = UntagAddress(*this, imm.memoryIndex, memaddress);
+			auto realaddr = ComputeMemTagIndex(*this, imm.memoryIndex, memaddress, true);
+			llvm::IRBuilder<>& irBuilder = this->irBuilder;
+
+			const MemoryType& memoryType
+				= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
+			::llvm::Value* color
+				= ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, this->llvmContext.i8Type, realaddr);
+
+			uint32_t shiftval{};
+			::llvm::Type* extendtype;
+			if(memoryType.indexType == IndexType::i64)
+			{
+				extendtype = this->llvmContext.i64Type;
+				shiftval = ::WAVM::IR::memtag64constants::shifter;
+			}
+			else
+			{
+				extendtype = this->llvmContext.i32Type;
+				shiftval = ::WAVM::IR::memtag32constants::shifter;
+			}
+			color = irBuilder.CreateZExt(color, extendtype);
+			color = irBuilder.CreateShl(color, shiftval);
+			memaddress = irBuilder.CreateOr(memaddress, color);
 		}
-		color = irBuilder.CreateZExt(color, extendtype);
-		color = irBuilder.CreateShl(color, shiftval);
-		memaddress = irBuilder.CreateOr(memaddress, color);
 	}
 	push(memaddress);
 }
