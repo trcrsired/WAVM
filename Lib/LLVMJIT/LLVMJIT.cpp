@@ -30,6 +30,10 @@ using namespace WAVM;
 using namespace WAVM::IR;
 using namespace WAVM::LLVMJIT;
 
+#if defined(__x86__) defined(_M_IX86) || defined(__i386__) || defined(_M_X64)
+#define WAVM_IS_X86
+#endif
+
 namespace LLVMRuntimeSymbols {
 
 	extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t, ::std::uint_least64_t);
@@ -72,11 +76,15 @@ namespace LLVMRuntimeSymbols {
 		{"wavm_memtag_trap_function", (void*)&wavm_memtag_trap_function},
 #ifdef _WIN32
 #ifdef __MINGW32__
+#ifdef WAVM_IS_X86
 		{"___chkstk_ms", (void*)&___chkstk_ms},
+#endif
 		{"__gxx_personality_seh0", (void*)&__gxx_personality_seh0},
 #else
+#ifdef WAVM_IS_X86
 		{"__chkstk", (void*)&__chkstk},
-		{"__gxx_personality_seh0", (void*)&pseudo_gxx_personality_seh0},
+#endif
+		{"__CxxFrameHandler3", (void*)&__CxxFrameHandler3},
 #endif
 #else
 #if defined(__APPLE__)
