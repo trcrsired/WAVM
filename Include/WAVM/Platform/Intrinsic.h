@@ -125,9 +125,14 @@ namespace WAVM {
 	// functions. On other architectures, it will fall back to a C loop, which is not likely to be
 	// competitive with the C library function.
 
+#if defined(_WIN32) && defined(_MSC_VER) && !defined(__clang__) && defined(__x86__)                \
+	|| defined(_M_IX86) || defined(__i386__) || defined(_M_X64)
+#define ISMSVC_X86
+#endif
+
 	inline void bytewiseMemCopy(volatile U8* dest, const U8* source, Uptr numBytes)
 	{
-#ifdef _WIN32
+#ifdef ISMSVC_X86
 		__movsb((U8*)dest, source, numBytes);
 #elif defined(__i386__) || defined(__x86_64__)
 		asm volatile("rep movsb"
@@ -149,7 +154,7 @@ namespace WAVM {
 
 	inline void bytewiseMemSet(volatile U8* dest, U8 value, Uptr numBytes)
 	{
-#ifdef _WIN32
+#ifdef ISMSVC_X86
 		__stosb((U8*)dest, value, numBytes);
 #elif defined(__i386__) || defined(__x86_64__)
 		asm volatile("rep stosb"

@@ -29,6 +29,10 @@ using namespace WAVM;
 using namespace WAVM::IR;
 using namespace WAVM::LLVMJIT;
 
+#if defined(__x86__) defined(_M_IX86) || defined(__i386__) || defined(_M_X64)
+#define WAVM_IS_X86
+#endif
+
 namespace LLVMRuntimeSymbols {
 #ifdef _WIN32
 	// the LLVM X86 code generator calls __chkstk when allocating more than 4KB of stack space
@@ -57,10 +61,14 @@ namespace LLVMRuntimeSymbols {
 		{"memset", (void*)&memset},
 #ifdef _WIN32
 #ifdef __MINGW32__
+#ifdef WAVM_IS_X86
 		{"___chkstk_ms", (void*)&___chkstk_ms},
+#endif
 		{"__gxx_personality_seh0", (void*)&__gxx_personality_seh0},
 #else
+#ifdef WAVM_IS_X86
 		{"__chkstk", (void*)&__chkstk},
+#endif
 		{"__CxxFrameHandler3", (void*)&__CxxFrameHandler3},
 #endif
 #else
