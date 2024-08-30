@@ -14,7 +14,9 @@ namespace WAVM { namespace IR {
 	inline constexpr Uptr numBytesTaggedPerPageLog2 = 12;
 	inline constexpr Uptr maxReturnValues = 16;
 	inline constexpr U64 maxMemory64WASMBytes =
-#if (defined(WAVM_ENABLE_TSAN) && WAVM_ENABLE_TSAN) || defined(__ANDROID__)
+#if ((defined(WAVM_ENABLE_TSAN) && WAVM_ENABLE_TSAN) || defined(__ANDROID__)) || 1
+		// 1TB just could not run in many environments. Even on windows.
+		// Since android does not work, wine on android fails to work either
 		(U64(8) * 1024 * 1024 * 1024); // 8GB
 #else
 		(U64(1) * 1024 * 1024 * 1024 * 1024); // 1TB
