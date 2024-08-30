@@ -29,7 +29,7 @@ using namespace WAVM;
 using namespace WAVM::IR;
 using namespace WAVM::LLVMJIT;
 
-#if defined(__x86__) defined(_M_IX86) || defined(__i386__) || defined(_M_X64)
+#if defined(__x86__) || defined(_M_IX86) || defined(__i386__) || defined(_M_X64)
 #define WAVM_IS_X86
 #endif
 
