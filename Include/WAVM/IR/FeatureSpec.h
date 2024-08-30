@@ -40,7 +40,7 @@
 	V(customSectionsInTextFormat, "wat-custom-sections", "Custom sections in text format")         \
 	V(interleavedLoadStore, "interleaved-load-store", "Interleaved SIMD load&store instructions")  \
 	V(table64, "table64", "Tables with 64-bit indices")                                            \
-	V(memory64small, "memorysmall", "Shrink usable memory to prevent failure on some systems")     \
+	V(memorysmall, "memorysmall", "Shrink usable memory to prevent failure on some systems")       \
 	V(memtag, "memtag", "Memory Tagging")                                                          \
 	V(memtagFull, "memtag-full", "Memory Tagging Full Checking (Expensive but more effective)")    \
 	V(memtagMte, "memtag-mte", "Memory Tagging by MTE instructions like ARM MTE")
