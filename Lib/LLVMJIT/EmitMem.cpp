@@ -723,7 +723,7 @@ static inline ::llvm::Value* StoreTagIntoMemAndZeroing(EmitFunctionContext& func
 		{
 			auto decl = ::llvm::Intrinsic::aarch64_stgp;
 			if(zeroing) { decl = ::llvm::Intrinsic::aarch64_settag_zero; }
-			auto SetTagFn = ::llvm::Intrinsic::getDeclaration(
+			auto SetTagFn = ::llvm::Intrinsic::getOrInsertDeclaration(
 				functionContext.moduleContext.llvmModule, decl, {irBuilder.getInt64Ty()});
 			// todo bounds checking
 			llvm::Value* sourcePointer = functionContext.coerceAddressToPointer(
@@ -1269,7 +1269,7 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 					this->llvmContext.i8Type,
 					imm.memoryIndex);
 				memaddress = irBuilder.CreateCall(
-					::llvm::Intrinsic::getDeclaration(
+					::llvm::Intrinsic::getOrInsertDeclaration(
 						this->moduleContext.llvmModule,
 						::llvm::Intrinsic::aarch64_ldg,
 						{irBuilder.getInt64Ty(), irBuilder.getInt64Ty()}),
