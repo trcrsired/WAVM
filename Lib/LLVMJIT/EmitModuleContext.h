@@ -62,7 +62,11 @@ namespace WAVM { namespace LLVMJIT {
 		inline llvm::Function* getLLVMIntrinsic(llvm::ArrayRef<llvm::Type*> typeArguments,
 												llvm::Intrinsic::ID id)
 		{
+#if LLVM_VERSION_MAJOR < 20
 			return llvm::Intrinsic::getDeclaration(llvmModule, id, typeArguments);
+#else
+			return llvm::Intrinsic::getOrInsertDeclaration(llvmModule, id, typeArguments);
+#endif
 		}
 	};
 }}
