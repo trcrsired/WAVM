@@ -125,7 +125,7 @@ namespace WAVM { namespace LLVMJIT {
 	}
 	inline llvm::ConstantInt* emitLiteral(llvm::LLVMContext& llvmContext, I32 value)
 	{
-		return llvm::ConstantInt::get(llvmContext, llvm::APInt(32, (I64)value, false));
+		return llvm::ConstantInt::get(llvmContext, llvm::APInt(32, (I64)value, true));
 	}
 	inline llvm::ConstantInt* emitLiteral(llvm::LLVMContext& llvmContext, U64 value)
 	{
