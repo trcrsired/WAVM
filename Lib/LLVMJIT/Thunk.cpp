@@ -176,8 +176,8 @@ InvokeThunkPointer LLVMJIT::getInvokeThunkWithMemtagged(FunctionType functionTyp
 
 	// Return the new context pointer.
 #if LLVM_VERSION_MAJOR > 14
-	auto loadptr = emitContext.irBuilder.CreateLoad(emitContext.contextPointerVariable,
-													::llvm::PointerType::get(llvmContext, 0));
+	auto loadptr = emitContext.irBuilder.CreateLoad(::llvm::PointerType::get(llvmContext, 0),
+													emitContext.contextPointerVariable);
 #else
 	auto loadptr = ::WAVM::LLVMJIT::wavmCreateLoad(
 		emitContext.irBuilder, iptrType->getPointerTo(), emitContext.contextPointerVariable);

@@ -389,7 +389,11 @@ void EmitFunctionContext::call_indirect(CallIndirectImm imm)
 			llvmContext.i8Type,
 			tableRuntimeDataPointer,
 			{emitLiteralIptr(offsetof(TableRuntimeData, base), moduleContext.iptrType)}),
+#if LLVM_VERSION_MAJOR > 14
+		::llvm::PointerType::get(llvmContext, 0),
+#else
 		moduleContext.iptrType->getPointerTo(),
+#endif
 		moduleContext.iptrAlignment);
 	auto tableMaxIndex = loadFromUntypedPointer(
 		::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
