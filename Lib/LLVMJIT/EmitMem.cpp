@@ -508,15 +508,16 @@ static void emitLoadInterleaved(EmitFunctionContext& functionContext,
 		= functionContext.coerceAddressToPointer(boundedAddress, llvmValueType, imm.memoryIndex);
 	if(functionContext.moduleContext.targetArch == llvm::Triple::aarch64)
 	{
-		auto results = functionContext.callLLVMIntrinsic({llvmValueType,
+		auto results = functionContext.callLLVMIntrinsic(
+			{llvmValueType,
 #if LLVM_VERSION_MAJOR > 14
-														  ::llvm::PointerType::get(llvmContext, 0)
+			 ::llvm::PointerType::get(functionContext.llvmContext, 0)
 #else
-														  llvmValueType->getPointerTo()
+			 llvmValueType->getPointerTo()
 #endif
-														 },
-														 aarch64IntrinsicID,
-														 {pointer});
+			},
+			aarch64IntrinsicID,
+			{pointer});
 		for(U32 vectorIndex = 0; vectorIndex < numVectors; ++vectorIndex)
 		{
 			functionContext.push(
@@ -597,7 +598,7 @@ static void emitStoreInterleaved(EmitFunctionContext& functionContext,
 		}
 		functionContext.callLLVMIntrinsic({llvmValueType,
 #if LLVM_VERSION_MAJOR > 14
-										   ::llvm::PointerType::get(llvmContext, 0)
+										   ::llvm::PointerType::get(functionContext.llvmContext, 0)
 #else
 										   llvmValueType->getPointerTo()
 #endif
