@@ -93,7 +93,7 @@ namespace LLVMRuntimeSymbols {
 #if defined(__i386__) || defined(__x86_64__)
 		{"wavm_probe_stack", (void*)&wavm_probe_stack},
 #endif
-#ifdef __ANDROID__
+#ifdef __ELF__
 		{"DW.ref.__gxx_personality_v0", (void*)&__gxx_personality_v0},
 #endif
 		{"__gxx_personality_v0", (void*)&__gxx_personality_v0},
