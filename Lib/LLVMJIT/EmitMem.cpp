@@ -123,6 +123,24 @@ static void createconditionaltrap(EmitFunctionContext& functionContext, ::llvm::
 	}
 }
 
+static llvm::Value* armmte64_to_32_value(EmitFunctionContext& functionContext,
+										 Uptr memoryIndex,
+										 llvm::Value* memaddress64)
+{
+	const MemoryType& memoryType
+		= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
+	if(memoryType.indexType == IndexType::i32)
+	{
+		constexpr ::std::uint_least64_t mask{0x0F00000000000000};
+		constexpr ::std::uint_least64_t mask1{0x000000000FFFFFFF};
+		memaddress64 = irBuilder.CreateTrunc(
+			irBuilder.CreateOr(irBuilder.CreateLShr(irBuilder.CreateAnd(memaddress64, mask), 28),
+							   irBuilder.CreateAnd(memaddress64, mask1)),
+			functionContext.llvmContext.i32Type);
+	}
+	return memaddress64;
+}
+
 static llvm::Function* getWavmMemtagTrapFunction(EmitFunctionContext& functionContext)
 {
 	auto& moduleContext{functionContext.moduleContext};
@@ -1064,18 +1082,11 @@ void EmitFunctionContext::memtag_random(MemoryImm imm)
 	{
 		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
-#if 0
-			memaddress = irBuilder.CreateCall(
-				::llvm::Intrinsic::getOrInsertDeclaration(
-					this->moduleContext.llvmModule,
-					::llvm::Intrinsic::aarch64_irg,
-					{this->llvmContext.i8PtrType, this->llvmContext.i64Type}),
-				{memaddress, ::llvm::ConstantInt::get(this->llvmContext.i64Type, 0)});
-#endif
 			memaddress = irBuilder.CreateIntrinsic(
 				::llvm::Intrinsic::aarch64_irg,
 				{},
 				{memaddress, ::llvm::ConstantInt::get(this->llvmContext.i64Type, 0)});
+			memaddress = armmte64_to_32_value(memaddress);
 		}
 		else
 		{
@@ -1094,12 +1105,9 @@ void EmitFunctionContext::memtag_randommask(MemoryImm imm) // Todo
 	{
 		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
-			memaddress = irBuilder.CreateCall(
-				::llvm::Intrinsic::getOrInsertDeclaration(
-					this->moduleContext.llvmModule,
-					::llvm::Intrinsic::aarch64_irg,
-					{this->llvmContext.i8PtrType, this->llvmContext.i8PtrType}),
-				{memaddress, mask});
+			memaddress
+				= irBuilder.CreateIntrinsic(::llvm::Intrinsic::aarch64_irg, {}, {memaddress, mask});
+			memaddress = armmte64_to_32_value(memaddress);
 		}
 		else
 		{
