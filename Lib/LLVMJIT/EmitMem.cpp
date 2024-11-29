@@ -1064,11 +1064,17 @@ void EmitFunctionContext::memtag_random(MemoryImm imm)
 	{
 		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
+#if 0
 			memaddress = irBuilder.CreateCall(
 				::llvm::Intrinsic::getOrInsertDeclaration(
 					this->moduleContext.llvmModule,
 					::llvm::Intrinsic::aarch64_irg,
-					{this->llvmContext.i64Type, this->llvmContext.i64Type}),
+					{this->llvmContext.i8PtrType, this->llvmContext.i64Type}),
+				{memaddress, ::llvm::ConstantInt::get(this->llvmContext.i64Type, 0)});
+#endif
+			memaddress = irBuilder.CreateIntrinsic(
+				::llvm::Intrinsic::aarch64_irg_sp,
+				{},
 				{memaddress, ::llvm::ConstantInt::get(this->llvmContext.i64Type, 0)});
 		}
 		else
@@ -1088,12 +1094,12 @@ void EmitFunctionContext::memtag_randommask(MemoryImm imm) // Todo
 	{
 		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
-			memaddress
-				= irBuilder.CreateCall(::llvm::Intrinsic::getOrInsertDeclaration(
-										   this->moduleContext.llvmModule,
-										   ::llvm::Intrinsic::aarch64_irg,
-										   {this->llvmContext.i64Type, this->llvmContext.i64Type}),
-									   {memaddress, mask});
+			memaddress = irBuilder.CreateCall(
+				::llvm::Intrinsic::getOrInsertDeclaration(
+					this->moduleContext.llvmModule,
+					::llvm::Intrinsic::aarch64_irg,
+					{this->llvmContext.i8PtrType, this->llvmContext.i8PtrType}),
+				{memaddress, mask});
 		}
 		else
 		{
@@ -1294,12 +1300,18 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 											   true),
 					this->llvmContext.i8Type,
 					imm.memoryIndex);
+#if 0
 				memaddress = irBuilder.CreateCall(
 					::llvm::Intrinsic::getOrInsertDeclaration(
 						this->moduleContext.llvmModule,
 						::llvm::Intrinsic::aarch64_ldg,
 						{irBuilder.getInt64Ty(), irBuilder.getInt64Ty()}),
 					{memaddress, ::llvm::ConstantInt::get(irBuilder.getInt64Ty(), 0)});
+#endif
+				memaddress = irBuilder.CreateIntrinsic(
+					::llvm::Intrinsic::aarch64_ldg,
+					{},
+					{memaddress, ::llvm::ConstantInt::get(this->llvmContext.i64Type, 0)});
 			}
 			else { memaddress = UntagAddress(*this, imm.memoryIndex, memaddress); }
 		}
