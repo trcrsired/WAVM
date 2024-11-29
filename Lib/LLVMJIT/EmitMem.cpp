@@ -132,16 +132,12 @@ static llvm::Value* armmte64_to_32_value(EmitFunctionContext& functionContext,
 		= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
 	if(memoryType.indexType == IndexType::i32)
 	{
-#if 0
 		constexpr ::std::uint_least64_t mask{0x0F00000000000000};
 		constexpr ::std::uint_least64_t mask1{0x000000000FFFFFFF};
+		memaddress64 = irBuilder.CreatePtrToInt(memaddress64, functionContext.llvmContext.i64Type);
 		memaddress64 = irBuilder.CreateTrunc(
 			irBuilder.CreateOr(irBuilder.CreateLShr(irBuilder.CreateAnd(memaddress64, mask), 28),
 							   irBuilder.CreateAnd(memaddress64, mask1)),
-			functionContext.llvmContext.i32Type);
-#endif
-		memaddress64 = irBuilder.CreateTrunc(
-			irBuilder.CreateLShr(memaddress64, 32),
 			functionContext.llvmContext.i32Type);
 	}
 	return memaddress64;
@@ -1093,7 +1089,9 @@ void EmitFunctionContext::memtag_random(MemoryImm imm)
 				= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
 			if(memoryType.indexType == IndexType::i32)
 			{
-				memaddress = irBuilder.CreateZExt(memaddress, this->llvmContext.i64Type);
+				memaddress = irBuilder.CreateIntToPtr(
+					irBuilder.CreateZExt(memaddress, this->llvmContext.i64Type),
+					this->llvmContext.i8PtrType);
 			}
 			memaddress = irBuilder.CreateIntrinsic(
 				::llvm::Intrinsic::aarch64_irg,
