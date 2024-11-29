@@ -1060,8 +1060,20 @@ void EmitFunctionContext::memtag_random(MemoryImm imm)
 	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this))
 	{
-		auto color = generateMemRandomTagByte(*this, imm.memoryIndex);
-		memaddress = TagMemPointer(*this, imm.memoryIndex, memaddress, color, false);
+		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		{
+			memaddress = irBuilder.CreateCall(
+				::llvm::Intrinsic::getOrInsertDeclaration(
+					this->moduleContext.llvmModule,
+					::llvm::Intrinsic::aarch64_irg,
+					{irBuilder.getInt64Ty(), irBuilder.getInt64Ty()}),
+					{memaddress, ::llvm::ConstantInt::get(irBuilder.getInt64Ty(), 0)});
+		}
+		else
+		{
+			auto color = generateMemRandomTagByte(*this, imm.memoryIndex);
+			memaddress = TagMemPointer(*this, imm.memoryIndex, memaddress, color, false);
+		}
 	}
 	push(memaddress);
 }
@@ -1072,8 +1084,20 @@ void EmitFunctionContext::memtag_randommask(MemoryImm imm) // Todo
 	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this))
 	{
-		auto color = generateMemRandomTagByte(*this, imm.memoryIndex);
-		memaddress = TagMemPointer(*this, imm.memoryIndex, memaddress, color, false);
+		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		{
+			memaddress = irBuilder.CreateCall(
+				::llvm::Intrinsic::getOrInsertDeclaration(
+					this->moduleContext.llvmModule,
+					::llvm::Intrinsic::aarch64_irg,
+					{irBuilder.getInt64Ty(), irBuilder.getInt64Ty()}),
+					{memaddress, mask});
+		}
+		else
+		{
+			auto color = generateMemRandomTagByte(*this, imm.memoryIndex);
+			memaddress = TagMemPointer(*this, imm.memoryIndex, memaddress, color, false);
+		}
 	}
 	push(memaddress);
 }
