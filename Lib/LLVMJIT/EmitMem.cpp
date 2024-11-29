@@ -724,7 +724,9 @@ static inline ::llvm::Value* StoreTagIntoMemAndZeroing(EmitFunctionContext& func
 			auto decl = ::llvm::Intrinsic::aarch64_stgp;
 			if(zeroing) { decl = ::llvm::Intrinsic::aarch64_settag_zero; }
 			auto SetTagFn = ::llvm::Intrinsic::getOrInsertDeclaration(
-				functionContext.moduleContext.llvmModule, decl, {irBuilder.getInt64Ty()});
+				functionContext.moduleContext.llvmModule,
+				decl,
+				{functionContext.llvmContext.i64Type});
 			// todo bounds checking
 			llvm::Value* sourcePointer = functionContext.coerceAddressToPointer(
 				getOffsetAndBoundedAddress(functionContext,
@@ -1013,7 +1015,7 @@ void EmitFunctionContext::memtag_untagstore(MemoryImm imm)
 						imm.memoryIndex,
 						memaddress,
 						taggedbytes,
-						llvm::ConstantInt::get(irBuilder.getInt8Ty(), 0));
+						llvm::ConstantInt::get(this->llvmContext.i8Type, 0));
 	}
 	push(memaddress);
 }
@@ -1029,7 +1031,7 @@ void EmitFunctionContext::memtag_untagstorez(MemoryImm imm)
 						 imm.memoryIndex,
 						 memaddress,
 						 taggedbytes,
-						 llvm::ConstantInt::get(irBuilder.getInt8Ty(), 0));
+						 llvm::ConstantInt::get(this->llvmContext.i8Type, 0));
 	}
 	push(memaddress);
 }
@@ -1066,8 +1068,8 @@ void EmitFunctionContext::memtag_random(MemoryImm imm)
 				::llvm::Intrinsic::getOrInsertDeclaration(
 					this->moduleContext.llvmModule,
 					::llvm::Intrinsic::aarch64_irg,
-					{irBuilder.getInt64Ty(), irBuilder.getInt64Ty()}),
-					{memaddress, ::llvm::ConstantInt::get(irBuilder.getInt64Ty(), 0)});
+					{this->llvmContext.i64Type, this->llvmContext.i64Type}),
+				{memaddress, ::llvm::ConstantInt::get(this->llvmContext.i64Type, 0)});
 		}
 		else
 		{
@@ -1086,12 +1088,12 @@ void EmitFunctionContext::memtag_randommask(MemoryImm imm) // Todo
 	{
 		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
-			memaddress = irBuilder.CreateCall(
-				::llvm::Intrinsic::getOrInsertDeclaration(
-					this->moduleContext.llvmModule,
-					::llvm::Intrinsic::aarch64_irg,
-					{irBuilder.getInt64Ty(), irBuilder.getInt64Ty()}),
-					{memaddress, mask});
+			memaddress
+				= irBuilder.CreateCall(::llvm::Intrinsic::getOrInsertDeclaration(
+										   this->moduleContext.llvmModule,
+										   ::llvm::Intrinsic::aarch64_irg,
+										   {this->llvmContext.i64Type, this->llvmContext.i64Type}),
+									   {memaddress, mask});
 		}
 		else
 		{
