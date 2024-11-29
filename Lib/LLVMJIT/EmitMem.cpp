@@ -127,6 +127,7 @@ static llvm::Value* armmte64_to_32_value(EmitFunctionContext& functionContext,
 										 Uptr memoryIndex,
 										 llvm::Value* memaddress64)
 {
+	auto& irBuilder = functionContext.irBuilder;
 	const MemoryType& memoryType
 		= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
 	if(memoryType.indexType == IndexType::i32)
@@ -1086,7 +1087,7 @@ void EmitFunctionContext::memtag_random(MemoryImm imm)
 				::llvm::Intrinsic::aarch64_irg,
 				{},
 				{memaddress, ::llvm::ConstantInt::get(this->llvmContext.i64Type, 0)});
-			memaddress = armmte64_to_32_value(memaddress);
+			memaddress = armmte64_to_32_value(*this, imm.memoryIndex, memaddress);
 		}
 		else
 		{
@@ -1107,7 +1108,7 @@ void EmitFunctionContext::memtag_randommask(MemoryImm imm) // Todo
 		{
 			memaddress
 				= irBuilder.CreateIntrinsic(::llvm::Intrinsic::aarch64_irg, {}, {memaddress, mask});
-			memaddress = armmte64_to_32_value(memaddress);
+			memaddress = armmte64_to_32_value(*this, imm.memoryIndex, memaddress);
 		}
 		else
 		{
