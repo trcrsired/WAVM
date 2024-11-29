@@ -1083,6 +1083,13 @@ void EmitFunctionContext::memtag_random(MemoryImm imm)
 	{
 		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
+			auto& irBuilder = this->irBuilder;
+			const MemoryType& memoryType
+				= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
+			if(memoryType.indexType == IndexType::i32)
+			{
+				memaddress = irBuilder.CreateZExt(memaddress, this->llvmContext.i64Type);
+			}
 			memaddress = irBuilder.CreateIntrinsic(
 				::llvm::Intrinsic::aarch64_irg,
 				{},
@@ -1106,6 +1113,12 @@ void EmitFunctionContext::memtag_randommask(MemoryImm imm) // Todo
 	{
 		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
+			const MemoryType& memoryType
+				= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
+			if(memoryType.indexType == IndexType::i32)
+			{
+				memaddress = irBuilder.CreateZExt(memaddress, this->llvmContext.i64Type);
+			}
 			memaddress
 				= irBuilder.CreateIntrinsic(::llvm::Intrinsic::aarch64_irg, {}, {memaddress, mask});
 			memaddress = armmte64_to_32_value(*this, imm.memoryIndex, memaddress);
