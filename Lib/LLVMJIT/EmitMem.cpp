@@ -123,6 +123,22 @@ static void createconditionaltrap(EmitFunctionContext& functionContext, ::llvm::
 	}
 }
 
+static llvm::Value* armmte32_to_64ptr_value(EmitFunctionContext& functionContext,
+											Uptr memoryIndex,
+											llvm::Value* memaddress)
+{
+	auto& irBuilder = functionContext.irBuilder;
+	const MemoryType& memoryType
+		= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
+	if(memoryType.indexType == IndexType::i32)
+	{
+		memaddress = irBuilder.CreateIntToPtr(
+			irBuilder.CreateZExt(memaddress, functionContext.llvmContext.i64Type),
+			functionContext.llvmContext.i8PtrType);
+	}
+	return memaddress;
+}
+
 static llvm::Value* armmte64_to_32_value(EmitFunctionContext& functionContext,
 										 Uptr memoryIndex,
 										 llvm::Value* memaddress64)
@@ -1084,15 +1100,7 @@ void EmitFunctionContext::memtag_random(MemoryImm imm)
 	{
 		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
-			auto& irBuilder = this->irBuilder;
-			const MemoryType& memoryType
-				= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
-			if(memoryType.indexType == IndexType::i32)
-			{
-				memaddress = irBuilder.CreateIntToPtr(
-					irBuilder.CreateZExt(memaddress, this->llvmContext.i64Type),
-					this->llvmContext.i8PtrType);
-			}
+			memaddress = armmte32_to_64ptr_value(*this, imm.memoryIndex, memaddress);
 			memaddress = irBuilder.CreateIntrinsic(
 				::llvm::Intrinsic::aarch64_irg,
 				{},
@@ -1116,12 +1124,7 @@ void EmitFunctionContext::memtag_randommask(MemoryImm imm) // Todo
 	{
 		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
-			const MemoryType& memoryType
-				= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
-			if(memoryType.indexType == IndexType::i32)
-			{
-				memaddress = irBuilder.CreateZExt(memaddress, this->llvmContext.i64Type);
-			}
+			memaddress = armmte32_to_64ptr_value(*this, imm.memoryIndex, memaddress);
 			memaddress
 				= irBuilder.CreateIntrinsic(::llvm::Intrinsic::aarch64_irg, {}, {memaddress, mask});
 			memaddress = armmte64_to_32_value(*this, imm.memoryIndex, memaddress);
@@ -1325,18 +1328,12 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 											   true),
 					this->llvmContext.i8Type,
 					imm.memoryIndex);
-#if 0
-				memaddress = irBuilder.CreateCall(
-					::llvm::Intrinsic::getOrInsertDeclaration(
-						this->moduleContext.llvmModule,
-						::llvm::Intrinsic::aarch64_ldg,
-						{irBuilder.getInt64Ty(), irBuilder.getInt64Ty()}),
-					{memaddress, ::llvm::ConstantInt::get(irBuilder.getInt64Ty(), 0)});
-#endif
+				memaddress = armmte32_to_64ptr_value(*this, imm.memoryIndex, memaddress);
 				memaddress = irBuilder.CreateIntrinsic(
 					::llvm::Intrinsic::aarch64_ldg,
 					{},
 					{memaddress, ::llvm::ConstantInt::get(this->llvmContext.i64Type, 0)});
+				memaddress = armmte64_to_32_value(*this, imm.memoryIndex, memaddress);
 			}
 			else { memaddress = UntagAddress(*this, imm.memoryIndex, memaddress); }
 		}
