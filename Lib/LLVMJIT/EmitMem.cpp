@@ -1073,7 +1073,7 @@ void EmitFunctionContext::memtag_random(MemoryImm imm)
 				{memaddress, ::llvm::ConstantInt::get(this->llvmContext.i64Type, 0)});
 #endif
 			memaddress = irBuilder.CreateIntrinsic(
-				::llvm::Intrinsic::aarch64_irg_sp,
+				::llvm::Intrinsic::aarch64_irg,
 				{},
 				{memaddress, ::llvm::ConstantInt::get(this->llvmContext.i64Type, 0)});
 		}
