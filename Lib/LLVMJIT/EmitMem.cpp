@@ -946,14 +946,11 @@ static ::llvm::Value* memtag_store_tag_common(EmitFunctionContext& functionConte
 {
 	if(isMemTaggedEnabled(functionContext))
 	{
-		if(memoryType.indexType == IndexType::i64)
+		if(functionContext.memoryType.indexType == IndexType::i64)
 		{
-			if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 			{
-				auto olduntaggedmemaddress
-				{
-					UntagAddress(functionContext, memoryIndex, memaddress);
-				};
+				auto olduntaggedmemaddress{UntagAddress(functionContext, memoryIndex, memaddress)};
 				memaddress = coerceAddressToPointer(
 					getOffsetAndBoundedAddress(functionContext,
 											   memoryIndex,
