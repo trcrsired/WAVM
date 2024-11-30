@@ -395,7 +395,7 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 				R"(
 			.arch_extension memtag
 			irg %[taggedAddress], %[baseAddress], #1
-			stg %[taggedAddress]
+			stg %[taggedAddress], %[taggedAddress]
 			)"
 				: [taggedAddress] "=r"(taggedAddress)
 				: [baseAddress] "r"(baseAddress)
