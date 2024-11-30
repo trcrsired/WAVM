@@ -11,7 +11,6 @@ namespace WAVM { namespace Platform {
 		readOnly = 1,
 		writeOnly = 2,
 		execute = 4,
-		mte = 8,
 		readWrite = readOnly | writeOnly,
 		readExecute = readOnly | execute,
 		readWriteExecute = readWrite | execute
