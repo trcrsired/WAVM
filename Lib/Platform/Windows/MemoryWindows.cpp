@@ -37,6 +37,8 @@ static U32 memoryAccessAsWin32Flag(MemoryAccess access)
 	switch(access)
 	{
 	default:
+	case MemoryAccess::writeOnly:
+	case MemoryAccess::execute:
 	case MemoryAccess::none: return PAGE_NOACCESS;
 	case MemoryAccess::readOnly: return PAGE_READONLY;
 	case MemoryAccess::readWrite: return PAGE_READWRITE;
