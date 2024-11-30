@@ -90,25 +90,26 @@ std::shared_ptr<Process> WASI::createProcessWithFeatureSpec(Runtime::Compartment
 {
 	FeatureSpec featureSpecRuntime = featureSpec;
 	/* check if MTE is present */
-	if (featureSpecRuntime.memtagMte)
+	if(featureSpecRuntime.memtagMte)
 	{
 #if defined(PROT_MTE)
+		unsigned long hwcap2{getauxval(AT_HWCAP2)};
 		if(hwcap2 & HWCAP2_MTE)
 		{
 			if(!prctl(PR_SET_TAGGED_ADDR_CTRL,
-					PR_TAGGED_ADDR_ENABLE | PR_MTE_TCF_SYNC | (0xfffe << PR_MTE_TAG_SHIFT),
-					0,
-					0,
-					0))
+					  PR_TAGGED_ADDR_ENABLE | PR_MTE_TCF_SYNC | (0xfffe << PR_MTE_TAG_SHIFT),
+					  0,
+					  0,
+					  0))
 			{
 				goto mte_enabled_next;
 			}
 		}
-		//mte disabled
+		// mte disabled
 #endif
 		featureSpecRuntime.memtagMte = false;
 		featureSpecRuntime.memtag = true;
-		[[maybe_unused]] mte_enabled_next:;
+	[[maybe_unused]] mte_enabled_next:;
 	}
 	std::shared_ptr<Process> process = std::make_shared<Process>();
 	process->args = std::move(inArgs);
