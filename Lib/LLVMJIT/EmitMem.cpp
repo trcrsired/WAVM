@@ -1339,9 +1339,9 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this))
 	{
+		memaddress = UntagAddress(*this, imm.memoryIndex, memaddress);
 		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
-			memaddress = UntagAddress(memaddress);
 			if(this->moduleContext.targetArch == ::llvm::Triple::aarch64)
 			{
 				auto olduntaggedmemaddress{memaddress};
@@ -1368,7 +1368,6 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 		}
 		else
 		{
-			memaddress = UntagAddress(*this, imm.memoryIndex, memaddress);
 			auto realaddr = ComputeMemTagIndex(*this, imm.memoryIndex, memaddress, true);
 			llvm::IRBuilder<>& irBuilder = this->irBuilder;
 
