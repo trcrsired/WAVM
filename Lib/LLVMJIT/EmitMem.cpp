@@ -179,8 +179,8 @@ static llvm::Value* armmte64_to_32_old_value(EmitFunctionContext& functionContex
 	else
 	{
 		memaddress64 = irBuilder.CreatePtrToInt(memaddress64, functionContext.llvmContext.i64Type);
-		memaddress64 = irBuilder.CreateOr(irBuilder.CreateAnd(memaddress64, mask),
-										  olduntaggedmemaddress);
+		memaddress64
+			= irBuilder.CreateOr(irBuilder.CreateAnd(memaddress64, mask), olduntaggedmemaddress);
 	}
 	return memaddress64;
 }
@@ -1362,8 +1362,8 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 					{},
 					{memaddress, ::llvm::ConstantInt::get(this->llvmContext.i64Type, 0)});
 #endif
-				memaddress
-					= armmte64_to_32_old_value(*this, imm.memoryIndex, olduntaggedmemaddress, memaddress);
+				memaddress = armmte64_to_32_old_value(
+					*this, imm.memoryIndex, olduntaggedmemaddress, memaddress);
 			}
 		}
 		else
