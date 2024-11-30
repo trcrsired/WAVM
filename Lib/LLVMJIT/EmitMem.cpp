@@ -161,7 +161,8 @@ static llvm::Value* armmte64_to_32_value(EmitFunctionContext& functionContext,
 
 static llvm::Value* armmte64_to_32_old_value(EmitFunctionContext& functionContext,
 											 Uptr memoryIndex,
-											 llvm::Value* oldmemaddress llvm::Value* memaddress64)
+											 llvm::Value* oldmemaddress,
+											 llvm::Value* memaddress64)
 {
 	auto& irBuilder = functionContext.irBuilder;
 	const MemoryType& memoryType
