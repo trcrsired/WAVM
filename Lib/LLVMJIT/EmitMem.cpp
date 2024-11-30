@@ -938,11 +938,11 @@ void EmitFunctionContext::memtag_startbit(MemoryImm imm)
 }
 
 static ::llvm::Value* memtag_store_tag_common(EmitFunctionContext& functionContext,
-							   Uptr memoryIndex,
-							   ::llvm::Value* memaddress,
-							   ::llvm::Value* mask,
-							   ::llvm::Value* taggedbytes,
-							   bool zeroing)
+											  Uptr memoryIndex,
+											  ::llvm::Value* memaddress,
+											  ::llvm::Value* mask,
+											  ::llvm::Value* taggedbytes,
+											  bool zeroing)
 {
 	if(isMemTaggedEnabled(functionContext))
 	{
@@ -950,9 +950,12 @@ static ::llvm::Value* memtag_store_tag_common(EmitFunctionContext& functionConte
 		{
 			if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 			{
-				auto olduntaggedmemaddress{UntagAddress(*this, memoryIndex, memaddress);};
+				auto olduntaggedmemaddress
+				{
+					UntagAddress(functionContext, memoryIndex, memaddress);
+				};
 				memaddress = coerceAddressToPointer(
-					getOffsetAndBoundedAddress(*this,
+					getOffsetAndBoundedAddress(functionContext,
 											   memoryIndex,
 											   memaddress,
 											   0,
@@ -960,30 +963,31 @@ static ::llvm::Value* memtag_store_tag_common(EmitFunctionContext& functionConte
 											   BoundsCheckOp::clampToGuardRegion,
 											   taggedbytes,
 											   true),
-					this->llvmContext.i8Type,
+					functionContext.llvmContext.i8Type,
 					memoryIndex);
-				memaddress = irBuilder.CreateIntrinsic(
-					zeroing?(::llvm::Intrinsic::aarch64_settag_zero):
-						(::llvm::Intrinsic::aarch64_settag),
-					{},
-					{memaddress, taggedbytes});
+				memaddress
+					= irBuilder.CreateIntrinsic(zeroing ? (::llvm::Intrinsic::aarch64_settag_zero)
+														: (::llvm::Intrinsic::aarch64_settag),
+												{},
+												{memaddress, taggedbytes});
 				memaddress = armmte64_to_32_old_value(
-					*this, imm.memoryIndex, olduntaggedmemaddress, memaddress);
-
+					functionContext, imm.memoryIndex, olduntaggedmemaddress, memaddress);
 			}
 		}
 		else
 		{
-			auto color = generateMemRandomTagByte(*this, memoryIndex);
+			auto color = generateMemRandomTagByte(functionContext, memoryIndex);
 			if(zeroing)
 			{
-				memaddress = StoreZTagIntoMem(*this, memoryIndex, memaddress, taggedbytes, color);
+				memaddress = StoreZTagIntoMem(
+					functionContext, memoryIndex, memaddress, taggedbytes, color);
 			}
 			else
 			{
-				memaddress = StoreTagIntoMem(*this, memoryIndex, memaddress, taggedbytes, color);
+				memaddress
+					= StoreTagIntoMem(functionContext, memoryIndex, memaddress, taggedbytes, color);
 			}
-			memaddress = TagMemPointer(*this, memoryIndex, memaddress, color, true);
+			memaddress = TagMemPointer(functionContext, memoryIndex, memaddress, color, true);
 		}
 	}
 	return memaddress;
@@ -1383,9 +1387,7 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 					this->llvmContext.i8Type,
 					imm.memoryIndex);
 				memaddress = irBuilder.CreateIntrinsic(
-					::llvm::Intrinsic::aarch64_ldg,
-					{},
-					{memaddress, memaddress});
+					::llvm::Intrinsic::aarch64_ldg, {}, {memaddress, memaddress});
 				memaddress = armmte64_to_32_old_value(
 					*this, imm.memoryIndex, olduntaggedmemaddress, memaddress);
 			}
