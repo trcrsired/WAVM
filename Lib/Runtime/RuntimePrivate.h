@@ -110,12 +110,14 @@ namespace WAVM { namespace Runtime {
 		Memory(Compartment* inCompartment,
 			   const IR::MemoryType& inType,
 			   std::string&& inDebugName,
-			   ResourceQuotaRefParam inResourceQuota)
+			   ResourceQuotaRefParam inResourceQuota,
+			   ::WAVM::LLVMJIT::memtagStatus inMemtagstatus)
 		: GCObject(ObjectKind::memory, inCompartment, std::move(inDebugName))
 		, isShared(inType.isShared)
 		, indexType(inType.indexType)
 		, maxPages(inType.size.max)
 		, resourceQuota(inResourceQuota)
+		, memtagstatus(inMemtagstatus)
 		{
 		}
 		~Memory() override;
