@@ -946,12 +946,15 @@ static ::llvm::Value* memtag_store_tag_common(EmitFunctionContext& functionConte
 {
 	if(isMemTaggedEnabled(functionContext))
 	{
-		if(functionContext.memoryType.indexType == IndexType::i64)
+		MemoryType const& memoryType
+			= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
+		llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
+		if(memoryType.indexType == IndexType::i64)
 		{
 			if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 			{
 				auto olduntaggedmemaddress{UntagAddress(functionContext, memoryIndex, memaddress)};
-				memaddress = coerceAddressToPointer(
+				memaddress = functionContext.coerceAddressToPointer(
 					getOffsetAndBoundedAddress(functionContext,
 											   memoryIndex,
 											   memaddress,
@@ -968,7 +971,7 @@ static ::llvm::Value* memtag_store_tag_common(EmitFunctionContext& functionConte
 												{},
 												{memaddress, taggedbytes});
 				memaddress = armmte64_to_32_old_value(
-					functionContext, imm.memoryIndex, olduntaggedmemaddress, memaddress);
+					functionContext, memoryIndex, olduntaggedmemaddress, memaddress);
 			}
 		}
 		else
