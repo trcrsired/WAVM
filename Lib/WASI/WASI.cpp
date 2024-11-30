@@ -18,6 +18,16 @@
 #include "WAVM/WASI/WASI.h"
 #include "WAVM/WASI/WASIABI64.h"
 
+#if __has_include(<sys/auxv.h>)
+#include <sys/auxv.h>
+#endif
+#if __has_include(<sys/mman.h>)
+#include <sys/mman.h>
+#endif
+#if __has_include(<sys/prctl.h>)
+#include <sys/prctl.h>
+#endif
+
 using namespace WAVM;
 using namespace WAVM::IR;
 using namespace WAVM::Runtime;
@@ -78,6 +88,28 @@ std::shared_ptr<Process> WASI::createProcessWithFeatureSpec(Runtime::Compartment
 															VFS::VFD* stdErr,
 															FeatureSpec const& featureSpec)
 {
+	FeatureSpec featureSpecRuntime = featureSpec;
+	/* check if MTE is present */
+	if (featureSpecRuntime.memtagMte)
+	{
+#if defined(PROT_MTE)
+		if(hwcap2 & HWCAP2_MTE)
+		{
+			if(!prctl(PR_SET_TAGGED_ADDR_CTRL,
+					PR_TAGGED_ADDR_ENABLE | PR_MTE_TCF_SYNC | (0xfffe << PR_MTE_TAG_SHIFT),
+					0,
+					0,
+					0))
+			{
+				goto mte_enabled_next;
+			}
+		}
+		//mte disabled
+#endif
+		featureSpecRuntime.memtagMte = false;
+		featureSpecRuntime.memtag = true;
+		[[maybe_unused]] mte_enabled_next:;
+	}
 	std::shared_ptr<Process> process = std::make_shared<Process>();
 	process->args = std::move(inArgs);
 	process->envs = std::move(inEnvs);
@@ -93,7 +125,7 @@ std::shared_ptr<Process> WASI::createProcessWithFeatureSpec(Runtime::Compartment
 														WAVM_INTRINSIC_MODULE_REF(wasiClocks),
 														WAVM_INTRINSIC_MODULE_REF(wasiFile)},
 													   "wasi_snapshot_preview1",
-													   featureSpec);
+													   featureSpecRuntime);
 
 	process->resolver.moduleNameToInstanceMap.set("wasi_unstable", wasi_snapshot_preview1);
 	process->resolver.moduleNameToInstanceMap.set("wasi_snapshot_preview1", wasi_snapshot_preview1);
