@@ -993,14 +993,14 @@ void EmitFunctionContext::memtag_randomstore(MemoryImm imm)
 {
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
-	push(memtag_store_tag_common(*this, imm.memoryIndex, nullptr, taggedbytes, false));
+	push(memtag_store_tag_common(*this, imm.memoryIndex, memaddress, nullptr, taggedbytes, false));
 }
 
 void EmitFunctionContext::memtag_randomstorez(MemoryImm imm)
 {
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
-	push(memtag_store_tag_common(*this, imm.memoryIndex, nullptr, taggedbytes, true));
+	push(memtag_store_tag_common(*this, imm.memoryIndex, memaddress, nullptr, taggedbytes, true));
 }
 
 void EmitFunctionContext::memtag_randommaskstore(MemoryImm imm)
@@ -1008,7 +1008,7 @@ void EmitFunctionContext::memtag_randommaskstore(MemoryImm imm)
 	::llvm::Value* mask = pop();
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
-	push(memtag_store_tag_common(*this, imm.memoryIndex, mask, taggedbytes, false));
+	push(memtag_store_tag_common(*this, imm.memoryIndex, memaddress, mask, taggedbytes, false));
 }
 
 void EmitFunctionContext::memtag_randommaskstorez(MemoryImm imm)
@@ -1016,7 +1016,7 @@ void EmitFunctionContext::memtag_randommaskstorez(MemoryImm imm)
 	::llvm::Value* mask = pop();
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
-	push(memtag_store_tag_common(*this, imm.memoryIndex, mask, taggedbytes, true));
+	push(memtag_store_tag_common(*this, imm.memoryIndex, memaddress, mask, taggedbytes, true));
 }
 
 void EmitFunctionContext::memtag_extract(MemoryImm imm)
