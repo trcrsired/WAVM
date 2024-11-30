@@ -1328,7 +1328,6 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 											   true),
 					this->llvmContext.i8Type,
 					imm.memoryIndex);
-				memaddress = armmte32_to_64ptr_value(*this, imm.memoryIndex, memaddress);
 				memaddress = irBuilder.CreateIntrinsic(
 					::llvm::Intrinsic::aarch64_ldg,
 					{},
