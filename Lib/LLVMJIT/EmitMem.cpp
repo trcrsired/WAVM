@@ -177,6 +177,14 @@ static llvm::Value* armmte64_to_32_old_value(EmitFunctionContext& functionContex
 								  functionContext.llvmContext.i32Type),
 			irBuilder.CreateAnd(oldmemaddress, mask1));
 	}
+	else
+	{
+		constexpr ::std::uint_least64_t mask{0x0F00000000000000};
+		constexpr ::std::uint_least32_t mask1{0x00FFFFFFFFFFFFFF};
+		memaddress64 = irBuilder.CreatePtrToInt(memaddress64, functionContext.llvmContext.i64Type);
+		memaddress64 = irBuilder.CreateOr(irBuilder.CreateAnd(memaddress64, mask),
+										  irBuilder.CreateAnd(oldmemaddress, mask1));
+	}
 	return memaddress64;
 }
 
