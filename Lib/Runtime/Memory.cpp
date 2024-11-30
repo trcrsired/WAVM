@@ -84,7 +84,7 @@ static Memory* createMemoryImpl(Compartment* compartment,
 								ResourceQuotaRefParam resourceQuota)
 {
 	::std::unique_ptr<Memory> memoryuptr(
-		new Memory(compartment, type, std::move(debugName), resourceQuota));
+		new Memory(compartment, type, std::move(debugName), resourceQuota, isMemTagged));
 
 	Memory* memory = memoryuptr.get();
 
@@ -386,6 +386,14 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 				*baseAddressTags = ch;
 			}
 		}
+#ifdef __has_builtin
+#if __has_builtin(__builtin_arm_stg) && __has_builtin(__builtin_arm_irg)
+		else if (memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		{
+			__builtin_arm_stg(__builtin_arm_irg(memory->baseAddress, 0x1));
+		}
+#endif
+#endif
 		Platform::registerVirtualAllocation(grownpages);
 
 		const Uptr newNumPages = oldNumPages + numPagesToGrow;
