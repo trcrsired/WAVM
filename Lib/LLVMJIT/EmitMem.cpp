@@ -159,6 +159,26 @@ static llvm::Value* armmte64_to_32_value(EmitFunctionContext& functionContext,
 	return memaddress64;
 }
 
+static llvm::Value* armmte64_to_32_old_value(EmitFunctionContext& functionContext,
+											 Uptr memoryIndex,
+											 llvm::Value* oldmemaddress llvm::Value* memaddress64)
+{
+	auto& irBuilder = functionContext.irBuilder;
+	const MemoryType& memoryType
+		= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
+	if(memoryType.indexType == IndexType::i32)
+	{
+		constexpr ::std::uint_least64_t mask{0x0F00000000000000};
+		constexpr ::std::uint_least32_t mask1{0x0FFFFFFF};
+		memaddress64 = irBuilder.CreatePtrToInt(memaddress64, functionContext.llvmContext.i64Type);
+		memaddress64 = irBuilder.CreateOr(
+			irBuilder.CreateTrunc(irBuilder.CreateLShr(irBuilder.CreateAnd(memaddress64, mask), 28),
+								  functionContext.llvmContext.i32Type),
+			irBuilder.CreateAnd(oldmemaddress, mask1));
+	}
+	return memaddress64;
+}
+
 static llvm::Function* getWavmMemtagTrapFunction(EmitFunctionContext& functionContext)
 {
 	auto& moduleContext{functionContext.moduleContext};
@@ -1317,6 +1337,7 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 		{
 			if(this->moduleContext.targetArch == ::llvm::Triple::aarch64)
 			{
+				auto oldmemaddress{memaddress};
 				memaddress = coerceAddressToPointer(
 					getOffsetAndBoundedAddress(*this,
 											   imm.memoryIndex,
@@ -1328,13 +1349,14 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 											   true),
 					this->llvmContext.i8Type,
 					imm.memoryIndex);
-				#if 0
+#if 0
 				memaddress = irBuilder.CreateIntrinsic(
 					::llvm::Intrinsic::aarch64_ldg,
 					{},
 					{memaddress, ::llvm::ConstantInt::get(this->llvmContext.i64Type, 0)});
-				#endif
-				memaddress = armmte64_to_32_value(*this, imm.memoryIndex, memaddress);
+#endif
+				memaddress
+					= armmte64_to_32_old_value(*this, imm.memoryIndex, oldmemaddress, memaddress);
 			}
 			else { memaddress = UntagAddress(*this, imm.memoryIndex, memaddress); }
 		}
