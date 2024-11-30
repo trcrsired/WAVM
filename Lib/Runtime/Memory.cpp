@@ -389,6 +389,7 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 #ifdef __aarch64__
 		else if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
+		    void *taggedAddress;
 			__asm__ __volatile__(
 				R"(
 			.arch_extension memtag
