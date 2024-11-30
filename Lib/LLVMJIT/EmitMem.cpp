@@ -513,7 +513,8 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 						irBuilder, functionContext.llvmContext.i8Type, tagbytePointer)));
 		}
 	}
-	return address;
+	if(isarmmte) { return armmtetagged_address; }
+	else { return address; }
 }
 
 llvm::Value* EmitFunctionContext::coerceAddressToPointer(llvm::Value* boundedAddress,
@@ -983,7 +984,7 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 											   memaddress,
 											   0,
 											   0,
-											   BoundsCheckOp::clampToGuardRegion,
+											   BoundsCheckOp::trapOnOutOfBounds,
 											   taggedbytes,
 											   true),
 					functionContext.llvmContext.i8Type,
@@ -993,7 +994,9 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 				memaddress = irBuilder.CreateIntrinsic(
 					::llvm::Intrinsic::aarch64_irg,
 					{},
-					{memaddress, ::llvm::ConstantInt::get(functionContext.llvmContext.i64Type, 0)});
+					{memaddress,
+					 mask ? mask
+						  : (::llvm::ConstantInt::get(functionContext.llvmContext.i64Type, 0))});
 				memaddress
 					= irBuilder.CreateIntrinsic(zeroing ? (::llvm::Intrinsic::aarch64_settag_zero)
 														: (::llvm::Intrinsic::aarch64_settag),
@@ -1414,7 +1417,7 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 											   memaddress,
 											   0,
 											   0,
-											   BoundsCheckOp::clampToGuardRegion,
+											   BoundsCheckOp::trapOnOutOfBounds,
 											   nullptr,
 											   true),
 					this->llvmContext.i8Type,
