@@ -386,13 +386,19 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 				*baseAddressTags = ch;
 			}
 		}
-#ifdef __has_builtin
-#if __has_builtin(__builtin_arm_stg) && __has_builtin(__builtin_arm_irg)
-		else if (memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
+#ifdef __aarch64__
+		else if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
-			__builtin_arm_stg(__builtin_arm_irg(memory->baseAddress, 0x1));
+			__asm__ __volatile__(
+				R"(
+			.arch_extension memtag
+			irg %[taggedAddress], %[baseAddress], #1
+			stg %[taggedAddress]
+			)"
+				: [taggedAddress] "=r"(taggedAddress)
+				: [baseAddress] "r"(baseAddress)
+				: "memory");
 		}
-#endif
 #endif
 		Platform::registerVirtualAllocation(grownpages);
 
