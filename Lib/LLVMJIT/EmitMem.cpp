@@ -1359,11 +1359,9 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 				memaddress = irBuilder.CreateIntrinsic(
 					::llvm::Intrinsic::aarch64_ldg,
 					{},
-					{memaddress, olduntaggedmemaddress});
-#if 0
+					{memaddress, memaddress});
 				memaddress = armmte64_to_32_old_value(
 					*this, imm.memoryIndex, olduntaggedmemaddress, memaddress);
-#endif
 			}
 		}
 		else
