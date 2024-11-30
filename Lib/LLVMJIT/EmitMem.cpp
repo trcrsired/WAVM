@@ -259,10 +259,37 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 	auto& meminfo{functionContext.memoryInfos[memoryIndex]};
 
 	bool fullcheck{functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::full};
+	bool isarmmte{functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte
+				  && functionContext.moduleContext.targetArch == ::llvm::Triple::aarch64};
 
 	auto memtagBasePointerVariable = meminfo.memtagBasePointerVariable;
 	::llvm::Value* taggedval{};
-	if(memtagBasePointerVariable) // memtag needs to ignore upper 8 bits
+	::llvm::Value* armmtetagged_address{address};
+
+	if(isarmmte)
+	{
+		if(memoryType.indexType == IndexType::i64)
+		{
+			using constanttype = ::WAVM::IR::memtag64constants;
+			constexpr auto mask = constanttype::mask;
+			address = irBuilder.CreateAnd(address, mask);
+		}
+		else
+		{
+			using constanttype = ::WAVM::IR::memtag32constants;
+			constexpr auto shifter = constanttype::shifter;
+			constexpr auto mask = constanttype::mask;
+			auto tagupper
+				= irBuilder.CreateShl(irBuilder.CreateZExt(irBuilder.CreateLShr(address, shifter),
+														   functionContext.llvmContext.i64Type),
+									  56);
+			address = irBuilder.CreateZExt(irBuilder.CreateAnd(address, mask),
+										   functionContext.llvmContext.i64Type);
+			armmtetagged_address = irBuilder.CreateOr(tagupper, address);
+			if(boundsCheckOp != BoundsCheckOp::trapOnOutOfBounds) { return armmtetagged_address; }
+		}
+	}
+	else if(memtagBasePointerVariable) // memtag needs to ignore upper 8 bits
 	{
 		uint_least64_t shifter, mask;
 		if(memoryType.indexType == IndexType::i64)
@@ -370,8 +397,9 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 			createconditionaltrap(functionContext,
 									irBuilder.CreateICmpUGE(address, endAddress));
 #else
-			address = irBuilder.CreateSelect(
-				irBuilder.CreateICmpULT(address, endAddress), address, endAddress);
+			address = irBuilder.CreateSelect(irBuilder.CreateICmpULT(address, endAddress),
+											 isarmmte ? armmtetagged_address : address,
+											 endAddress);
 #endif
 		}
 	}
@@ -783,25 +811,21 @@ static inline ::llvm::Value* StoreTagIntoMemAndZeroing(EmitFunctionContext& func
 	{
 		if(functionContext.moduleContext.targetArch == ::llvm::Triple::aarch64)
 		{
-			auto decl = ::llvm::Intrinsic::aarch64_stgp;
-			if(zeroing) { decl = ::llvm::Intrinsic::aarch64_settag_zero; }
-			auto SetTagFn = ::llvm::Intrinsic::getOrInsertDeclaration(
-				functionContext.moduleContext.llvmModule,
-				decl,
-				{functionContext.llvmContext.i64Type});
-			// todo bounds checking
-			llvm::Value* sourcePointer = functionContext.coerceAddressToPointer(
+			address = functionContext.coerceAddressToPointer(
 				getOffsetAndBoundedAddress(functionContext,
 										   memoryIndex,
 										   address,
 										   0,
 										   0,
 										   BoundsCheckOp::clampToGuardRegion,
-										   nullptr,
+										   taggedbytes,
 										   true),
 				functionContext.llvmContext.i8Type,
 				memoryIndex);
-			irBuilder.CreateCall(SetTagFn, {sourcePointer, taggedbytes});
+			irBuilder.CreateIntrinsic(zeroing ? (::llvm::Intrinsic::aarch64_settag_zero)
+											  : (::llvm::Intrinsic::aarch64_settag),
+									  {},
+									  {address, taggedbytes});
 		}
 		else if(zeroing) { memtag_zero_memory(functionContext, memoryIndex, address, taggedbytes); }
 	}
@@ -937,12 +961,12 @@ void EmitFunctionContext::memtag_startbit(MemoryImm imm)
 	}
 }
 
-static ::llvm::Value* memtag_store_tag_common(EmitFunctionContext& functionContext,
-											  Uptr memoryIndex,
-											  ::llvm::Value* memaddress,
-											  ::llvm::Value* mask,
-											  ::llvm::Value* taggedbytes,
-											  bool zeroing)
+static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functionContext,
+													 Uptr memoryIndex,
+													 ::llvm::Value* memaddress,
+													 ::llvm::Value* mask,
+													 ::llvm::Value* taggedbytes,
+													 bool zeroing)
 {
 	if(isMemTaggedEnabled(functionContext))
 	{
@@ -953,7 +977,6 @@ static ::llvm::Value* memtag_store_tag_common(EmitFunctionContext& functionConte
 		{
 			if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 			{
-				auto olduntaggedmemaddress{UntagAddress(functionContext, memoryIndex, memaddress)};
 				memaddress = functionContext.coerceAddressToPointer(
 					getOffsetAndBoundedAddress(functionContext,
 											   memoryIndex,
@@ -965,13 +988,19 @@ static ::llvm::Value* memtag_store_tag_common(EmitFunctionContext& functionConte
 											   true),
 					functionContext.llvmContext.i8Type,
 					memoryIndex);
+				auto oldaddress{memaddress};
+
+				memaddress = irBuilder.CreateIntrinsic(
+					::llvm::Intrinsic::aarch64_irg,
+					{},
+					{memaddress, ::llvm::ConstantInt::get(functionContext.llvmContext.i64Type, 0)});
 				memaddress
 					= irBuilder.CreateIntrinsic(zeroing ? (::llvm::Intrinsic::aarch64_settag_zero)
 														: (::llvm::Intrinsic::aarch64_settag),
 												{},
 												{memaddress, taggedbytes});
 				memaddress = armmte64_to_32_old_value(
-					functionContext, memoryIndex, olduntaggedmemaddress, memaddress);
+					functionContext, memoryIndex, oldaddress, memaddress);
 			}
 		}
 		else
@@ -997,14 +1026,16 @@ void EmitFunctionContext::memtag_randomstore(MemoryImm imm)
 {
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
-	push(memtag_store_tag_common(*this, imm.memoryIndex, memaddress, nullptr, taggedbytes, false));
+	push(memtag_random_store_tag_common(
+		*this, imm.memoryIndex, memaddress, nullptr, taggedbytes, false));
 }
 
 void EmitFunctionContext::memtag_randomstorez(MemoryImm imm)
 {
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
-	push(memtag_store_tag_common(*this, imm.memoryIndex, memaddress, nullptr, taggedbytes, true));
+	push(memtag_random_store_tag_common(
+		*this, imm.memoryIndex, memaddress, nullptr, taggedbytes, true));
 }
 
 void EmitFunctionContext::memtag_randommaskstore(MemoryImm imm)
@@ -1012,7 +1043,8 @@ void EmitFunctionContext::memtag_randommaskstore(MemoryImm imm)
 	::llvm::Value* mask = pop();
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
-	push(memtag_store_tag_common(*this, imm.memoryIndex, memaddress, mask, taggedbytes, false));
+	push(memtag_random_store_tag_common(
+		*this, imm.memoryIndex, memaddress, mask, taggedbytes, false));
 }
 
 void EmitFunctionContext::memtag_randommaskstorez(MemoryImm imm)
@@ -1020,7 +1052,8 @@ void EmitFunctionContext::memtag_randommaskstorez(MemoryImm imm)
 	::llvm::Value* mask = pop();
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
-	push(memtag_store_tag_common(*this, imm.memoryIndex, memaddress, mask, taggedbytes, true));
+	push(memtag_random_store_tag_common(
+		*this, imm.memoryIndex, memaddress, mask, taggedbytes, true));
 }
 
 void EmitFunctionContext::memtag_extract(MemoryImm imm)
