@@ -201,6 +201,7 @@ Instance* Runtime::instantiateModuleInternal(Compartment* compartment,
 	::WAVM::LLVMJIT::memtagStatus ismemtagged{::WAVM::LLVMJIT::memtagStatus::none};
 	if(module_->ir.featureSpec.memtagFull) { ismemtagged = ::WAVM::LLVMJIT::memtagStatus::full; }
 	else if(module_->ir.featureSpec.memtag) { ismemtagged = ::WAVM::LLVMJIT::memtagStatus::basic; }
+	else if(module_->ir.featureSpec.memtagMTE) { ismemtagged = ::WAVM::LLVMJIT::memtagStatus::mte; }
 
 	for(Uptr memoryDefIndex = 0; memoryDefIndex < module_->ir.memories.defs.size();
 		++memoryDefIndex)
