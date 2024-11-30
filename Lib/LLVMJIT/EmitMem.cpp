@@ -937,31 +937,70 @@ void EmitFunctionContext::memtag_startbit(MemoryImm imm)
 	}
 }
 
+static ::llvm::Value* memtag_store_tag_common(EmitFunctionContext& functionContext,
+							   Uptr memoryIndex,
+							   ::llvm::Value* memaddress,
+							   ::llvm::Value* mask,
+							   ::llvm::Value* taggedbytes,
+							   bool zeroing)
+{
+	if(isMemTaggedEnabled(functionContext))
+	{
+		if(memoryType.indexType == IndexType::i64)
+		{
+			if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			{
+				auto olduntaggedmemaddress{UntagAddress(*this, memoryIndex, memaddress);};
+				memaddress = coerceAddressToPointer(
+					getOffsetAndBoundedAddress(*this,
+											   memoryIndex,
+											   memaddress,
+											   0,
+											   0,
+											   BoundsCheckOp::clampToGuardRegion,
+											   taggedbytes,
+											   true),
+					this->llvmContext.i8Type,
+					memoryIndex);
+				memaddress = irBuilder.CreateIntrinsic(
+					zeroing?(::llvm::Intrinsic::aarch64_settag_zero):
+						(::llvm::Intrinsic::aarch64_settag),
+					{},
+					{memaddress, taggedbytes});
+				memaddress = armmte64_to_32_old_value(
+					*this, imm.memoryIndex, olduntaggedmemaddress, memaddress);
+
+			}
+		}
+		else
+		{
+			auto color = generateMemRandomTagByte(*this, memoryIndex);
+			if(zeroing)
+			{
+				memaddress = StoreZTagIntoMem(*this, memoryIndex, memaddress, taggedbytes, color);
+			}
+			else
+			{
+				memaddress = StoreTagIntoMem(*this, memoryIndex, memaddress, taggedbytes, color);
+			}
+			memaddress = TagMemPointer(*this, memoryIndex, memaddress, color, true);
+		}
+	}
+	return memaddress;
+}
+
 void EmitFunctionContext::memtag_randomstore(MemoryImm imm)
 {
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
-	if(isMemTaggedEnabled(*this))
-	{
-		auto color = generateMemRandomTagByte(*this, imm.memoryIndex);
-		memaddress = StoreTagIntoMem(*this, imm.memoryIndex, memaddress, taggedbytes, color);
-		memaddress = TagMemPointer(*this, imm.memoryIndex, memaddress, color, true);
-	}
-	push(memaddress);
+	push(memtag_store_tag_common(*this, imm.memoryIndex, nullptr, taggedbytes, false));
 }
 
 void EmitFunctionContext::memtag_randomstorez(MemoryImm imm)
 {
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
-	if(isMemTaggedEnabled(*this))
-	{
-		auto color = generateMemRandomTagByte(*this, imm.memoryIndex);
-		memaddress = StoreZTagIntoMem(*this, imm.memoryIndex, memaddress, taggedbytes, color);
-		memaddress = TagMemPointer(*this, imm.memoryIndex, memaddress, color, true);
-	}
-	else { memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes); }
-	push(memaddress);
+	push(memtag_store_tag_common(*this, imm.memoryIndex, nullptr, taggedbytes, true));
 }
 
 void EmitFunctionContext::memtag_randommaskstore(MemoryImm imm)
@@ -969,13 +1008,7 @@ void EmitFunctionContext::memtag_randommaskstore(MemoryImm imm)
 	::llvm::Value* mask = pop();
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
-	if(isMemTaggedEnabled(*this))
-	{
-		auto color = generateMemRandomTagByte(*this, imm.memoryIndex);
-		memaddress = StoreTagIntoMem(*this, imm.memoryIndex, memaddress, taggedbytes, color);
-		memaddress = TagMemPointer(*this, imm.memoryIndex, memaddress, color, true);
-	}
-	push(memaddress);
+	push(memtag_store_tag_common(*this, imm.memoryIndex, mask, taggedbytes, false));
 }
 
 void EmitFunctionContext::memtag_randommaskstorez(MemoryImm imm)
@@ -983,14 +1016,7 @@ void EmitFunctionContext::memtag_randommaskstorez(MemoryImm imm)
 	::llvm::Value* mask = pop();
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
-	if(isMemTaggedEnabled(*this))
-	{
-		auto color = generateMemRandomTagByte(*this, imm.memoryIndex);
-		memaddress = StoreZTagIntoMem(*this, imm.memoryIndex, memaddress, taggedbytes, color);
-		memaddress = TagMemPointer(*this, imm.memoryIndex, memaddress, color, true);
-	}
-	else { memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes); }
-	push(memaddress);
+	push(memtag_store_tag_common(*this, imm.memoryIndex, mask, taggedbytes, true));
 }
 
 void EmitFunctionContext::memtag_extract(MemoryImm imm)
