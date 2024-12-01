@@ -1393,7 +1393,7 @@ static ::llvm::Value* compute_hint_addr(EmitFunctionContext& functionContext,
 	if(memoryType.indexType == IndexType::i64
 	   && functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 	{
-		memaddress = irBuilder.CreateAnd(memaddress, mask);
+		memaddress = irBuilder.CreateAnd(memaddress, ::WAVM::IR::memtagarmmteconstants::pseudomask);
 	}
 	return memaddress;
 }
