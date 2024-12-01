@@ -881,7 +881,7 @@ static inline void llvm_runtime_arm_mte_settag(EmitFunctionContext& functionCont
 	else
 	{
 		fprintf(stderr, "runtime one?%s %d\n", __FILE__, __LINE__);
-		irBuilder.CreateCall(getWavmAArch64MteSetTagFunction(functionContextzeroing),
+		irBuilder.CreateCall(getWavmAArch64MteSetTagFunction(functionContext, zeroing),
 							 {address, taggedbytes});
 	}
 }
