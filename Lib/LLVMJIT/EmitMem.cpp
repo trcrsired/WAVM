@@ -267,6 +267,7 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 
 	if(isarmmte)
 	{
+		constexpr auto shiftercommon{56u};
 		if(memoryType.indexType == IndexType::i32)
 		{
 			using constanttype = ::WAVM::IR::memtag32constants;
@@ -275,14 +276,15 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 			arm_mte_offset
 				= irBuilder.CreateShl(irBuilder.CreateZExt(irBuilder.CreateLShr(address, shifter),
 														   functionContext.llvmContext.i64Type),
-									  56);
+									  shiftercommon);
 			address = irBuilder.CreateZExt(irBuilder.CreateAnd(address, mask),
 										   functionContext.llvmContext.i64Type);
 			address = irBuilder.CreateAdd(address, arm_mte_offset);
 		}
 		else
 		{
-			constexpr ::std::uint_least64_t mask{static_cast<::std::uint_least64_t>(0xFF) << 48u};
+			constexpr ::std::uint_least64_t mask{static_cast<::std::uint_least64_t>(0xF)
+												 << shiftercommon};
 			arm_mte_offset = irBuilder.CreateAnd(address, mask);
 		}
 	}
