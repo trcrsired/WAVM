@@ -315,6 +315,7 @@ IR::MemoryType Runtime::getMemoryType(const Memory* memory)
 #if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__))
 
 namespace {
+	inline constexpr platform_support_arm_mte{true};
 	inline void* wavm_arm_mte_irg(void* ptr, uintptr_t mask) noexcept
 	{
 #if __has_builtin(__builtin_arm_irg)
@@ -411,7 +412,10 @@ extern "C" void wavm_aarch64_mte_settag_zero(void* ptrvp, ::std::size_t len) noe
 	}
 	if(len >= 16) { wavm_arm_mte_stzg(ptr); }
 }
-
+#else
+namespace {
+	inline constexpr bool platform_support_arm_mte{};
+}
 #endif
 
 GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOldNumPages)
@@ -451,14 +455,16 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 			return GrowResult::outOfMaxSize;
 		}
 
-		constexpr Platform::MemoryAccess flags{
-#if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__))
-			static_cast<Platform::MemoryAccess>(static_cast<U32>(Platform::MemoryAccess::readWrite)
-												| static_cast<U32>(Platform::MemoryAccess::mte))
-#else
-			Platform::MemoryAccess::readWrite
-#endif
-		};
+		Platform::MemoryAccess flags{Platform::MemoryAccess::readWrite};
+		if constexpr(platform_support_arm_mte)
+		{
+			if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			{
+				flags = static_cast<Platform::MemoryAccess>(
+					static_cast<U32>(Platform::MemoryAccess::readWrite)
+					| static_cast<U32>(Platform::MemoryAccess::mte));
+			}
+		}
 
 		auto wasmlog2 = getPlatformPagesPerWebAssemblyPageLog2();
 		auto grownpages = numPagesToGrow << wasmlog2;
@@ -566,12 +572,7 @@ static U8* getValidatedMemoryOffsetRangeImpl(Memory* memory,
 		}
 	}
 	auto boundsaddress{address};
-	constexpr bool isaarch64_with_arm_mte{
-#ifdef __aarch64__
-		true
-#endif
-	};
-	if constexpr(isaarch64_with_arm_mte)
+	if constexpr(platform_support_arm_mte)
 	{
 		if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
