@@ -390,24 +390,26 @@ namespace {
 
 extern "C" void wavm_aarch64_mte_settag(void* ptrvp, ::std::size_t len) noexcept
 {
-	__builtin_printf("%s %d %p %zu\n",__FILE__,__LINE__,ptrvp, len);
+	__builtin_printf("%s %d %p %zu\n", __FILE__, __LINE__, ptrvp, len);
 	char* ptr(reinterpret_cast<char*>(ptrvp));
 	while(len >= 32)
 	{
 		wavm_arm_mte_st2g(ptr);
 		ptr += 32;
+		len -= 32;
 	}
 	if(len >= 16) { wavm_arm_mte_stg(ptr); }
 }
 
 extern "C" void wavm_aarch64_mte_settag_zero(void* ptrvp, ::std::size_t len) noexcept
 {
-	__builtin_printf("%s %d %p %zu\n",__FILE__,__LINE__,ptrvp, len);
+	__builtin_printf("%s %d %p %zu\n", __FILE__, __LINE__, ptrvp, len);
 	char* ptr(reinterpret_cast<char*>(ptrvp));
 	while(len >= 32)
 	{
 		wavm_arm_mte_stz2g(ptr);
 		ptr += 32;
+		len -= 32;
 	}
 	if(len >= 16) { wavm_arm_mte_stzg(ptr); }
 }
