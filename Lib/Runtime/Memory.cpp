@@ -315,7 +315,7 @@ IR::MemoryType Runtime::getMemoryType(const Memory* memory)
 #if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__))
 
 namespace {
-	inline constexpr platform_support_arm_mte{true};
+	inline constexpr bool platform_support_arm_mte{true};
 	inline void* wavm_arm_mte_irg(void* ptr, uintptr_t mask) noexcept
 	{
 #if __has_builtin(__builtin_arm_irg)
@@ -415,6 +415,8 @@ extern "C" void wavm_aarch64_mte_settag_zero(void* ptrvp, ::std::size_t len) noe
 #else
 namespace {
 	inline constexpr bool platform_support_arm_mte{};
+	inline void* wavm_arm_mte_irg(void* ptr, uintptr_t) noexcept { return ptr; }
+	inline void wavm_arm_mte_stg(void*) noexcept {}
 }
 #endif
 
@@ -505,12 +507,13 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 				*baseAddressTags = ch;
 			}
 		}
-#if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__))
-		else if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		else if constexpr(platform_support_arm_mte)
 		{
-			wavm_arm_mte_stg(wavm_arm_mte_irg(memory->baseAddress, 0x1));
+			if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			{
+				wavm_arm_mte_stg(wavm_arm_mte_irg(memory->baseAddress, 0x1));
+			}
 		}
-#endif
 		Platform::registerVirtualAllocation(grownpages);
 
 		const Uptr newNumPages = oldNumPages + numPagesToGrow;
