@@ -322,7 +322,8 @@ inline void* wavm_arm_mte_irg(void *ptr, uintptr_t mask) noexcept
 	return __builtin_arm_irg(ptr, mask);
 #else
 	uintptr_t val;
-	__asm__("irg %0, %1, %2" : "=r"(val):"r"(reinterpret_cast<uintptr_t>(ptr)), "r"(mask));
+	__asm__(".arch_extension memtag\n"
+		"irg %0, %1, %2" : "=r"(val):"r"(reinterpret_cast<uintptr_t>(ptr)), "r"(mask));
 	return reinterpret_cast<void*>(val);
 #endif
 }
@@ -332,7 +333,8 @@ inline void wavm_arm_mte_stg(void *tagged_addr) noexcept
 #if __has_builtin(__builtin_arm_stg)
 	__builtin_arm_stg(tagged_addr);
 #else
-	__asm__ __volatile__("stg %0, [%0]" : : "r" (reinterpret_cast<uintptr_t>(tagged_addr)) : "memory");
+	__asm__ __volatile__(".arch_extension memtag\n"
+		"stg %0, [%0]" : : "r" (reinterpret_cast<uintptr_t>(tagged_addr)) : "memory");
 #endif
 }
 }
