@@ -41,7 +41,7 @@ static U32 memoryAccessAsPOSIXFlag(MemoryAccess access)
 	{
 		prot_mte = PROT_MTE;
 		access = static_cast<MemoryAccess>(static_cast<U32>(access)
-										   & ~static_cast<U32>(MemoryAccess::none));
+										   & ~static_cast<U32>(MemoryAccess::mte));
 	}
 #endif
 	switch(access)
