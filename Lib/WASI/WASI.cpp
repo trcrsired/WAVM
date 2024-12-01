@@ -90,16 +90,16 @@ std::shared_ptr<Process> WASI::createProcessWithFeatureSpec(Runtime::Compartment
 {
 	FeatureSpec featureSpecRuntime = featureSpec;
 	/* check if MTE is present */
-	if(featureSpecRuntime.memtagMte || featureSpecRuntime.memtagMteAsync)
+	if(featureSpecRuntime.memtagMte || featureSpecRuntime.memtagMteSync)
 	{
 #if defined(PROT_MTE)
 		unsigned long hwcap2{getauxval(AT_HWCAP2)};
 		if(hwcap2 & HWCAP2_MTE)
 		{
-			auto asyncflag{PR_MTE_TCF_SYNC};
-			if(featureSpecRuntime.memtagMteAsync) { asyncflag = PR_MTE_TCF_ASYNC; }
+			auto syncflag{PR_MTE_TCF_ASYNC};
+			if(featureSpecRuntime.memtagMteSync) { syncflag = PR_MTE_TCF_SYNC; }
 			if(!prctl(PR_SET_TAGGED_ADDR_CTRL,
-					  PR_TAGGED_ADDR_ENABLE | asyncflag | (0xfffe << PR_MTE_TAG_SHIFT),
+					  PR_TAGGED_ADDR_ENABLE | syncflag | (0xfffe << PR_MTE_TAG_SHIFT),
 					  0,
 					  0,
 					  0))
@@ -109,7 +109,7 @@ std::shared_ptr<Process> WASI::createProcessWithFeatureSpec(Runtime::Compartment
 		}
 		// mte disabled
 #endif
-		featureSpecRuntime.memtagMteAsync = false;
+		featureSpecRuntime.memtagMteSync = false;
 		featureSpecRuntime.memtagMte = false;
 		featureSpecRuntime.memtag = true;
 	[[maybe_unused]] mte_enabled_next:;
@@ -183,7 +183,7 @@ std::shared_ptr<Process> WASI::createProcess(Runtime::Compartment* compartment,
 											 VFS::VFD* stdErr)
 {
 	::WAVM::IR::FeatureSpec featureSpec(::FeatureLevel::wavm);
-	featureSpec.memtagMteAsync = featureSpec.memtagMte = featureSpec.memtagFull = featureSpec.memtag
+	featureSpec.memtagMteSync = featureSpec.memtagMte = featureSpec.memtagFull = featureSpec.memtag
 		= false;
 	return WASI::createProcessWithFeatureSpec(compartment,
 											  ::std::move(inArgs),
