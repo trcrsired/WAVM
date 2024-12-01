@@ -451,11 +451,20 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 			return GrowResult::outOfMaxSize;
 		}
 
+		constexpr MemoryAccess flags{
+#if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__))
+			static_cast<MemoryAccess>(static_cast<U32>(MemoryAccess::readWrite)
+									  | static_cast<U32>(MemoryAccess::mte))
+#else
+			MemoryAccess::readWrite
+#endif
+		};
+
 		auto wasmlog2 = getPlatformPagesPerWebAssemblyPageLog2();
 		auto grownpages = numPagesToGrow << wasmlog2;
 		// Try to commit the new pages, and return GrowResult::outOfMemory if the commit fails.
-		if(!Platform::commitVirtualPages(memory->baseAddress + oldNumPages * IR::numBytesPerPage,
-										 grownpages))
+		if(!Platform::commitVirtualPages(
+			   memory->baseAddress + oldNumPages * IR::numBytesPerPage, grownpages, flags))
 		{
 			if(memory->resourceQuota) { memory->resourceQuota->memoryPages.free(numPagesToGrow); }
 			return GrowResult::outOfMemory;
@@ -465,7 +474,9 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 			auto wasmlog2m4 = wasmlog2 - 4u;
 			auto grownpagesTagged = numPagesToGrow << wasmlog2m4;
 			if(!Platform::commitVirtualPages(
-				   baseAddressTags + oldNumPages * IR::numBytesTaggedPerPage, grownpagesTagged))
+				   baseAddressTags + oldNumPages * IR::numBytesTaggedPerPage,
+				   grownpagesTagged,
+				   flags))
 			{
 				if(memory->resourceQuota)
 				{

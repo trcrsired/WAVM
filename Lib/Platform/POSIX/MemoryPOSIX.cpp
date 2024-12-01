@@ -34,14 +34,20 @@ Uptr Platform::getBytesPerPageLog2()
 
 static U32 memoryAccessAsPOSIXFlag(MemoryAccess access)
 {
-	constexpr auto prot_mte{
+	U32 prot_mte{};
 #ifdef PROT_MTE
-		PROT_MTE
+	if((static_cast<U32>(access) & static_cast<U32>(MemoryAccess::mte))
+	   == static_cast<U32>(MemoryAccess::mte))
+	{
+		prot_mte = PROT_MTE;
+		access = static_cast<MemoryAccess>(static_cast<U32>(access)
+										   & ~static_cast<U32>(MemoryAccess::none));
+	}
 #endif
-	};
 	switch(access)
 	{
 	default:
+	case MemoryAccess::mte:
 	case MemoryAccess::none: return prot_mte | PROT_NONE;
 	case MemoryAccess::readOnly: return prot_mte | PROT_READ;
 	case MemoryAccess::writeOnly:

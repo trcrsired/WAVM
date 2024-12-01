@@ -34,9 +34,16 @@ Uptr Platform::getBytesPerPageLog2()
 
 static U32 memoryAccessAsWin32Flag(MemoryAccess access)
 {
+	if((static_cast<U32>(access) & static_cast<U32>(MemoryAccess::mte))
+	   == static_cast<U32>(MemoryAccess::mte))
+	{
+		access = static_cast<MemoryAccess>(static_cast<U32>(access)
+										   & ~static_cast<U32>(MemoryAccess::none));
+	}
 	switch(access)
 	{
 	default:
+	case MemoryAccess::mte:
 	case MemoryAccess::none: return PAGE_NOACCESS;
 	case MemoryAccess::readOnly: return PAGE_READONLY;
 	case MemoryAccess::writeOnly:
