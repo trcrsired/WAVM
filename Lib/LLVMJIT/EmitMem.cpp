@@ -976,7 +976,6 @@ void EmitFunctionContext::memtag_startbit(MemoryImm imm)
 {
 	MemoryType const& memoryType = this->moduleContext.irModule.memories.getType(imm.memoryIndex);
 	::std::uint_least64_t shifter{};
-	::llvm::Value* vtype{};
 	if(isMemTaggedEnabled(*this))
 	{
 		if(memoryType.indexType == IndexType::i64)
@@ -1121,7 +1120,7 @@ void EmitFunctionContext::memtag_extract(MemoryImm imm)
 		}
 		memaddress = irBuilder.CreateLShr(memaddress, shifter);
 		if(memoryType.indexType == IndexType::i64
-		   && functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		   && this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
 			memaddress
 				= irBuilder.CreateAnd(memaddress, ::WAVM::IR::memtagarmmteconstants::index_mask);
@@ -1131,8 +1130,8 @@ void EmitFunctionContext::memtag_extract(MemoryImm imm)
 	else
 	{
 		push(::llvm::ConstantInt::get(
-			(memoryType.indexType == IndexType::i64 ? functionContext.llvmContext.i64Type
-													: functionContext.llvmContext.i32Type),
+			(memoryType.indexType == IndexType::i64 ? this->llvmContext.i64Type
+													: this->llvmContext.i32Type),
 			0));
 	}
 }
@@ -1147,10 +1146,11 @@ void EmitFunctionContext::memtag_insert(MemoryImm imm)
 			= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
 		llvm::IRBuilder<>& irBuilder = this->irBuilder;
 		uint_least64_t shifter, mask, tagindexmask;
-		::llvm::Type* vtype;
+		::llvm::Type* vtype{(memoryType.indexType == IndexType::i64 ? this->llvmContext.i64Type
+																	: this->llvmContext.i32Type)};
 		if(memoryType.indexType == IndexType::i64)
 		{
-			if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 			{
 				using constanttype = ::WAVM::IR::memtagarmmteconstants;
 				shifter = constanttype::shifter;
@@ -1164,7 +1164,6 @@ void EmitFunctionContext::memtag_insert(MemoryImm imm)
 				mask = constanttype::mask;
 				tagindexmask = constanttype::index_mask;
 			}
-			vtype = functionContext.llvmContext.i64Type;
 		}
 		else
 		{
@@ -1172,7 +1171,6 @@ void EmitFunctionContext::memtag_insert(MemoryImm imm)
 			shifter = constanttype::shifter;
 			mask = constanttype::mask;
 			tagindexmask = constanttype::index_mask;
-			vtype = functionContext.llvmContext.i32Type;
 		}
 		memaddress = irBuilder.CreateOr(
 			irBuilder.CreateAnd(memaddress, ::llvm::ConstantInt::get(vtype, mask)),
