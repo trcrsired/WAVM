@@ -263,7 +263,7 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 				  && functionContext.moduleContext.targetArch == ::llvm::Triple::aarch64};
 
 	auto memtagBasePointerVariable = meminfo.memtagBasePointerVariable;
-	::llvm::Value* arm_mte_offset{};
+	::llvm::Value *arm_mte_offset{}, *taggedval{};
 
 	if(isarmmte)
 	{
