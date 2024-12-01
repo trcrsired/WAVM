@@ -200,7 +200,7 @@ static llvm::Function* getWavmAArch64MteSetTagFunction(EmitFunctionContext& func
 		LLVMContext& llvmContext = moduleContext.llvmContext;
 		settagfunc = llvm::Function::Create(
 			llvm::FunctionType::get(::llvm::Type::getVoidTy(llvmContext),
-									{llvmContext.i64Type, llvmContext.i64Type},
+									{llvmContext.i8PtrType, llvmContext.i64Type},
 									false),
 			llvm::GlobalValue::LinkageTypes::ExternalLinkage,
 			functionsymbolname,
