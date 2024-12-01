@@ -1040,11 +1040,10 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 					{memaddress,
 					 mask ? mask
 						  : (::llvm::ConstantInt::get(functionContext.llvmContext.i64Type, 0))});
-				memaddress
-					= irBuilder.CreateIntrinsic(zeroing ? (::llvm::Intrinsic::aarch64_settag_zero)
-														: (::llvm::Intrinsic::aarch64_settag),
-												{},
-												{memaddress, taggedbytes});
+				irBuilder.CreateIntrinsic(zeroing ? (::llvm::Intrinsic::aarch64_settag_zero)
+												  : (::llvm::Intrinsic::aarch64_settag),
+										  {},
+										  {memaddress, taggedbytes});
 				memaddress = armmte_host_tag_address_to_sandbox_address(
 					functionContext, memoryIndex, memaddress, basepointer);
 			}
