@@ -44,7 +44,7 @@ static llvm::Value* getMemoryNumPages(EmitFunctionContext& functionContext, Uptr
 	llvm::LoadInst* memoryNumPagesLoad = functionContext.loadFromUntypedPointer(
 		::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
 			functionContext.irBuilder,
-			functionContext.irBuilder.getInt8Ty(),
+			functionContext.llvmContext.i8Type,
 			functionContext.getCompartmentAddress(),
 			{llvm::ConstantExpr::getAdd(
 				memoryOffset,
@@ -148,7 +148,7 @@ static llvm::Value* armmte64_to_32_value(EmitFunctionContext& functionContext,
 		= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
 	if(memoryType.indexType == IndexType::i32)
 	{
-		constexpr ::std::uint_least64_t mask{0x0F00000000000000};
+		constexpr ::std::uint_least64_t mask{::WAVM::IR::memtagarmmteconstants::hint_mask};
 		constexpr ::std::uint_least64_t mask1{0x000000000FFFFFFF};
 		memaddress64 = irBuilder.CreatePtrToInt(memaddress64, functionContext.llvmContext.i64Type);
 		memaddress64 = irBuilder.CreateTrunc(
@@ -543,11 +543,11 @@ namespace {
 
 		if(memoryType.indexType == IndexType::i32)
 		{
-			constexpr ::std::uint_least64_t mask{0x0F00000000000000};
+			constexpr ::std::uint_least64_t mask{::WAVM::IR::memtagarmmteconstants::hint_mask};
 			memaddress = irBuilder.CreateOr(
-				irBuilder.CreateTrunc(
-					irBuilder.CreateLShr(irBuilder.CreateAnd(memaddress, mask), 28),
-					functionContext.llvmContext.i32Type),
+				irBuilder.CreateTrunc(irBuilder.CreateLShr(irBuilder.CreateAnd(memaddress, mask),
+														   ::WAVM::IR::memtag32constants::shifter),
+									  functionContext.llvmContext.i32Type),
 				memaddress);
 		}
 		return memaddress;
@@ -823,8 +823,11 @@ static void memtag_zero_memory(EmitFunctionContext& functionContext,
 	auto realaddr = functionContext.coerceAddressToPointer(
 		untaggedmemaddress, functionContext.llvmContext.i8Type, memoryIndex);
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
-	::llvm::Value* zeroconstant = irBuilder.getInt8(0);
-	irBuilder.CreateMemSet(realaddr, zeroconstant, taggedbytes, LLVM_ALIGNMENT(1), false);
+	irBuilder.CreateMemSet(realaddr,
+						   ::llvm::ConstantInt::get(functionContext.llvmContext.i8Type, 0),
+						   taggedbytes,
+						   LLVM_ALIGNMENT(1),
+						   false);
 }
 
 static inline ::llvm::Value* StoreTagIntoMemAndZeroing(EmitFunctionContext& functionContext,
