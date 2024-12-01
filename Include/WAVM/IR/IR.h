@@ -44,8 +44,8 @@ namespace WAVM { namespace IR {
 		using value_type = U64;
 		static inline constexpr U32 bits = 4;
 		static inline constexpr U32 shifter = 56;
-		static inline constexpr U64 mask = (static_cast<U64>(0xF) << shifter);
-		static inline constexpr U64 hint_mask = static_cast<U64>(~static_cast<value_type>(mask));
+		static inline constexpr U64 hint_mask = (static_cast<U64>(0xF) << shifter);
+		static inline constexpr U64 mask = static_cast<U64>(~static_cast<value_type>(hint_mask));
 		static inline constexpr U64 index_mask = (U64(1) << bits) - 1;
 		static inline constexpr U8 nullptrtag = (U8(1) << (bits - 1)) - 1;
 	};
