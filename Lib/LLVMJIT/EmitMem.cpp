@@ -1466,7 +1466,7 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 											   true),
 					this->llvmContext.i8Type,
 					imm.memoryIndex);
-				auto memaddress{basepointeraddressResult.bytePointer};
+				memaddress = basepointeraddressResult.bytePointer;
 				auto memoryBasePointer{basepointeraddressResult.memoryBasePointer};
 				memaddress = irBuilder.CreateIntrinsic(
 					::llvm::Intrinsic::aarch64_ldg, {}, {memaddress, memaddress});
