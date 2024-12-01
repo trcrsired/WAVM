@@ -785,7 +785,14 @@ static inline ::llvm::Value* UntagAddress(EmitFunctionContext& functionContext,
 		= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
 	uint_least64_t mask;
-	if(memoryType.indexType == IndexType::i64) { mask = ::WAVM::IR::memtag64constants::mask; }
+	if(memoryType.indexType == IndexType::i64)
+	{
+		if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		{
+			mask = ::WAVM::IR::memtagarmmteconstants::mask;
+		}
+		else { mask = ::WAVM::IR::memtag64constants::mask; }
+	}
 	else { mask = ::WAVM::IR::memtag32constants::mask; }
 	address = irBuilder.CreateAnd(address, mask);
 	return address;
@@ -861,7 +868,7 @@ static inline ::llvm::Value* StoreTagIntoMemAndZeroing(EmitFunctionContext& func
 										   address,
 										   0,
 										   0,
-										   BoundsCheckOp::clampToGuardRegion,
+										   BoundsCheckOp::trapOnOutOfBounds,
 										   taggedbytes,
 										   true),
 				functionContext.llvmContext.i8Type,
@@ -936,73 +943,64 @@ static inline ::llvm::Value* StoreZTagIntoMem(EmitFunctionContext& functionConte
 void EmitFunctionContext::memtag_status(MemoryImm imm)
 {
 	MemoryType const& memoryType = this->moduleContext.irModule.memories.getType(imm.memoryIndex);
-	if(memoryType.indexType == IndexType::i64)
-	{
-		push(this->irBuilder.getInt64(static_cast<::std::uint64_t>(this->isMemTagged)));
-	}
-	else { push(this->irBuilder.getInt32(static_cast<::std::uint64_t>(this->isMemTagged))); }
+	push(::llvm::ConstantInt::get(
+		(memoryType.indexType == IndexType::i64 ? this->llvmContext.i64Type
+												: this->llvmContext.i32Type),
+		static_cast<::std::uint_least64_t>(this->isMemTagged)));
 }
 
 void EmitFunctionContext::memtag_tagbits(MemoryImm imm)
 {
 	MemoryType const& memoryType = this->moduleContext.irModule.memories.getType(imm.memoryIndex);
+	::std::uint_least64_t bits{};
 	if(isMemTaggedEnabled(*this))
 	{
 		if(memoryType.indexType == IndexType::i64)
 		{
 			if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 			{
-				push(this->irBuilder.getInt64(4));
+				bits = ::WAVM::IR::memtagarmmteconstants::bits;
 			}
-			else { push(this->irBuilder.getInt64(::WAVM::IR::memtag64constants::bits)); }
+			else { bits = ::WAVM::IR::memtag64constants::bits; }
 		}
-		else
-		{
-			if constexpr(::WAVM::IR::memtag32constants::bits != 4)
-			{
-				if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
-				{
-					push(this->irBuilder.getInt32(4));
-					return;
-				}
-			}
-			push(this->irBuilder.getInt32(::WAVM::IR::memtag32constants::bits));
-		}
+		else { bits = ::WAVM::IR::memtag32constants::bits; }
 	}
-	else
-	{
-		if(memoryType.indexType == IndexType::i64) { push(this->irBuilder.getInt64(0)); }
-		else { push(this->irBuilder.getInt32(0)); }
-	}
+	else { bits = 0; }
+	push(::llvm::ConstantInt::get(memoryType.indexType == IndexType::i64
+									  ? this->llvmContext.i64Type
+									  : this->llvmContext.i32Type,
+								  bits));
 }
 
 void EmitFunctionContext::memtag_startbit(MemoryImm imm)
 {
 	MemoryType const& memoryType = this->moduleContext.irModule.memories.getType(imm.memoryIndex);
+	::std::uint_least64_t shifter{};
+	::llvm::Value* vtype{};
 	if(isMemTaggedEnabled(*this))
 	{
 		if(memoryType.indexType == IndexType::i64)
 		{
 			if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 			{
-				push(this->irBuilder.getInt64(56));
+				shifter = ::WAVM::IR::memtagarmmteconstants::shifter;
 			}
-			else { push(this->irBuilder.getInt64(::WAVM::IR::memtag32constants::shifter)); }
+			else { shifter = ::WAVM::IR::memtag64constants::shifter; }
 		}
-		else
-		{
-			if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
-			{
-				push(this->irBuilder.getInt64(28));
-			}
-			else { push(this->irBuilder.getInt32(::WAVM::IR::memtag32constants::shifter)); }
-		}
+		else { shifter = ::WAVM::IR::memtag32constants::shifter; }
 	}
 	else
 	{
-		if(memoryType.indexType == IndexType::i64) { push(this->irBuilder.getInt64(64)); }
-		else { push(this->irBuilder.getInt32(32)); }
+		if(memoryType.indexType == IndexType::i64)
+		{
+			shifter = ::std::numeric_limits<::std::uint_least64_t>::digits;
+		}
+		else { shifter = ::std::numeric_limits<::std::uint_least32_t>::digits; }
 	}
+	push(::llvm::ConstantInt::get(memoryType.indexType == IndexType::i64
+									  ? this->llvmContext.i64Type
+									  : this->llvmContext.i32Type,
+								  shifter));
 }
 
 static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functionContext,
@@ -1106,10 +1104,9 @@ void EmitFunctionContext::memtag_randommaskstorez(MemoryImm imm)
 void EmitFunctionContext::memtag_extract(MemoryImm imm)
 {
 	::llvm::Value* memaddress = pop();
+	MemoryType const& memoryType = this->moduleContext.irModule.memories.getType(imm.memoryIndex);
 	if(isMemTaggedEnabled(*this))
 	{
-		MemoryType const& memoryType
-			= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
 		llvm::IRBuilder<>& irBuilder = this->irBuilder;
 		uint_least64_t shifter;
 		if(memoryType.indexType == IndexType::i64)
@@ -1122,14 +1119,21 @@ void EmitFunctionContext::memtag_extract(MemoryImm imm)
 			using constanttype = ::WAVM::IR::memtag32constants;
 			shifter = constanttype::shifter;
 		}
-		push(irBuilder.CreateLShr(memaddress, shifter));
+		memaddress = irBuilder.CreateLShr(memaddress, shifter);
+		if(memoryType.indexType == IndexType::i64
+		   && functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		{
+			memaddress
+				= irBuilder.CreateAnd(memaddress, ::WAVM::IR::memtagarmmteconstants::index_mask);
+		}
+		push(memaddress);
 	}
 	else
 	{
-		MemoryType const& memoryType
-			= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
-		if(memoryType.indexType == IndexType::i64) { push(this->irBuilder.getInt64(0)); }
-		else { push(this->irBuilder.getInt32(0)); }
+		push(::llvm::ConstantInt::get(
+			(memoryType.indexType == IndexType::i64 ? functionContext.llvmContext.i64Type
+													: functionContext.llvmContext.i32Type),
+			0));
 	}
 }
 
@@ -1146,11 +1150,21 @@ void EmitFunctionContext::memtag_insert(MemoryImm imm)
 		::llvm::Type* vtype;
 		if(memoryType.indexType == IndexType::i64)
 		{
-			using constanttype = ::WAVM::IR::memtag64constants;
-			shifter = constanttype::shifter;
-			mask = constanttype::mask;
-			tagindexmask = constanttype::index_mask;
-			vtype = irBuilder.getInt64Ty();
+			if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			{
+				using constanttype = ::WAVM::IR::memtagarmmteconstants;
+				shifter = constanttype::shifter;
+				mask = constanttype::mask;
+				tagindexmask = constanttype::index_mask;
+			}
+			else
+			{
+				using constanttype = ::WAVM::IR::memtag64constants;
+				shifter = constanttype::shifter;
+				mask = constanttype::mask;
+				tagindexmask = constanttype::index_mask;
+			}
+			vtype = functionContext.llvmContext.i64Type;
 		}
 		else
 		{
@@ -1158,7 +1172,7 @@ void EmitFunctionContext::memtag_insert(MemoryImm imm)
 			shifter = constanttype::shifter;
 			mask = constanttype::mask;
 			tagindexmask = constanttype::index_mask;
-			vtype = irBuilder.getInt32Ty();
+			vtype = functionContext.llvmContext.i32Type;
 		}
 		memaddress = irBuilder.CreateOr(
 			irBuilder.CreateAnd(memaddress, ::llvm::ConstantInt::get(vtype, mask)),
@@ -1298,7 +1312,11 @@ static hint_addr_result compute_hint_addr_seperate(EmitFunctionContext& function
 		bits = constanttype::bits;
 		shifter = constanttype::shifter;
 		mask = constanttype::mask;
-		tagindexmask = constanttype::index_mask;
+		if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		{
+			tagindexmask = 0xF;
+		}
+		else { tagindexmask = constanttype::index_mask; }
 	}
 	else
 	{
@@ -1429,9 +1447,18 @@ void EmitFunctionContext::memtag_copy(MemoryImm imm)
 		uint_least64_t maskcolor, mask;
 		if(memoryType.indexType == IndexType::i64)
 		{
-			using constanttype = ::WAVM::IR::memtag64constants;
-			maskcolor = constanttype::hint_mask;
-			mask = constanttype::mask;
+			if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			{
+				using constanttype = ::WAVM::IR::memtagarmmteconstants;
+				maskcolor = constanttype::hint_mask;
+				mask = constanttype::mask;
+			}
+			else
+			{
+				using constanttype = ::WAVM::IR::memtag64constants;
+				maskcolor = constanttype::hint_mask;
+				mask = constanttype::mask;
+			}
 		}
 		else
 		{
