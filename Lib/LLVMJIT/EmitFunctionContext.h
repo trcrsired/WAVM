@@ -86,7 +86,7 @@ namespace WAVM { namespace LLVMJIT {
 		, function(inLLVMFunction)
 		{
 			this->isMemTagged = ::WAVM::LLVMJIT::memtagStatus::none;
-			if(irModule.featureSpec.memtagMte)
+			if(irModule.featureSpec.memtagMte || irModule.featureSpec.memtagMteAsync)
 			{
 				this->isMemTagged = ::WAVM::LLVMJIT::memtagStatus::armmte;
 			}
@@ -252,7 +252,7 @@ namespace WAVM { namespace LLVMJIT {
 		llvm::Value* extendHalfOfIntVector(
 			llvm::Value* vector,
 			Uptr baseSourceElementIndex,
-			llvm::Value* (EmitFunctionContext::* extend)(llvm::Value*, llvm::Type*));
+			llvm::Value* (EmitFunctionContext::*extend)(llvm::Value*, llvm::Type*));
 
 		llvm::Value* insertIntoHalfZeroVector(llvm::Value* halfVector);
 

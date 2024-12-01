@@ -109,6 +109,7 @@ Instance* Intrinsics::instantiateModuleWithFeatureSpec(
 	irModule.featureSpec.memtag = featureSpec.memtag;
 	irModule.featureSpec.memtagFull = featureSpec.memtagFull;
 	irModule.featureSpec.memtagMte = featureSpec.memtagMte;
+	irModule.featureSpec.memtagMteAsync = featureSpec.memtagMteAsync;
 	DisassemblyNames names;
 
 	std::vector<FunctionImportBinding> functionImportBindings;
@@ -257,7 +258,8 @@ Instance* Intrinsics::instantiateModule(
 	std::string&& debugName)
 {
 	::WAVM::IR::FeatureSpec featureSpec(::FeatureLevel::wavm);
-	featureSpec.memtagMte = featureSpec.memtagFull = featureSpec.memtag = false;
+	featureSpec.memtagMteAsync = featureSpec.memtagMte = featureSpec.memtagFull = featureSpec.memtag
+		= false;
 	return Intrinsics::instantiateModuleWithFeatureSpec(
 		compartment, moduleRefs, ::std::move(debugName), featureSpec);
 }
