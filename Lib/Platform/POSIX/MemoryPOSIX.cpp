@@ -34,7 +34,7 @@ Uptr Platform::getBytesPerPageLog2()
 
 static U32 memoryAccessAsPOSIXFlag(MemoryAccess access)
 {
-	constexpr auto prot_mte{
+	constexpr int prot_mte{
 #ifdef PROT_MTE
 		PROT_MTE
 #endif
