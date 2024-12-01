@@ -451,12 +451,12 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 			return GrowResult::outOfMaxSize;
 		}
 
-		constexpr MemoryAccess flags{
+		constexpr Platform::MemoryAccess flags{
 #if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__))
-			static_cast<MemoryAccess>(static_cast<U32>(MemoryAccess::readWrite)
-									  | static_cast<U32>(MemoryAccess::mte))
+			static_cast<Platform::MemoryAccess>(static_cast<U32>(Platform::MemoryAccess::readWrite)
+												| static_cast<U32>(Platform::MemoryAccess::mte))
 #else
-			MemoryAccess::readWrite
+			Platform::MemoryAccess::readWrite
 #endif
 		};
 
