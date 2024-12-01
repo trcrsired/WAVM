@@ -149,10 +149,11 @@ static llvm::Value* armmte64_to_32_value(EmitFunctionContext& functionContext,
 	if(memoryType.indexType == IndexType::i32)
 	{
 		constexpr ::std::uint_least64_t mask{::WAVM::IR::memtagarmmteconstants::hint_mask};
-		constexpr ::std::uint_least64_t mask1{0x000000000FFFFFFF};
+		constexpr ::std::uint_least64_t mask1{::WAVM::IR::memtag32constants::mask};
 		memaddress64 = irBuilder.CreatePtrToInt(memaddress64, functionContext.llvmContext.i64Type);
 		memaddress64 = irBuilder.CreateTrunc(
-			irBuilder.CreateOr(irBuilder.CreateLShr(irBuilder.CreateAnd(memaddress64, mask), 28),
+			irBuilder.CreateOr(irBuilder.CreateLShr(irBuilder.CreateAnd(memaddress64, mask),
+													::WAVM::IR::memtag32constants::shifter),
 							   irBuilder.CreateAnd(memaddress64, mask1)),
 			functionContext.llvmContext.i32Type);
 	}
