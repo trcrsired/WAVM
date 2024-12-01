@@ -263,33 +263,30 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 				  && functionContext.moduleContext.targetArch == ::llvm::Triple::aarch64};
 
 	auto memtagBasePointerVariable = meminfo.memtagBasePointerVariable;
-	::llvm::Value* taggedval{};
-	::llvm::Value* armmtetagged_address{address};
+	::llvm::Value* arm_mte_offset{};
 
 	if(isarmmte)
 	{
-		if(memoryType.indexType == IndexType::i64)
-		{
-			using constanttype = ::WAVM::IR::memtag64constants;
-			constexpr auto mask = constanttype::mask;
-			address = irBuilder.CreateAnd(address, mask);
-		}
-		else
+		if(memoryType.indexType == IndexType::i32)
 		{
 			using constanttype = ::WAVM::IR::memtag32constants;
 			constexpr auto shifter = constanttype::shifter;
 			constexpr auto mask = constanttype::mask;
-			auto tagupper
+			arm_mte_offset
 				= irBuilder.CreateShl(irBuilder.CreateZExt(irBuilder.CreateLShr(address, shifter),
 														   functionContext.llvmContext.i64Type),
 									  56);
 			address = irBuilder.CreateZExt(irBuilder.CreateAnd(address, mask),
 										   functionContext.llvmContext.i64Type);
-			armmtetagged_address = irBuilder.CreateOr(tagupper, address);
-			if(boundsCheckOp != BoundsCheckOp::trapOnOutOfBounds) { return armmtetagged_address; }
+			address = irBuilder.CreateAdd(address, arm_mte_offset);
+		}
+		else
+		{
+			constexpr ::std::uint_least64_t mask{static_cast<::std::uint_least64_t>(0xFF) << 48u};
+			arm_mte_offset = irBuilder.CreateAnd(address, mask);
 		}
 	}
-	else if(memtagBasePointerVariable) // memtag needs to ignore upper 8 bits
+	if(memtagBasePointerVariable) // memtag needs to ignore upper 8 bits
 	{
 		uint_least64_t shifter, mask;
 		if(memoryType.indexType == IndexType::i64)
@@ -326,7 +323,10 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 		// This is crucial for security, as LLVM will otherwise implicitly sign extend it to the
 		// target machine pointer width in the GEP below, interpreting it as a signed offset and
 		// allowing access to memory outside the sandboxed memory range.
-		address = irBuilder.CreateZExt(address, functionContext.moduleContext.iptrType);
+		if(!arm_mte_offset)
+		{
+			address = irBuilder.CreateZExt(address, functionContext.moduleContext.iptrType);
+		}
 		numBytes = irBuilder.CreateZExt(numBytes, functionContext.moduleContext.iptrType);
 	}
 	// If the offset is greater than the size of the guard region, add it before bounds checking,
@@ -369,9 +369,11 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 		llvm::Value* memoryNumBytesMinusNumBytes = irBuilder.CreateSub(memoryNumBytes, numBytes);
 		llvm::Value* numBytesWasGreaterThanMemoryNumBytes
 			= irBuilder.CreateICmpUGT(memoryNumBytesMinusNumBytes, memoryNumBytes);
-		auto cmpres{
-			irBuilder.CreateOr(numBytesWasGreaterThanMemoryNumBytes,
-							   irBuilder.CreateICmpUGT(address, memoryNumBytesMinusNumBytes))};
+		auto compareaddress{address};
+		if(arm_mte_offset) { compareaddress = irBuilder.CreateSub(compareaddress, arm_mte_offset); }
+		auto cmpres{irBuilder.CreateOr(
+			numBytesWasGreaterThanMemoryNumBytes,
+			irBuilder.CreateICmpUGT(compareaddress, memoryNumBytesMinusNumBytes))};
 		createconditionaltrap(functionContext, cmpres);
 	}
 	else if(is32bitMemoryOn64bitHost)
@@ -392,15 +394,22 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 				irBuilder,
 				functionContext.moduleContext.iptrType,
 				functionContext.memoryInfos[memoryIndex].endAddressVariable);
-
-#if 0
-			createconditionaltrap(functionContext,
-									irBuilder.CreateICmpUGE(address, endAddress));
-#else
-			address = irBuilder.CreateSelect(irBuilder.CreateICmpULT(address, endAddress),
-											 isarmmte ? armmtetagged_address : address,
-											 endAddress);
-#endif
+			if constexpr(false)
+			{
+				auto compare_address{address};
+				if(arm_mte_offset)
+				{
+					compare_address = irBuilder.CreateSub(compare_address, arm_mte_offset);
+				}
+				createconditionaltrap(functionContext,
+									  irBuilder.CreateICmpUGE(compare_address, endAddress));
+			}
+			else
+			{
+				if(arm_mte_offset) { endAddress = irBuilder.CreateAdd(arm_mte_offset, endAddress); }
+				address = irBuilder.CreateSelect(
+					irBuilder.CreateICmpULT(address, endAddress), address, endAddress);
+			}
 		}
 	}
 	if(offset && offset < Runtime::memoryNumGuardBytes)
@@ -416,10 +425,7 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 		// disregard the bounds checking logic.
 		address = irBuilder.CreateAnd(address, ::IR::maxMemory64WASMMask);
 	}
-	// If the offset is less than the size of the guard region, then add it after bounds checking.
-	// This avoids the need to check the addition for overflow, and allows it to be used as the
-	// displacement in x86 addresses. Additionally, it allows the LLVM optimizer to reuse the bounds
-	// checking code for consecutive loads/stores to the same address.
+	// Software Tagging
 	if(!istagging && memtagBasePointerVariable)
 	{
 		if((fullcheck || knownNumBytes == 0) && knownNumBytes != 1)
@@ -513,10 +519,6 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 						irBuilder, functionContext.llvmContext.i8Type, tagbytePointer)));
 		}
 	}
-#if 0
-	if(isarmmte) { return armmtetagged_address; }
-	else { return address; }
-#endif
 	return address;
 }
 
