@@ -563,7 +563,7 @@ inline llvm::Value* armmte_host_tag_address_to_sandbox_address(EmitFunctionConte
 		= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
 
 	memaddress = irBuilder.CreatePtrToInt(memaddress, functionContext.llvmContext.i64Type);
-	irBuilder.CreateSub(memaddress, memoryBasePointer);
+	memaddress = irBuilder.CreateSub(memaddress, memoryBasePointer);
 
 	if(memoryType.indexType == IndexType::i32)
 	{
