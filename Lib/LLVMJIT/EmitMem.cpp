@@ -1415,21 +1415,22 @@ void EmitFunctionContext::memtag_hintstore(MemoryImm imm)
 	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this))
 	{
-		::llvm::Value* untaggedaddr{};
+		::llvm::Value *untaggedaddr{}, *color{};
+		auto memoryIndex{imm.memoryIndex};
 		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
 			untaggedaddr = memaddress
-				= compute_hint_addr(*this, imm.memoryIndex, memaddress, hintptr, hintindex);
-			StoreTagIntoMem(*this, imm.memoryIndex, addr, taggedbytes, hintres.color, true);
+				= compute_hint_addr(*this, memoryIndex, memaddress, hintptr, hintindex);
 		}
 		else
 		{
-			auto hintres = compute_hint_addr_seperate(
-				*this, imm.memoryIndex, memaddress, hintptr, hintindex);
+			auto hintres
+				= compute_hint_addr_seperate(*this, memoryIndex, memaddress, hintptr, hintindex);
 			memaddress = hintres.taggedmemaddress;
 			untaggedaddr = hintres.untaggedmemaddress;
+			color = hintres.color;
 		}
-		StoreTagIntoMem(*this, imm.memoryIndex, untaggedaddr, taggedbytes, hintres.color, true);
+		StoreTagIntoMem(*this, memoryIndex, untaggedaddr, taggedbytes, color, true);
 	}
 	push(memaddress);
 }
@@ -1442,21 +1443,22 @@ void EmitFunctionContext::memtag_hintstorez(MemoryImm imm)
 	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this))
 	{
-		::llvm::Value* untaggedaddr{};
+		::llvm::Value *untaggedaddr{}, *color{};
+		auto memoryIndex{imm.memoryIndex};
 		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
 			untaggedaddr = memaddress
-				= compute_hint_addr(*this, imm.memoryIndex, memaddress, hintptr, hintindex);
-			StoreZTagIntoMem(*this, imm.memoryIndex, addr, taggedbytes, hintres.color, true);
+				= compute_hint_addr(*this, memoryIndex, memaddress, hintptr, hintindex);
 		}
 		else
 		{
-			auto hintres = compute_hint_addr_seperate(
-				*this, imm.memoryIndex, memaddress, hintptr, hintindex);
+			auto hintres
+				= compute_hint_addr_seperate(*this, memoryIndex, memaddress, hintptr, hintindex);
 			memaddress = hintres.taggedmemaddress;
 			untaggedaddr = hintres.untaggedmemaddress;
+			color = hintres.color;
 		}
-		StoreZTagIntoMem(*this, imm.memoryIndex, untaggedaddr, taggedbytes, hintres.color, true);
+		StoreZTagIntoMem(*this, memoryIndex, untaggedaddr, taggedbytes, color, true);
 	}
 	else { memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes); }
 	push(memaddress);
