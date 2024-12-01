@@ -1080,35 +1080,31 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 	if(isMemTaggedEnabled(functionContext))
 	{
 		llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
-		if(functionContext.moduleContext.targetArch == ::llvm::Triple::aarch64)
+		if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
-			if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
-			{
-				auto basepointeraddressResult = coerceAddressToPointerWithBasePointer(
-					functionContext,
-					getOffsetAndBoundedAddress(functionContext,
-											   memoryIndex,
-											   memaddress,
-											   0,
-											   0,
-											   BoundsCheckOp::trapOnOutOfBounds,
-											   taggedbytes,
-											   true),
-					functionContext.llvmContext.i8Type,
-					memoryIndex);
-				memaddress = basepointeraddressResult.bytePointer;
-				auto basepointer = basepointeraddressResult.memoryBasePointer;
-				memaddress = irBuilder.CreateIntrinsic(
-					::llvm::Intrinsic::aarch64_irg,
-					{},
-					{memaddress,
-					 mask ? mask
-						  : (::llvm::ConstantInt::get(functionContext.llvmContext.i64Type, 0))});
+			auto basepointeraddressResult = coerceAddressToPointerWithBasePointer(
+				functionContext,
+				getOffsetAndBoundedAddress(functionContext,
+										   memoryIndex,
+										   memaddress,
+										   0,
+										   0,
+										   BoundsCheckOp::trapOnOutOfBounds,
+										   taggedbytes,
+										   true),
+				functionContext.llvmContext.i8Type,
+				memoryIndex);
+			memaddress = basepointeraddressResult.bytePointer;
+			auto basepointer = basepointeraddressResult.memoryBasePointer;
+			memaddress = irBuilder.CreateIntrinsic(
+				::llvm::Intrinsic::aarch64_irg,
+				{},
+				{memaddress,
+				 mask ? mask : (::llvm::ConstantInt::get(functionContext.llvmContext.i64Type, 0))});
 
-				llvm_runtime_arm_mte_settag(functionContext, zeroing, memaddress, taggedbytes);
-				memaddress = armmte_host_tag_address_to_sandbox_address(
-					functionContext, memoryIndex, memaddress, basepointer);
-			}
+			llvm_runtime_arm_mte_settag(functionContext, zeroing, memaddress, taggedbytes);
+			memaddress = armmte_host_tag_address_to_sandbox_address(
+				functionContext, memoryIndex, memaddress, basepointer);
 		}
 		else
 		{
