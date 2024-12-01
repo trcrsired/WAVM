@@ -205,7 +205,7 @@ static llvm::Function* getWavmAArch64MteSetTagFunction(EmitFunctionContext& func
 			llvm::GlobalValue::LinkageTypes::ExternalLinkage,
 			functionsymbolname,
 			moduleContext.llvmModule);
-		mtgfunc->addFnAttr(::llvm::Attribute::AttrKind::NoUnwind);
+		settagfunc->addFnAttr(::llvm::Attribute::AttrKind::NoUnwind);
 		*psettagfunc = settagfunc;
 	}
 	return settagfunc;
