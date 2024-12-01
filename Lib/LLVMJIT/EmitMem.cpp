@@ -528,6 +528,31 @@ namespace {
 		return {bytePointer, memoryBasePointer};
 	}
 
+	inline llvm::Value* armmte_host_tag_address_to_sandbox_address(
+		EmitFunctionContext& functionContext,
+		Uptr memoryIndex,
+		llvm::Value* memaddress,
+		llvm::Value* memoryBasePointer)
+	{
+		auto& irBuilder = functionContext.irBuilder;
+		const MemoryType& memoryType
+			= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
+
+		memaddress = irBuilder.CreatePtrToInt(memaddress, functionContext.llvmContext.i64Type);
+		memaddress = irBuilder.CreateSub(memaddress, memoryBasePointer);
+
+		if(memoryType.indexType == IndexType::i32)
+		{
+			constexpr ::std::uint_least64_t mask{0x0F00000000000000};
+			memaddress = irBuilder.CreateOr(
+				irBuilder.CreateTrunc(
+					irBuilder.CreateLShr(irBuilder.CreateAnd(memaddress, mask), 28),
+					functionContext.llvmContext.i32Type),
+				memaddress);
+		}
+		return memaddress;
+	}
+
 }
 
 llvm::Value* EmitFunctionContext::coerceAddressToPointer(llvm::Value* boundedAddress,
@@ -551,29 +576,6 @@ llvm::Value* EmitFunctionContext::coerceAddressToPointer(llvm::Value* boundedAdd
 	return coerceAddressToPointerWithBasePointer(*this, boundedAddress, memoryType, memoryIndex)
 		.bytePointer;
 #endif
-}
-
-inline llvm::Value* armmte_host_tag_address_to_sandbox_address(EmitFunctionContext& functionContext,
-															   Uptr memoryIndex,
-															   llvm::Value* memaddress,
-															   llvm::Value* memoryBasePointer)
-{
-	auto& irBuilder = functionContext.irBuilder;
-	const MemoryType& memoryType
-		= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
-
-	memaddress = irBuilder.CreatePtrToInt(memaddress, functionContext.llvmContext.i64Type);
-	memaddress = irBuilder.CreateSub(memaddress, memoryBasePointer);
-
-	if(memoryType.indexType == IndexType::i32)
-	{
-		constexpr ::std::uint_least64_t mask{0x0F00000000000000};
-		memaddress = irBuilder.CreateOr(
-			irBuilder.CreateTrunc(irBuilder.CreateLShr(irBuilder.CreateAnd(memaddress, mask), 28),
-								  functionContext.llvmContext.i32Type),
-			memaddress);
-	}
-	return memaddress;
 }
 
 //
