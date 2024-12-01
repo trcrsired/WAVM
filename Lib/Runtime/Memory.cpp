@@ -487,10 +487,27 @@ static U8* getValidatedMemoryOffsetRangeImpl(Memory* memory,
 		}
 	}
 	auto boundsaddress{address};
-	if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
+	constexpr bool isaarch64_with_arm_mte{
+#ifdef __aarch64__
+		true
+#endif
+	};
+	if constexpr(isaarch64_with_arm_mte)
 	{
-		using constanttype = ::WAVM::IR::memtagarmmteconstants;
-		boundsaddress &= constanttype::mask; // let linux kernel to handle the arm mte
+		if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		{
+			using constanttype = ::WAVM::IR::memtagarmmteconstants;
+			if(memory->indexType == IR::IndexType::i32)
+			{
+				using constanttype = ::WAVM::IR::memtag32constants;
+				boundsaddress = address & constanttype::mask;
+				address = static_cast<U64>(address >> (constanttype::shifter)) << 56u;
+			}
+			else
+			{
+				boundsaddress &= constanttype::mask; // let linux kernel to handle the arm mte
+			}
+		}
 	}
 	if(boundsaddress + numBytes > memoryNumBytes || boundsaddress + numBytes < boundsaddress)
 	{
