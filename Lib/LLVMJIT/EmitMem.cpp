@@ -872,7 +872,6 @@ static inline void llvm_runtime_arm_mte_settag(EmitFunctionContext& functionCont
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
 	if(::llvm::isa<llvm::Constant>(taggedbytes))
 	{
-		fprintf(stderr, "constant one?%s %d\n", __FILE__, __LINE__);
 		irBuilder.CreateIntrinsic(zeroing ? (::llvm::Intrinsic::aarch64_settag_zero)
 										  : (::llvm::Intrinsic::aarch64_settag),
 								  {},
@@ -880,7 +879,6 @@ static inline void llvm_runtime_arm_mte_settag(EmitFunctionContext& functionCont
 	}
 	else
 	{
-		fprintf(stderr, "runtime one?%s %d\n", __FILE__, __LINE__);
 		irBuilder.CreateCall(getWavmAArch64MteSetTagFunction(functionContext, zeroing),
 							 {address, taggedbytes});
 	}
