@@ -836,9 +836,9 @@ static inline void llvm_runtime_arm_mte_settag(EmitFunctionContext& functionCont
 											   ::llvm::Value* taggedbytes) noexcept
 {
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
-	if(::llvm::isa<llvm::ConstantExpr>(taggedbytes))
+	if(::llvm::isa<llvm::Constant>(taggedbytes))
 	{
-		fprintf(stderr, "compile time one?%s %d\n", __FILE__, __LINE__);
+		fprintf(stderr, "constant one?%s %d\n", __FILE__, __LINE__);
 		irBuilder.CreateIntrinsic(zeroing ? (::llvm::Intrinsic::aarch64_settag_zero)
 										  : (::llvm::Intrinsic::aarch64_settag),
 								  {},
