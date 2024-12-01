@@ -343,7 +343,73 @@ namespace {
 			: "memory");
 #endif
 	}
+
+	inline void wavm_arm_mte_st2g(void* tagged_addr) noexcept
+	{
+#if __has_builtin(__builtin_arm_st2g)
+		__builtin_arm_st2g(tagged_addr);
+#else
+		__asm__ __volatile__(
+			".arch_extension memtag\n"
+			"st2g %0, [%0]"
+			:
+			: "r"(reinterpret_cast<uintptr_t>(tagged_addr))
+			: "memory");
+#endif
+	}
+
+	inline void wavm_arm_mte_stzg(void* tagged_addr) noexcept
+	{
+#if __has_builtin(__builtin_arm_stzg)
+		__builtin_arm_stzg(tagged_addr);
+#else
+		__asm__ __volatile__(
+			".arch_extension memtag\n"
+			"stzg %0, [%0]"
+			:
+			: "r"(reinterpret_cast<uintptr_t>(tagged_addr))
+			: "memory");
+#endif
+	}
+
+	inline void wavm_arm_mte_stz2g(void* tagged_addr) noexcept
+	{
+#if __has_builtin(__builtin_arm_stz2g)
+		__builtin_arm_stz2g(tagged_addr);
+#else
+		__asm__ __volatile__(
+			".arch_extension memtag\n"
+			"stz2g %0, [%0]"
+			:
+			: "r"(reinterpret_cast<uintptr_t>(tagged_addr))
+			: "memory");
+#endif
+	}
+
 }
+
+extern "C" void wavm_aarch64_mte_settag(void* ptrvp, ::std::size_t len) noexcept
+{
+	char* ptr(reinterpret_cast<char*>(ptrvp));
+	while(len >= 32)
+	{
+		wavm_arm_mte_st2g(ptr);
+		ptr += 32;
+	}
+	if(len >= 16) { wavm_arm_mte_stg(ptr); }
+}
+
+extern "C" void wavm_aarch64_mte_settag_zero(void* ptrvp, ::std::size_t len) noexcept
+{
+	char* ptr(reinterpret_cast<char*>(ptrvp));
+	while(len >= 32)
+	{
+		wavm_arm_mte_stz2g(ptr);
+		ptr += 32;
+	}
+	if(len >= 16) { wavm_arm_mte_stzg(ptr); }
+}
+
 #endif
 
 GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOldNumPages)

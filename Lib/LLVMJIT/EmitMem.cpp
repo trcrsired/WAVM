@@ -177,6 +177,40 @@ static llvm::Function* getWavmMemtagTrapFunction(EmitFunctionContext& functionCo
 	return moduleContext.wavmMemtagTrapFunction;
 }
 
+static llvm::Function* getWavmAArch64MteSetTagFunction(EmitFunctionContext& functionContext,
+													   bool zeroing)
+{
+	auto& moduleContext{functionContext.moduleContext};
+	::llvm::Function* settagfunc{};
+	::llvm::Function** psettagfunc{};
+	char const* functionsymbolname{};
+	if(zeroing)
+	{
+		psettagfunc = ::std::addressof(moduleContext.wavmAArch64MteSetTagZeroFunction);
+		functionsymbolname = "wavm_aarch64_mte_settag_zero";
+	}
+	else
+	{
+		psettagfunc = ::std::addressof(moduleContext.wavmAArch64MteSetTagZeroFunction);
+		functionsymbolname = "wavm_aarch64_mte_settag";
+	}
+	settagfunc = *psettagfunc;
+	if(!settagfunc)
+	{
+		LLVMContext& llvmContext = moduleContext.llvmContext;
+		settagfunc = llvm::Function::Create(
+			llvm::FunctionType::get(::llvm::Type::getVoidTy(llvmContext),
+									{llvmContext.i64Type, llvmContext.i64Type},
+									false),
+			llvm::GlobalValue::LinkageTypes::ExternalLinkage,
+			functionsymbolname,
+			moduleContext.llvmModule);
+		mtgfunc->addFnAttr(::llvm::Attribute::AttrKind::NoUnwind);
+		*psettagfunc = settagfunc;
+	}
+	return settagfunc;
+}
+
 static void createmtgconditionaltrap(EmitFunctionContext& functionContext, ::llvm::Value* cmpres)
 {
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
@@ -847,10 +881,8 @@ static inline void llvm_runtime_arm_mte_settag(EmitFunctionContext& functionCont
 	else
 	{
 		fprintf(stderr, "runtime one?%s %d\n", __FILE__, __LINE__);
-		irBuilder.CreateIntrinsic(zeroing ? (::llvm::Intrinsic::aarch64_settag_zero)
-										  : (::llvm::Intrinsic::aarch64_settag),
-								  {},
-								  {address, taggedbytes});
+		irBuilder.CreateCall(getWavmAArch64MteSetTagFunction(functionContextzeroing),
+							 {address, taggedbytes});
 	}
 }
 
