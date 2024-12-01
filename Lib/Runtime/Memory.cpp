@@ -314,29 +314,35 @@ IR::MemoryType Runtime::getMemoryType(const Memory* memory)
 
 #if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__))
 
-namespace
-{
-inline void* wavm_arm_mte_irg(void *ptr, uintptr_t mask) noexcept
-{
+namespace {
+	inline void* wavm_arm_mte_irg(void* ptr, uintptr_t mask) noexcept
+	{
 #if __has_builtin(__builtin_arm_irg)
-	return __builtin_arm_irg(ptr, mask);
+		return __builtin_arm_irg(ptr, mask);
 #else
-	uintptr_t val;
-	__asm__(".arch_extension memtag\n"
-		"irg %0, %1, %2" : "=r"(val):"r"(reinterpret_cast<uintptr_t>(ptr)), "r"(mask));
-	return reinterpret_cast<void*>(val);
+		uintptr_t val;
+		__asm__(
+			".arch_extension memtag\n"
+			"irg %0, %1, %2"
+			: "=r"(val)
+			: "r"(reinterpret_cast<uintptr_t>(ptr)), "r"(mask));
+		return reinterpret_cast<void*>(val);
 #endif
-}
+	}
 
-inline void wavm_arm_mte_stg(void *tagged_addr) noexcept
-{
+	inline void wavm_arm_mte_stg(void* tagged_addr) noexcept
+	{
 #if __has_builtin(__builtin_arm_stg)
-	__builtin_arm_stg(tagged_addr);
+		__builtin_arm_stg(tagged_addr);
 #else
-	__asm__ __volatile__(".arch_extension memtag\n"
-		"stg %0, [%0]" : : "r" (reinterpret_cast<uintptr_t>(tagged_addr)) : "memory");
+		__asm__ __volatile__(
+			".arch_extension memtag\n"
+			"stg %0, [%0]"
+			:
+			: "r"(reinterpret_cast<uintptr_t>(tagged_addr))
+			: "memory");
 #endif
-}
+	}
 }
 #endif
 
@@ -415,7 +421,7 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 			}
 		}
 #if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__))
-		else if (memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		else if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
 			wavm_arm_mte_stg(wavm_arm_mte_irg(memory->baseAddress, 0x1));
 		}
@@ -480,11 +486,17 @@ static U8* getValidatedMemoryOffsetRangeImpl(Memory* memory,
 			address &= constanttype::mask;
 		}
 	}
-	if(address + numBytes > memoryNumBytes || address + numBytes < address)
+	auto boundsaddress{address};
+	if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
 	{
-		throwException(
-			ExceptionTypes::outOfBoundsMemoryAccess,
-			{asObject(memory), U64(address > memoryNumBytes ? address : memoryNumBytes)});
+		using constanttype = ::WAVM::IR::memtagarmmteconstants;
+		boundsaddress &= constanttype::mask; // let linux kernel to handle the arm mte
+	}
+	if(boundsaddress + numBytes > memoryNumBytes || boundsaddress + numBytes < boundsaddress)
+	{
+		throwException(ExceptionTypes::outOfBoundsMemoryAccess,
+					   {asObject(memory),
+						U64(boundsaddress > memoryNumBytes ? boundsaddress : memoryNumBytes)});
 	}
 	if(baseaddrestags && numBytes != 0)
 	{
@@ -497,7 +509,8 @@ static U8* getValidatedMemoryOffsetRangeImpl(Memory* memory,
 	}
 	WAVM_ASSERT(memoryBase);
 	numBytes = branchlessMin(numBytes, memoryNumBytes);
-	return memoryBase + branchlessMin(address, memoryNumBytes - numBytes);
+	Uptr diff{static_cast<Uptr>(memoryNumBytes - numBytes)};
+	return memoryBase + (boundsaddress < diff ? address : diff);
 }
 
 U8* Runtime::getReservedMemoryOffsetRange(Memory* memory, Uptr address, Uptr numBytes)
