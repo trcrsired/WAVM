@@ -513,8 +513,11 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 						irBuilder, functionContext.llvmContext.i8Type, tagbytePointer)));
 		}
 	}
+#if 0
 	if(isarmmte) { return armmtetagged_address; }
 	else { return address; }
+#endif
+	return address;
 }
 
 llvm::Value* EmitFunctionContext::coerceAddressToPointer(llvm::Value* boundedAddress,
