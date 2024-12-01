@@ -39,7 +39,7 @@ namespace LLVMRuntimeSymbols {
 	extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t, ::std::uint_least64_t);
 	extern "C" void wavm_memtag_trap_function();
 	extern "C" void wavm_aarch64_mte_settag(void*, ::std::size_t) noexcept;
-	extern "C" void wavm_aarch64_mte_settag_zero_function(void*, ::std::size_t) noexcept;
+	extern "C" void wavm_aarch64_mte_settag_zero(void*, ::std::size_t) noexcept;
 
 #if (defined(_WIN32) && !defined(__WINE__)) || defined(__CYGWIN__)
 	// the LLVM X86 code generator calls __chkstk when allocating more than 4KB of stack space
@@ -78,7 +78,7 @@ namespace LLVMRuntimeSymbols {
 		{"wavm_memtag_trap_function", (void*)&wavm_memtag_trap_function},
 #if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__))
 		{"wavm_aarch64_mte_settag", (void*)&wavm_aarch64_mte_settag},
-		{"wavm_aarch64_mte_settag_zero", (void*)&wavm_aarch64_mte_set_zero},
+		{"wavm_aarch64_mte_settag_zero", (void*)&wavm_aarch64_mte_settag_zero},
 #endif
 #ifdef _WIN32
 #ifdef __MINGW32__
