@@ -1020,10 +1020,16 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 		MemoryType const& memoryType
 			= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
 		llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
-		if(memoryType.indexType == IndexType::i64)
+		if(functionContext.moduleContext.targetArch == ::llvm::Triple::aarch64)
 		{
 			if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 			{
+				if(memoryType.indexType == IndexType::i32)
+				{
+					mask = irBuilder.CreateZExt(mask, functionContext.llvmContext.i64Type);
+					taggedbytes
+						= irBuilder.CreateZExt(taggedbytes, functionContext.llvmContext.i64Type);
+				}
 				auto basepointeraddressResult = coerceAddressToPointerWithBasePointer(
 					functionContext,
 					getOffsetAndBoundedAddress(functionContext,
@@ -1038,13 +1044,13 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 					memoryIndex);
 				memaddress = basepointeraddressResult.bytePointer;
 				auto basepointer = basepointeraddressResult.memoryBasePointer;
-
 				memaddress = irBuilder.CreateIntrinsic(
 					::llvm::Intrinsic::aarch64_irg,
 					{},
 					{memaddress,
 					 mask ? mask
 						  : (::llvm::ConstantInt::get(functionContext.llvmContext.i64Type, 0))});
+
 				irBuilder.CreateIntrinsic(zeroing ? (::llvm::Intrinsic::aarch64_settag_zero)
 												  : (::llvm::Intrinsic::aarch64_settag),
 										  {},
