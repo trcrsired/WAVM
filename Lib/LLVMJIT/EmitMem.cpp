@@ -1024,6 +1024,7 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 		{
 			if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 			{
+#if 0
 				if(memoryType.indexType == IndexType::i32)
 				{
 					if(mask)
@@ -1033,6 +1034,7 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 					taggedbytes
 						= irBuilder.CreateZExt(taggedbytes, functionContext.llvmContext.i64Type);
 				}
+#endif
 				auto basepointeraddressResult = coerceAddressToPointerWithBasePointer(
 					functionContext,
 					getOffsetAndBoundedAddress(functionContext,
