@@ -292,8 +292,11 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 		}
 		else
 		{
-			arm_mte_offset
-				= irBuilder.CreateAnd(address, ::WAVM::IR::memtagarmmteconstants::hint_mask);
+			if(boundsCheckOp == BoundsCheckOp::trapOnOutOfBounds)
+			{
+				arm_mte_offset
+					= irBuilder.CreateAnd(address, ::WAVM::IR::memtagarmmteconstants::hint_mask);
+			}
 		}
 	}
 	if(memtagBasePointerVariable) // memtag needs to ignore upper 8 bits
@@ -398,7 +401,7 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 		// For all other cases (e.g. 64-bit addresses on 64-bit targets), it's not possible for the
 		// runtime to reserve the full range of addresses, so this function must clamp addresses to
 		// the guard region.
-		if(!memtagBasePointerVariable)
+		if(!memtagBasePointerVariable && !isarmmte)
 		{
 			llvm::Value* endAddress = ::WAVM::LLVMJIT::wavmCreateLoad(
 				irBuilder,
@@ -429,11 +432,19 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 
 		address = irBuilder.CreateAdd(address, offsetConstant);
 	}
-	if(memtagBasePointerVariable && memtagneedmaskoffset)
+
+	// Memtagging incorporates its own checking logic, hence it is advisable to confidently
+	// disregard the bounds checking logic.
+	if(isarmmte && memtagneedmaskoffset)
 	{
-		// Memtagging incorporates its own checking logic, hence it is advisable to confidently
-		// disregard the bounds checking logic.
-		address = irBuilder.CreateAnd(address, ::IR::maxMemory64WASMMask);
+		// Do the same with ARM MTE
+		constexpr U64 maskwithmaxMemory{::WAVM::IR::maxMemory64WASMMask
+										| ::WAVM::IR::memtagarmmteconstants::hint_mask};
+		address = irBuilder.CreateAnd(address, maskwithmaxMemory);
+	}
+	else if(memtagBasePointerVariable && memtagneedmaskoffset)
+	{
+		address = irBuilder.CreateAnd(address, ::WAVM::IR::maxMemory64WASMMask);
 	}
 	// Software Tagging
 	if(!istagging && memtagBasePointerVariable)
