@@ -38,7 +38,7 @@ static U32 memoryAccessAsWin32Flag(MemoryAccess access)
 	   == static_cast<U32>(MemoryAccess::mte))
 	{
 		access = static_cast<MemoryAccess>(static_cast<U32>(access)
-										   & ~static_cast<U32>(MemoryAccess::none));
+										   & ~static_cast<U32>(MemoryAccess::mte));
 	}
 	switch(access)
 	{
