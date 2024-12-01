@@ -312,6 +312,32 @@ IR::MemoryType Runtime::getMemoryType(const Memory* memory)
 						  IR::SizeConstraints{getMemoryNumPages(memory), memory->maxPages}};
 }
 
+#if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__))
+
+namespace
+{
+inline void* wavm_arm_mte_irg(void *ptr, uintptr_t mask) noexcept
+{
+#if __has_builtin(__builtin_arm_irg)
+	return __builtin_arm_irg(ptr, mask);
+#else
+	uintptr_t val;
+	__asm__("irg %0, %1, %2" : "=r"(val):"r"(reinterpret_cast<uintptr_t>(ptr)), "r"(mask));
+	return reinterpret_cast<void*>(val);
+#endif
+}
+
+inline void wavm_arm_mte_stg(void *tagged_addr) noexcept
+{
+#if __has_builtin(__builtin_arm_stg)
+	__builtin_arm_stg(tagged_addr);
+#else
+	__asm__ __volatile__("stg %0, [%0]" : : "r" (reinterpret_cast<uintptr_t>(tagged_addr)) : "memory");
+#endif
+}
+}
+#endif
+
 GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOldNumPages)
 {
 	Uptr oldNumPages;
@@ -386,13 +412,11 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 				*baseAddressTags = ch;
 			}
 		}
-#ifdef __has_builtin
-#if __has_builtin(__builtin_arm_stg) && __has_builtin(__builtin_arm_irg)
+#if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__))
 		else if (memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
-			__builtin_arm_stg(__builtin_arm_irg(memory->baseAddress, 0x1));
+			wavm_arm_mte_stg(wavm_arm_mte_irg(memory->baseAddress, 0x1));
 		}
-#endif
 #endif
 		Platform::registerVirtualAllocation(grownpages);
 
