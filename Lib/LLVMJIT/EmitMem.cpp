@@ -851,14 +851,17 @@ static inline ::llvm::Value* StoreTagIntoMemAndZeroing(EmitFunctionContext& func
 		shifter = constanttype::shifter;
 		mask = constanttype::mask;
 	}
-	if(color == nullptr)
+	auto isarmmte{functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte};
+	if(!isarmmte)
 	{
-		color = irBuilder.CreateTrunc(irBuilder.CreateLShr(address, shifter),
-									  functionContext.llvmContext.i8Type);
+		if(color == nullptr)
+		{
+			color = irBuilder.CreateTrunc(irBuilder.CreateLShr(address, shifter),
+										  functionContext.llvmContext.i8Type);
+		}
+		if(!addressisuntagged) { address = irBuilder.CreateAnd(address, mask); }
 	}
-	if(!addressisuntagged) { address = irBuilder.CreateAnd(address, mask); }
-
-	if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+	if(isarmmte)
 	{
 		if(functionContext.moduleContext.targetArch == ::llvm::Triple::aarch64)
 		{
@@ -1412,11 +1415,21 @@ void EmitFunctionContext::memtag_hintstore(MemoryImm imm)
 	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this))
 	{
-		auto hintres
-			= compute_hint_addr_seperate(*this, imm.memoryIndex, memaddress, hintptr, hintindex);
-		StoreTagIntoMem(
-			*this, imm.memoryIndex, hintres.untaggedmemaddress, taggedbytes, hintres.color, true);
-		memaddress = hintres.taggedmemaddress;
+		::llvm::Value* untaggedaddr{};
+		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		{
+			untaggedaddr = memaddress
+				= compute_hint_addr(*this, imm.memoryIndex, memaddress, hintptr, hintindex);
+			StoreTagIntoMem(*this, imm.memoryIndex, addr, taggedbytes, hintres.color, true);
+		}
+		else
+		{
+			auto hintres = compute_hint_addr_seperate(
+				*this, imm.memoryIndex, memaddress, hintptr, hintindex);
+			memaddress = hintres.taggedmemaddress;
+			untaggedaddr = hintres.untaggedmemaddress;
+		}
+		StoreTagIntoMem(*this, imm.memoryIndex, untaggedaddr, taggedbytes, hintres.color, true);
 	}
 	push(memaddress);
 }
@@ -1429,11 +1442,21 @@ void EmitFunctionContext::memtag_hintstorez(MemoryImm imm)
 	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this))
 	{
-		auto hintres
-			= compute_hint_addr_seperate(*this, imm.memoryIndex, memaddress, hintptr, hintindex);
-		StoreZTagIntoMem(
-			*this, imm.memoryIndex, hintres.untaggedmemaddress, taggedbytes, hintres.color, true);
-		memaddress = hintres.taggedmemaddress;
+		::llvm::Value* untaggedaddr{};
+		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		{
+			untaggedaddr = memaddress
+				= compute_hint_addr(*this, imm.memoryIndex, memaddress, hintptr, hintindex);
+			StoreZTagIntoMem(*this, imm.memoryIndex, addr, taggedbytes, hintres.color, true);
+		}
+		else
+		{
+			auto hintres = compute_hint_addr_seperate(
+				*this, imm.memoryIndex, memaddress, hintptr, hintindex);
+			memaddress = hintres.taggedmemaddress;
+			untaggedaddr = hintres.untaggedmemaddress;
+		}
+		StoreZTagIntoMem(*this, imm.memoryIndex, untaggedaddr, taggedbytes, hintres.color, true);
 	}
 	else { memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes); }
 	push(memaddress);
