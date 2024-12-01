@@ -1346,11 +1346,22 @@ static ::llvm::Value* compute_hint_addr(EmitFunctionContext& functionContext,
 	uint_least64_t shifter, mask, hintmask, tagindexmask;
 	if(memoryType.indexType == IndexType::i64)
 	{
-		using constanttype = ::WAVM::IR::memtag64constants;
-		shifter = constanttype::shifter;
-		mask = constanttype::mask;
-		hintmask = constanttype::hint_mask;
-		tagindexmask = constanttype::index_mask;
+		if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		{
+			using constanttype = ::WAVM::IR::memtagarmmteconstants;
+			shifter = constanttype::shifter;
+			mask = constanttype::mask;
+			hintmask = constanttype::hint_mask;
+			tagindexmask = constanttype::index_mask;
+		}
+		else
+		{
+			using constanttype = ::WAVM::IR::memtag64constants;
+			shifter = constanttype::shifter;
+			mask = constanttype::mask;
+			hintmask = constanttype::hint_mask;
+			tagindexmask = constanttype::index_mask;
+		}
 	}
 	else
 	{
