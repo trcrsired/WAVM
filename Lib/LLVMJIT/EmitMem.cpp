@@ -830,6 +830,30 @@ static void memtag_zero_memory(EmitFunctionContext& functionContext,
 						   false);
 }
 
+static inline void llvm_runtime_arm_mte_settag(EmitFunctionContext& functionContext,
+											   bool zeroing,
+											   ::llvm::Value* address,
+											   ::llvm::Value* taggedbytes) noexcept
+{
+	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
+	if(::llvm::isa<llvm::ConstantExpr>(taggedbytes))
+	{
+		fprintf(stderr, "compile time one?%s %d\n", __FILE__, __LINE__);
+		irBuilder.CreateIntrinsic(zeroing ? (::llvm::Intrinsic::aarch64_settag_zero)
+										  : (::llvm::Intrinsic::aarch64_settag),
+								  {},
+								  {address, taggedbytes});
+	}
+	else
+	{
+		fprintf(stderr, "runtime one?%s %d\n", __FILE__, __LINE__);
+		irBuilder.CreateIntrinsic(zeroing ? (::llvm::Intrinsic::aarch64_settag_zero)
+										  : (::llvm::Intrinsic::aarch64_settag),
+								  {},
+								  {address, taggedbytes});
+	}
+}
+
 static inline ::llvm::Value* StoreTagIntoMemAndZeroing(EmitFunctionContext& functionContext,
 													   Uptr memoryIndex,
 													   ::llvm::Value* address,
@@ -879,10 +903,7 @@ static inline ::llvm::Value* StoreTagIntoMemAndZeroing(EmitFunctionContext& func
 										   true),
 				functionContext.llvmContext.i8Type,
 				memoryIndex);
-			irBuilder.CreateIntrinsic(zeroing ? (::llvm::Intrinsic::aarch64_settag_zero)
-											  : (::llvm::Intrinsic::aarch64_settag),
-									  {},
-									  {address, taggedbytes});
+			llvm_runtime_arm_mte_settag(functionContext, zeroing, address, taggedbytes);
 		}
 		else if(zeroing) { memtag_zero_memory(functionContext, memoryIndex, address, taggedbytes); }
 	}
@@ -1043,10 +1064,7 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 					 mask ? mask
 						  : (::llvm::ConstantInt::get(functionContext.llvmContext.i64Type, 0))});
 
-				irBuilder.CreateIntrinsic(zeroing ? (::llvm::Intrinsic::aarch64_settag_zero)
-												  : (::llvm::Intrinsic::aarch64_settag),
-										  {},
-										  {memaddress, taggedbytes});
+				llvm_runtime_arm_mte_settag(functionContext, zeroing, memaddress, taggedbytes);
 				memaddress = armmte_host_tag_address_to_sandbox_address(
 					functionContext, memoryIndex, memaddress, basepointer);
 			}
