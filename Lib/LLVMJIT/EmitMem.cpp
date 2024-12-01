@@ -1306,15 +1306,22 @@ static hint_addr_result compute_hint_addr_seperate(EmitFunctionContext& function
 	uint_least64_t shifter, mask, tagindexmask;
 	if(memoryType.indexType == IndexType::i64)
 	{
-		using constanttype = ::WAVM::IR::memtag64constants;
-		bits = constanttype::bits;
-		shifter = constanttype::shifter;
-		mask = constanttype::mask;
 		if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
-			tagindexmask = 0xF;
+			using constanttype = ::WAVM::IR::memtagarmmteconstants;
+			bits = constanttype::bits;
+			shifter = constanttype::shifter;
+			mask = constanttype::mask;
+			tagindexmask = constanttype::index_mask;
 		}
-		else { tagindexmask = constanttype::index_mask; }
+		else
+		{
+			using constanttype = ::WAVM::IR::memtag64constants;
+			bits = constanttype::bits;
+			shifter = constanttype::shifter;
+			mask = constanttype::mask;
+			tagindexmask = constanttype::index_mask;
+		}
 	}
 	else
 	{
