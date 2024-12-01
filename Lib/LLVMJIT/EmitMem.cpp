@@ -159,32 +159,6 @@ static llvm::Value* armmte64_to_32_value(EmitFunctionContext& functionContext,
 	return memaddress64;
 }
 
-static llvm::Value* armmte64_to_32_old_value(EmitFunctionContext& functionContext,
-											 Uptr memoryIndex,
-											 llvm::Value* olduntaggedmemaddress,
-											 llvm::Value* memaddress64)
-{
-	auto& irBuilder = functionContext.irBuilder;
-	const MemoryType& memoryType
-		= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
-	constexpr ::std::uint_least64_t mask{0x0F00000000000000};
-	if(memoryType.indexType == IndexType::i32)
-	{
-		memaddress64 = irBuilder.CreatePtrToInt(memaddress64, functionContext.llvmContext.i64Type);
-		memaddress64 = irBuilder.CreateOr(
-			irBuilder.CreateTrunc(irBuilder.CreateLShr(irBuilder.CreateAnd(memaddress64, mask), 28),
-								  functionContext.llvmContext.i32Type),
-			olduntaggedmemaddress);
-	}
-	else
-	{
-		memaddress64 = irBuilder.CreatePtrToInt(memaddress64, functionContext.llvmContext.i64Type);
-		memaddress64
-			= irBuilder.CreateOr(irBuilder.CreateAnd(memaddress64, mask), olduntaggedmemaddress);
-	}
-	return memaddress64;
-}
-
 static llvm::Function* getWavmMemtagTrapFunction(EmitFunctionContext& functionContext)
 {
 	auto& moduleContext{functionContext.moduleContext};
@@ -524,10 +498,43 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 	return address;
 }
 
+struct coerceAddressToPointerWithBasePointerResult
+{
+	llvm::Value* bytePointer{};
+	llvm::Value* memoryBasePointer{};
+};
+
+namespace {
+	inline coerceAddressToPointerWithBasePointerResult coerceAddressToPointerWithBasePointer(
+		EmitFunctionContext& functionContext,
+		llvm::Value* boundedAddress,
+		llvm::Type* memoryType,
+		Uptr memoryIndex)
+	{
+		auto& meminfo{functionContext.memoryInfos[memoryIndex]};
+		llvm::Value* memoryBasePointer
+			= ::WAVM::LLVMJIT::wavmCreateLoad(functionContext.irBuilder,
+											  functionContext.llvmContext.i8PtrType,
+											  meminfo.basePointerVariable);
+		llvm::Value* bytePointer
+			= ::WAVM::LLVMJIT::wavmCreateInBoundsGEP(functionContext.irBuilder,
+													 functionContext.llvmContext.i8Type,
+													 memoryBasePointer,
+													 boundedAddress);
+#if LLVM_VERSION_MAJOR <= 14
+		// Cast the pointer to the appropriate type.
+		bytePointer = irBuilder.CreatePointerCast(bytePointer, memoryType->getPointerTo());
+#endif
+		return {bytePointer, memoryBasePointer};
+	}
+
+}
+
 llvm::Value* EmitFunctionContext::coerceAddressToPointer(llvm::Value* boundedAddress,
 														 llvm::Type* memoryType,
 														 Uptr memoryIndex)
 {
+#if 0
 	auto& meminfo{memoryInfos[memoryIndex]};
 	llvm::Value* memoryBasePointer = ::WAVM::LLVMJIT::wavmCreateLoad(
 		irBuilder, llvmContext.i8PtrType, meminfo.basePointerVariable);
@@ -540,6 +547,33 @@ llvm::Value* EmitFunctionContext::coerceAddressToPointer(llvm::Value* boundedAdd
 #else
 	return irBuilder.CreatePointerCast(bytePointer, memoryType->getPointerTo());
 #endif
+#else
+	return coerceAddressToPointerWithBasePointer(*this, boundedAddress, memoryType, memoryIndex)
+		.bytePointer;
+#endif
+}
+
+inline llvm::Value* armmte_host_tag_address_to_sandbox_address(EmitFunctionContext& functionContext,
+															   Uptr memoryIndex,
+															   llvm::Value* memaddress,
+															   llvm::Value* memoryBasePointer)
+{
+	auto& irBuilder = functionContext.irBuilder;
+	const MemoryType& memoryType
+		= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
+
+	memaddress = irBuilder.CreatePtrToInt(memaddress, functionContext.llvmContext.i64Type);
+	irBuilder.CreateSub(memaddress, memoryBasePointer);
+
+	if(memoryType.indexType == IndexType::i32)
+	{
+		constexpr ::std::uint_least64_t mask{0x0F00000000000000};
+		memaddress = irBuilder.CreateOr(
+			irBuilder.CreateTrunc(irBuilder.CreateLShr(irBuilder.CreateAnd(memaddress, mask), 28),
+								  functionContext.llvmContext.i32Type),
+			memaddress);
+	}
+	return memaddress;
 }
 
 //
@@ -985,7 +1019,8 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 		{
 			if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 			{
-				memaddress = functionContext.coerceAddressToPointer(
+				auto basepointeraddressResult = coerceAddressToPointerWithBasePointer(
+					functionContext,
 					getOffsetAndBoundedAddress(functionContext,
 											   memoryIndex,
 											   memaddress,
@@ -996,7 +1031,8 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 											   true),
 					functionContext.llvmContext.i8Type,
 					memoryIndex);
-				auto oldaddress{memaddress};
+				memaddress = basepointeraddressResult.bytePointer;
+				auto basepointer = basepointeraddressResult.memoryBasePointer;
 
 				memaddress = irBuilder.CreateIntrinsic(
 					::llvm::Intrinsic::aarch64_irg,
@@ -1009,8 +1045,8 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 														: (::llvm::Intrinsic::aarch64_settag),
 												{},
 												{memaddress, taggedbytes});
-				memaddress = armmte64_to_32_old_value(
-					functionContext, memoryIndex, oldaddress, memaddress);
+				memaddress = armmte_host_tag_address_to_sandbox_address(
+					functionContext, memoryIndex, memaddress, basepointer);
 			}
 		}
 		else
@@ -1417,8 +1453,8 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 		{
 			if(this->moduleContext.targetArch == ::llvm::Triple::aarch64)
 			{
-				auto olduntaggedmemaddress{memaddress};
-				memaddress = coerceAddressToPointer(
+				auto basepointeraddressResult = coerceAddressToPointerWithBasePointer(
+					*this,
 					getOffsetAndBoundedAddress(*this,
 											   imm.memoryIndex,
 											   memaddress,
@@ -1429,10 +1465,12 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 											   true),
 					this->llvmContext.i8Type,
 					imm.memoryIndex);
+				auto memaddress{basepointeraddressResult.bytePointer};
+				auto memoryBasePointer{basepointeraddressResult.memoryBasePointer};
 				memaddress = irBuilder.CreateIntrinsic(
 					::llvm::Intrinsic::aarch64_ldg, {}, {memaddress, memaddress});
-				memaddress = armmte64_to_32_old_value(
-					*this, imm.memoryIndex, olduntaggedmemaddress, memaddress);
+				memaddress = armmte_host_tag_address_to_sandbox_address(
+					*this, imm.memoryIndex, memaddress, memoryBasePointer);
 			}
 		}
 		else
