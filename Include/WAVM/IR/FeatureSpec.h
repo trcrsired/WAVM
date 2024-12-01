@@ -43,10 +43,10 @@
 	V(memorysmall, "memorysmall", "Shrink usable memory to prevent failure on some systems")       \
 	V(memtag, "memtag", "Memory Tagging")                                                          \
 	V(memtagFull, "memtag-full", "Memory Tagging Full Checking (Expensive but more effective)")    \
-	V(memtagMte, "memtag-mte", "Memory Tagging by MTE instructions like ARM MTE")                  \
-	V(memtagMteAsync,                                                                              \
-	  "memtag-mte-async",                                                                          \
-	  "Memory Tagging by MTE instructions like ARM MTE in Async Mode")
+	V(memtagMte, "memtag-mte", "Memory Tagging by MTE instructions like ARM MTE in Async Mode")    \
+	V(memtagMteSync,                                                                               \
+	  "memtag-mte-sync",                                                                           \
+	  "Memory Tagging by MTE instructions like ARM MTE in Sync Mode (May be slow)")
 
 // WAVM extensions meant for internal use only (not exposed to users).
 #define WAVM_ENUM_INTERNAL_FEATURES(V)                                                             \

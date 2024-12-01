@@ -86,7 +86,7 @@ namespace WAVM { namespace LLVMJIT {
 		, function(inLLVMFunction)
 		{
 			this->isMemTagged = ::WAVM::LLVMJIT::memtagStatus::none;
-			if(irModule.featureSpec.memtagMte || irModule.featureSpec.memtagMteAsync)
+			if(irModule.featureSpec.memtagMte || irModule.featureSpec.memtagMteSync)
 			{
 				this->isMemTagged = ::WAVM::LLVMJIT::memtagStatus::armmte;
 			}
