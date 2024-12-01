@@ -1026,7 +1026,10 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 			{
 				if(memoryType.indexType == IndexType::i32)
 				{
-					mask = irBuilder.CreateZExt(mask, functionContext.llvmContext.i64Type);
+					if(mask)
+					{
+						mask = irBuilder.CreateZExt(mask, functionContext.llvmContext.i64Type);
+					}
 					taggedbytes
 						= irBuilder.CreateZExt(taggedbytes, functionContext.llvmContext.i64Type);
 				}
