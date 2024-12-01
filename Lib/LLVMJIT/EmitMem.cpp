@@ -545,10 +545,10 @@ namespace {
 		{
 			constexpr ::std::uint_least64_t hint_mask{::WAVM::IR::memtagarmmteconstants::hint_mask};
 			memaddress = irBuilder.CreateTrunc(
-				irBuilder
-					.CreateAdd(irBuilder.CreateLShr(irBuilder.CreateAnd(memaddress, hint_mask),
-													::WAVM::IR::memtag32constants::shifter),
-							   memaddress) functionContext.llvmContext.i32Type);
+				irBuilder.CreateAdd(irBuilder.CreateLShr(irBuilder.CreateAnd(memaddress, hint_mask),
+														 ::WAVM::IR::memtag32constants::shifter),
+									memaddress),
+				functionContext.llvmContext.i32Type);
 		}
 		return memaddress;
 	}
