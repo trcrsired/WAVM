@@ -242,7 +242,7 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 
 	if(isarmmte)
 	{
-		constexpr auto shiftercommon{56u};
+		constexpr auto shiftercommon{::WAVM::IR::memtagarmmteconstants::shifter};
 		if(memoryType.indexType == IndexType::i32)
 		{
 			using constanttype = ::WAVM::IR::memtag32constants;
@@ -258,9 +258,8 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 		}
 		else
 		{
-			constexpr ::std::uint_least64_t mask{static_cast<::std::uint_least64_t>(0xF)
-												 << shiftercommon};
-			arm_mte_offset = irBuilder.CreateAnd(address, mask);
+			arm_mte_offset
+				= irBuilder.CreateAnd(address, ::WAVM::IR::memtagarmmteconstants::hint_mask);
 		}
 	}
 	if(memtagBasePointerVariable) // memtag needs to ignore upper 8 bits
