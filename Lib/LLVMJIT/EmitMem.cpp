@@ -1383,7 +1383,12 @@ static ::llvm::Value* compute_hint_addr(EmitFunctionContext& functionContext,
 	hintptr = irBuilder.CreateAnd(hintptr, hintmask);
 	hintptr = irBuilder.CreateAdd(hintptr, hintindex);
 	memaddress = irBuilder.CreateAnd(memaddress, mask);
-	return irBuilder.CreateAdd(memaddress, hintptr);
+	memaddress= irBuilder.CreateAdd(memaddress, hintptr);
+	if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+	{
+		memaddress = irBuilder.CreateAnd(memaddress, mask);
+	}
+	return memaddress;
 }
 
 void EmitFunctionContext::memtag_hint(MemoryImm imm)
