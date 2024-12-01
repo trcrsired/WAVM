@@ -569,7 +569,8 @@ static U8* getValidatedMemoryOffsetRangeImpl(Memory* memory,
 			{
 				using constanttype = ::WAVM::IR::memtag32constants;
 				boundsaddress = address & constanttype::mask;
-				address = static_cast<U64>(address >> (constanttype::shifter)) << 56u;
+				address
+					= (static_cast<U64>(address >> (constanttype::shifter)) << 56u) | boundsaddress;
 			}
 			else
 			{
