@@ -46,7 +46,7 @@
 	  "Memory Tagging (Hardware MTE in async mode or fall back to memtag-soft)")                   \
 	V(memtagMteSync,                                                                               \
 	  "memtag-sync",                                                                               \
-	  "Memory Tagging (Hardware MTE sync mode (maybe slow) or fall back to memtag-soft)")          \
+	  "Memory Tagging (Hardware MTE in sync mode (maybe slow) or fall back to memtag-soft)")       \
 	V(memtag, "memtag-soft", "Memory Tagging (Software Emulation)")                                \
 	V(memtagFull,                                                                                  \
 	  "memtag-soft-debug",                                                                         \
