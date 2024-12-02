@@ -30,27 +30,27 @@
 	V(memory64, "memory64", "Memories with 64-bit addresses")
 
 // Non-standard extensions. These are disabled by default, but may be enabled on the command-line.
-#define WAVM_ENUM_NONSTANDARD_FEATURES(V)                                                                     \
-	V(sharedTables, "shared-tables", "Shared tables")                                                         \
-	V(allowLegacyInstructionNames, "legacy-instr-names", "Legacy instruction names")                          \
-	V(allowAnyExternKindElemSegments,                                                                         \
-	  "any-extern-kind-elems",                                                                                \
-	  "Elem segments containing non-func externs")                                                            \
-	V(quotedNamesInTextFormat, "quoted-names", "Quoted names in text format")                                 \
-	V(customSectionsInTextFormat, "wat-custom-sections", "Custom sections in text format")                    \
-	V(interleavedLoadStore, "interleaved-load-store", "Interleaved SIMD load&store instructions")             \
-	V(table64, "table64", "Tables with 64-bit indices")                                                       \
-	V(memorysmall, "memorysmall", "Shrink usable memory to prevent failure on some systems")                  \
-	V(memtagMte,                                                                                              \
-	  "memtag",                                                                                               \
-	  "Memory Tagging (Hardware MTE in async mode or fall back to software emulation (memtag-soft)")          \
-	V(memtagMteSync,                                                                                          \
-	  "memtag-sync",                                                                                          \
-	  "Memory Tagging (Hardware MTE sync mode (maybe slow) or fall back to software emulation (memtag-soft)") \
-	V(memtag, "memtag-soft", "Memory Tagging (Software Emulation")                                            \
-	V(memtagFull,                                                                                             \
-	  "memtag-soft-debug",                                                                                    \
-	  "Memory Tagging Software Emulation for Debugging (Full Checking tags, Expensive but more effective on detecting type punning based errors compared to memtag-soft)")
+#define WAVM_ENUM_NONSTANDARD_FEATURES(V)                                                          \
+	V(sharedTables, "shared-tables", "Shared tables")                                              \
+	V(allowLegacyInstructionNames, "legacy-instr-names", "Legacy instruction names")               \
+	V(allowAnyExternKindElemSegments,                                                              \
+	  "any-extern-kind-elems",                                                                     \
+	  "Elem segments containing non-func externs")                                                 \
+	V(quotedNamesInTextFormat, "quoted-names", "Quoted names in text format")                      \
+	V(customSectionsInTextFormat, "wat-custom-sections", "Custom sections in text format")         \
+	V(interleavedLoadStore, "interleaved-load-store", "Interleaved SIMD load&store instructions")  \
+	V(table64, "table64", "Tables with 64-bit indices")                                            \
+	V(memorysmall, "memorysmall", "Shrink usable memory to prevent failure on some systems")       \
+	V(memtagMte,                                                                                   \
+	  "memtag",                                                                                    \
+	  "Memory Tagging (Hardware MTE in async mode or fall back to memtag-soft)")                   \
+	V(memtagMteSync,                                                                               \
+	  "memtag-sync",                                                                               \
+	  "Memory Tagging (Hardware MTE sync mode (maybe slow) or fall back to memtag-soft)")          \
+	V(memtag, "memtag-soft", "Memory Tagging (Software Emulation)")                                \
+	V(memtagFull,                                                                                  \
+	  "memtag-soft-debug",                                                                         \
+	  "Memory Tagging (Software Emulation for Debugging. Expensive but more effective on detecting type punning based errors compared to memtag-soft)")
 
 // WAVM extensions meant for internal use only (not exposed to users).
 #define WAVM_ENUM_INTERNAL_FEATURES(V)                                                             \
