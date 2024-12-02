@@ -48,6 +48,9 @@ namespace WAVM { namespace LLVMJIT {
 	WAVM_API TargetValidationResult validateTarget(const TargetSpec& targetSpec,
 												   const IR::FeatureSpec& featureSpec);
 
+	WAVM_API TargetValidationResult
+	validateTargetWithFeatureSpecUpdate(const TargetSpec& targetSpec, IR::FeatureSpec& featureSpec);
+
 	struct Version
 	{
 		Uptr llvmMajor;

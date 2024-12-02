@@ -208,7 +208,7 @@ int execCompileCommand(int argc, char** argv)
 	if(useHostTargetSpec) { targetSpec = LLVMJIT::getHostTargetSpec(); }
 
 	// Validate the target.
-	switch(LLVMJIT::validateTarget(targetSpec, featureSpec))
+	switch(LLVMJIT::validateTargetWithFeatureSpecUpdate(targetSpec, featureSpec))
 	{
 	case LLVMJIT::TargetValidationResult::valid: break;
 

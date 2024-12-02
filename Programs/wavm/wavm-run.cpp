@@ -397,7 +397,7 @@ struct State
 		while(*nextArg) { runArgs.push_back(*nextArg++); };
 
 		// Check that the requested features are supported by the host CPU.
-		switch(LLVMJIT::validateTarget(LLVMJIT::getHostTargetSpec(), featureSpec))
+		switch(LLVMJIT::validateTargetWithFeatureSpecUpdate(LLVMJIT::getHostTargetSpec(), featureSpec))
 		{
 		case LLVMJIT::TargetValidationResult::valid: break;
 
@@ -804,31 +804,31 @@ struct State
 		std::vector<U8> fileBytes;
 		if(!loadFile(filename, fileBytes)) { return EXIT_FAILURE; }
 
-		/* check if MTE is present */
-		if(featureSpec.memtagMte || featureSpec.memtagMteSync)
-		{
+	/* check if MTE is present */
+	if(featureSpec.memtagMte || featureSpec.memtagMteSync)
+	{
 #if defined(PROT_MTE)
-			unsigned long hwcap2{getauxval(AT_HWCAP2)};
-			if(hwcap2 & HWCAP2_MTE)
+		unsigned long hwcap2{getauxval(AT_HWCAP2)};
+		if(hwcap2 & HWCAP2_MTE)
+		{
+			auto syncflag{PR_MTE_TCF_ASYNC};
+			if(featureSpec.memtagMteSync) { syncflag = PR_MTE_TCF_SYNC; }
+			if(!prctl(PR_SET_TAGGED_ADDR_CTRL,
+					  PR_TAGGED_ADDR_ENABLE | syncflag | (0xfffe << PR_MTE_TAG_SHIFT),
+					  0,
+					  0,
+					  0))
 			{
-				auto syncflag{PR_MTE_TCF_ASYNC};
-				if(featureSpec.memtagMteSync) { syncflag = PR_MTE_TCF_SYNC; }
-				if(!prctl(PR_SET_TAGGED_ADDR_CTRL,
-						  PR_TAGGED_ADDR_ENABLE | syncflag | (0xfffe << PR_MTE_TAG_SHIFT),
-						  0,
-						  0,
-						  0))
-				{
-					goto mte_enabled_next;
-				}
+				goto mte_enabled_next;
 			}
-			// mte disabled
-#endif
-			featureSpec.memtagMteSync = false;
-			featureSpec.memtagMte = false;
-			featureSpec.memtag = true;
-		[[maybe_unused]] mte_enabled_next:;
 		}
+		// mte disabled
+#endif
+		featureSpec.memtagMteSync = false;
+		featureSpec.memtagMte = false;
+		featureSpec.memtag = true;
+	[[maybe_unused]] mte_enabled_next:;
+	}
 
 		// Load the module from the byte array
 		Runtime::ModuleRef module_ = nullptr;

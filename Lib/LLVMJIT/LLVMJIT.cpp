@@ -280,9 +280,37 @@ TargetValidationResult LLVMJIT::validateTargetMachine(
 }
 
 TargetValidationResult LLVMJIT::validateTarget(const TargetSpec& targetSpec,
-											   const IR::FeatureSpec& featureSpec)
+											   IR::FeatureSpec const& featureSpec)
 {
 	std::unique_ptr<llvm::TargetMachine> targetMachine = getTargetMachine(targetSpec);
+	if(!targetMachine) { return TargetValidationResult::invalidTargetSpec; }
+	return validateTargetMachine(targetMachine, featureSpec);
+}
+
+TargetValidationResult LLVMJIT::validateTargetWithFeatureSpecUpdate(const TargetSpec& targetSpec,
+																	IR::FeatureSpec& featureSpec)
+{
+	std::unique_ptr<llvm::TargetMachine> targetMachine = getTargetMachine(targetSpec);
+	bool memtagMteSupported{};
+	if(targetMachine)
+	{
+		if(8 <= targetMachine->getProgramPointerSize())
+		{
+			featureSpec.memory64 = true;
+			featureSpec.table64 = true;
+			if(targetMachine->getTargetTriple().getArch() == ::llvm::Triple::aarch64
+			   || targetMachine->getMCSubtargetInfo()->checkFeatures("+memtag"))
+			{
+				memtagMteSupported = true;
+			}
+		}
+	}
+	if((!memtagMteSupported) && (featureSpec.memtagMte || featureSpec.memtagMteSync))
+	{
+		featureSpec.memtagMte = featureSpec.memtagMteSync = false;
+		featureSpec.memtag = true;
+	}
+	if(featureSpec.memtagFull) { featureSpec.memtag = false; }
 	if(!targetMachine) { return TargetValidationResult::invalidTargetSpec; }
 	return validateTargetMachine(targetMachine, featureSpec);
 }

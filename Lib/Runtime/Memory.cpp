@@ -415,8 +415,6 @@ extern "C" void wavm_aarch64_mte_settag_zero(void* ptrvp, ::std::size_t len) noe
 #else
 namespace {
 	inline constexpr bool platform_support_arm_mte{};
-	inline void* wavm_arm_mte_irg(void* ptr, uintptr_t) noexcept { return ptr; }
-	inline void wavm_arm_mte_stg(void*) noexcept {}
 }
 #endif
 
@@ -511,7 +509,9 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 		{
 			if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
 			{
+#if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__))
 				wavm_arm_mte_stg(wavm_arm_mte_irg(memory->baseAddress, 0x1));
+#endif
 			}
 		}
 		Platform::registerVirtualAllocation(grownpages);

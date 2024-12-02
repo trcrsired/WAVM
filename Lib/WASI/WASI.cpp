@@ -93,7 +93,7 @@ std::shared_ptr<Process> WASI::createProcessWithFeatureSpec(Runtime::Compartment
 														WAVM_INTRINSIC_MODULE_REF(wasiClocks),
 														WAVM_INTRINSIC_MODULE_REF(wasiFile)},
 													   "wasi_snapshot_preview1",
-													   featureSpecRuntime);
+													   featureSpec);
 
 	process->resolver.moduleNameToInstanceMap.set("wasi_unstable", wasi_snapshot_preview1);
 	process->resolver.moduleNameToInstanceMap.set("wasi_snapshot_preview1", wasi_snapshot_preview1);
