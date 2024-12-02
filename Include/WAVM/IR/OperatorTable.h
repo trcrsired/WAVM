@@ -210,8 +210,8 @@
 	visitOp(0xfc26, memtag_sub                , "memtag.sub"                , MemoryImm                           , memtag_1r2a            , mvp                    )   \
 	visitOp(0xfc27, memtag_load               , "memtag.load"               , MemoryImm                           , memtag_1r1a            , mvp                    )   \
 	visitOp(0xfc28, memtag_untag              , "memtag.untag"              , MemoryImm                           , memtag_1r1a            , mvp                    )   \
-	visitOp(0xfc29, memtag_untagstore         , "memtag.untagstore"         , MemoryImm                           , memtag_1r3a            , mvp                    )   \
-	visitOp(0xfc2a, memtag_untagstorez        , "memtag.untagstorez"        , MemoryImm                           , memtag_1r3a            , mvp                    )   \
+	visitOp(0xfc29, memtag_untagstore         , "memtag.untagstore"         , MemoryImm                           , memtag_1r2a            , mvp                    )   \
+	visitOp(0xfc2a, memtag_untagstorez        , "memtag.untagstorez"        , MemoryImm                           , memtag_1r2a            , mvp                    )   \
 	visitOp(0xfc2b, memtag_store              , "memtag.store"              , MemoryImm                           , memtag_0r2a            , mvp                    )   \
 	visitOp(0xfc2c, memtag_storez             , "memtag.storez"             , MemoryImm                           , memtag_0r2a            , mvp                    )   \
 	visitOp(0xfc2d, memtag_random             , "memtag.random"             , MemoryImm                           , memtag_1r1a            , mvp                    )   \
