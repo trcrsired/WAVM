@@ -299,7 +299,7 @@ TargetValidationResult LLVMJIT::validateTargetWithFeatureSpecUpdate(const Target
 			featureSpec.memory64 = true;
 			featureSpec.table64 = true;
 			if(targetMachine->getTargetTriple().getArch() == ::llvm::Triple::aarch64
-			   || targetMachine->getMCSubtargetInfo()->checkFeatures("+memtag"))
+			   && targetMachine->getMCSubtargetInfo()->checkFeatures("+memtag"))
 			{
 				memtagMteSupported = true;
 			}
