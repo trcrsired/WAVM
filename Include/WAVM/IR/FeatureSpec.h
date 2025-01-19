@@ -51,7 +51,7 @@
 	  "memtag-irg",                                                                                                                      \
 	  "Memory Tagging with random instruction (may deplete entropy)  (Hardware MTE in async mode with IRG or fall back to memtag-soft)") \
 	V(memtagMteSyncIrg,                                                                                                                  \
-	  "memtag-sync irg",                                                                                                                 \
+	  "memtag-sync-irg",                                                                                                                 \
 	  "Memory Tagging Sync with random instruction (may deplete entropy) (Hardware MTE in sync mode or fall back to memtag-soft)")       \
 	V(memtag, "memtag-soft", "Memory Tagging (Software Emulation)")                                                                      \
 	V(memtagFull,                                                                                                                        \
