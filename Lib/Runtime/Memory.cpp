@@ -506,21 +506,23 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 				goto endtagnullbyte;
 			}
 		}
-		auto randombuffer{memory->memtagRandomBuffer};
-		if(randombuffer.Base)
 		{
-			if(randombuffer.Base != randombuffer.End)
+			auto randombuffer{memory->memtagRandomBuffer};
+			if(randombuffer.Base)
 			{
-				auto ch{randombuffer.End[-1]};
-				if(ch == 0) // ensure ch is never a 0
+				if(randombuffer.Base != randombuffer.End)
 				{
-					if(memory->indexType == IR::IndexType::i32)
+					auto ch{randombuffer.End[-1]};
+					if(ch == 0) // ensure ch is never a 0
 					{
-						ch = ::WAVM::IR::memtag32constants::nullptrtag;
+						if(memory->indexType == IR::IndexType::i32)
+						{
+							ch = ::WAVM::IR::memtag32constants::nullptrtag;
+						}
+						else { ch = ::WAVM::IR::memtag64constants::nullptrtag; }
 					}
-					else { ch = ::WAVM::IR::memtag64constants::nullptrtag; }
+					*baseAddressTags = ch;
 				}
-				*baseAddressTags = ch;
 			}
 		}
 	endtagnullbyte:;
