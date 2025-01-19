@@ -515,7 +515,7 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 			if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte
 			   || memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmteirg)
 			{
-#if (defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__)) || defined(__GNUC__))
+#if defined(__aarch64__) && ((!defined(_MSC_VER) || defined(__clang__)) || defined(__GNUC__))
 				wavm_arm_mte_stg(wavm_arm_mte_irg(memory->baseAddress, 0x1));
 #endif
 			}
