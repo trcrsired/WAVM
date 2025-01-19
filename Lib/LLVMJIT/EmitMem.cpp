@@ -1096,7 +1096,7 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 				memoryIndex);
 			memaddress = basepointeraddressResult.bytePointer;
 			auto basepointer = basepointeraddressResult.memoryBasePointer;
-			if(mask || functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			if(mask || functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmteirg)
 			{
 				memaddress = irBuilder.CreateIntrinsic(
 					::llvm::Intrinsic::aarch64_irg,
