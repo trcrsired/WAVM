@@ -204,7 +204,17 @@ namespace WAVM { namespace LLVMJIT {
 				else
 				{
 					memoryInfo.memtagBasePointerVariable = nullptr;
-					memoryInfo.memtagRandomBufferVariable = nullptr;
+					if(ismemtagged == ::WAVM::LLVMJIT::memtagStatus::armmteirg)
+					{
+						memoryInfo.memtagRandomBufferVariable = nullptr;
+					}
+					else
+					{
+						memoryInfo.memtagRandomBufferVariable = irBuilder.CreateAlloca(
+							llvmContext.i8PtrType,
+							nullptr,
+							"memtagRandomBuffer" + llvm::Twine(memoryIndex));
+					}
 				}
 			}
 			contextPointerVariable
