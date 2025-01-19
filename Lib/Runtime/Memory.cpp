@@ -495,6 +495,23 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 				}
 				return GrowResult::outOfMemory;
 			}
+			auto& randombuffer{memory->memtagRandomBuffer};
+			if(randombuffer.Base)
+			{
+				if(randombuffer.Base != randombuffer.End)
+				{
+					auto ch{randombuffer.End[-1]};
+					if(ch == 0) // ensure ch is never a 0
+					{
+						if(memory->indexType == IR::IndexType::i32)
+						{
+							ch = ::WAVM::IR::memtag32constants::nullptrtag;
+						}
+						else { ch = ::WAVM::IR::memtag64constants::nullptrtag; }
+					}
+					*baseAddressTags = ch;
+				}
+			}
 		}
 		else if constexpr(platform_support_arm_mte)
 		{
@@ -505,6 +522,7 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 #endif
 			}
 		}
+
 		Platform::registerVirtualAllocation(grownpages);
 
 		const Uptr newNumPages = oldNumPages + numPagesToGrow;
