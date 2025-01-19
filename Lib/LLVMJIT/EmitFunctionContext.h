@@ -90,6 +90,10 @@ namespace WAVM { namespace LLVMJIT {
 			{
 				this->isMemTagged = ::WAVM::LLVMJIT::memtagStatus::armmte;
 			}
+			else if(irModule.featureSpec.memtagMteIrg || irModule.featureSpec.memtagMteSyncIrg)
+			{
+				this->isMemTagged = ::WAVM::LLVMJIT::memtagStatus::armmteirg;
+			}
 			else if(irModule.featureSpec.memtagFull)
 			{
 				this->isMemTagged = ::WAVM::LLVMJIT::memtagStatus::full;

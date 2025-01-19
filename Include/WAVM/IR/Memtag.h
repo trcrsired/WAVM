@@ -6,6 +6,13 @@ namespace WAVM::LLVMJIT {
 		none,
 		basic,
 		full,
-		armmte
+		armmte,
+		armmteirg
 	};
+
+	inline constexpr bool is_memtagstatus_armmte(::WAVM::LLVMJIT::memtagStatus status) noexcept
+	{
+		return status == ::WAVM::LLVMJIT::memtagStatus::armmte
+			   || status == ::WAVM::LLVMJIT::memtagStatus::armmteirg;
+	}
 }

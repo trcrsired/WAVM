@@ -203,6 +203,10 @@ Instance* Runtime::instantiateModuleInternal(Compartment* compartment,
 	{
 		ismemtagged = ::WAVM::LLVMJIT::memtagStatus::armmte;
 	}
+	else if(module_->ir.featureSpec.memtagMteIrg || module_->ir.featureSpec.memtagMteSyncIrg)
+	{
+		ismemtagged = ::WAVM::LLVMJIT::memtagStatus::armmteirg;
+	}
 	else if(module_->ir.featureSpec.memtagFull)
 	{
 		ismemtagged = ::WAVM::LLVMJIT::memtagStatus::full;

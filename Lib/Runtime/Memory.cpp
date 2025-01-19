@@ -122,6 +122,11 @@ static Memory* createMemoryImpl(Compartment* compartment,
 		memory->memtagRandomBuffer
 			= createMemoryTagRandomBufferImpl(computeMemtagBufferMask(type.indexType));
 	}
+	else if(isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+	{
+		memory->memtagRandomBuffer = createMemoryTagRandomBufferImpl(
+			static_cast<U8>(::WAVM::IR::memtagarmmteconstants::index_mask));
+	}
 	memory->numReservedBytes = memoryMaxPages << pageBytesLog2;
 	if(!memory->baseAddress) { return nullptr; }
 
@@ -312,7 +317,7 @@ IR::MemoryType Runtime::getMemoryType(const Memory* memory)
 						  IR::SizeConstraints{getMemoryNumPages(memory), memory->maxPages}};
 }
 
-#if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__))
+#if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__) || defined(__GNUC__))
 
 namespace {
 	inline constexpr bool platform_support_arm_mte{true};
@@ -458,7 +463,7 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 		Platform::MemoryAccess flags{Platform::MemoryAccess::readWrite};
 		if constexpr(platform_support_arm_mte)
 		{
-			if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			if(::WAVM::LLVMJIT::is_memtagstatus_armmte(memory->memtagstatus))
 			{
 				flags = static_cast<Platform::MemoryAccess>(
 					static_cast<U32>(Platform::MemoryAccess::readWrite)
@@ -507,9 +512,10 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 		}
 		else if constexpr(platform_support_arm_mte)
 		{
-			if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte
+			   || memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmteirg)
 			{
-#if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__))
+#if (defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__)) || defined(__GNUC__))
 				wavm_arm_mte_stg(wavm_arm_mte_irg(memory->baseAddress, 0x1));
 #endif
 			}
@@ -577,7 +583,8 @@ static U8* getValidatedMemoryOffsetRangeImpl(Memory* memory,
 	auto boundsaddress{address};
 	if constexpr(platform_support_arm_mte)
 	{
-		if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte
+		   || memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmteirg)
 		{
 			using constanttype = ::WAVM::IR::memtagarmmteconstants;
 			if(memory->indexType == IR::IndexType::i32)

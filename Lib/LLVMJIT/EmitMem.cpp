@@ -268,7 +268,7 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 	auto& meminfo{functionContext.memoryInfos[memoryIndex]};
 
 	bool fullcheck{functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::full};
-	bool isarmmte{functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte
+	bool isarmmte{::WAVM::LLVMJIT::is_memtagstatus_armmte(functionContext.isMemTagged)
 				  && functionContext.moduleContext.targetArch == ::llvm::Triple::aarch64};
 
 	auto memtagBasePointerVariable = meminfo.memtagBasePointerVariable;
@@ -832,7 +832,7 @@ static inline ::llvm::Value* UntagAddress(EmitFunctionContext& functionContext,
 	uint_least64_t mask;
 	if(memoryType.indexType == IndexType::i64)
 	{
-		if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		if(::WAVM::LLVMJIT::is_memtagstatus_armmte(functionContext.isMemTagged))
 		{
 			mask = ::WAVM::IR::memtagarmmteconstants::mask;
 		}
@@ -919,7 +919,7 @@ static inline ::llvm::Value* StoreTagIntoMemAndZeroing(EmitFunctionContext& func
 		shifter = constanttype::shifter;
 		mask = constanttype::mask;
 	}
-	auto isarmmte{functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte};
+	auto isarmmte{::WAVM::LLVMJIT::is_memtagstatus_armmte(functionContext.isMemTagged)};
 	if(!isarmmte)
 	{
 		if(color == nullptr)
@@ -1025,7 +1025,7 @@ void EmitFunctionContext::memtag_tagbits(MemoryImm imm)
 	{
 		if(memoryType.indexType == IndexType::i64)
 		{
-			if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			if(::WAVM::LLVMJIT::is_memtagstatus_armmte(this->isMemTagged))
 			{
 				bits = ::WAVM::IR::memtagarmmteconstants::bits;
 			}
@@ -1048,7 +1048,7 @@ void EmitFunctionContext::memtag_startbit(MemoryImm imm)
 	{
 		if(memoryType.indexType == IndexType::i64)
 		{
-			if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			if(::WAVM::LLVMJIT::is_memtagstatus_armmte(this->isMemTagged))
 			{
 				shifter = ::WAVM::IR::memtagarmmteconstants::shifter;
 			}
@@ -1080,7 +1080,7 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 	if(isMemTaggedEnabled(functionContext))
 	{
 		llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
-		if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmteirg)
 		{
 			auto basepointeraddressResult = coerceAddressToPointerWithBasePointer(
 				functionContext,
@@ -1179,7 +1179,7 @@ void EmitFunctionContext::memtag_extract(MemoryImm imm)
 		}
 		memaddress = irBuilder.CreateLShr(memaddress, shifter);
 		if(memoryType.indexType == IndexType::i64
-		   && this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		   && ::WAVM::LLVMJIT::is_memtagstatus_armmte(this->isMemTagged))
 		{
 			memaddress
 				= irBuilder.CreateAnd(memaddress, ::WAVM::IR::memtagarmmteconstants::index_mask);
@@ -1209,7 +1209,7 @@ void EmitFunctionContext::memtag_insert(MemoryImm imm)
 																	: this->llvmContext.i32Type)};
 		if(memoryType.indexType == IndexType::i64)
 		{
-			if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			if(::WAVM::LLVMJIT::is_memtagstatus_armmte(this->isMemTagged))
 			{
 				using constanttype = ::WAVM::IR::memtagarmmteconstants;
 				shifter = constanttype::shifter;
@@ -1305,7 +1305,7 @@ void EmitFunctionContext::memtag_random(MemoryImm imm)
 	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this))
 	{
-		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmteirg)
 		{
 			memaddress = armmte32_to_64ptr_value(*this, imm.memoryIndex, memaddress);
 			memaddress = irBuilder.CreateIntrinsic(
@@ -1329,7 +1329,7 @@ void EmitFunctionContext::memtag_randommask(MemoryImm imm) // Todo
 	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this))
 	{
-		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmteirg)
 		{
 			memaddress = armmte32_to_64ptr_value(*this, imm.memoryIndex, memaddress);
 			memaddress
@@ -1365,7 +1365,7 @@ static hint_addr_result compute_hint_addr_seperate(EmitFunctionContext& function
 	uint_least64_t shifter, mask, tagindexmask;
 	if(memoryType.indexType == IndexType::i64)
 	{
-		if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		if(::WAVM::LLVMJIT::is_memtagstatus_armmte(functionContext.isMemTagged))
 		{
 			using constanttype = ::WAVM::IR::memtagarmmteconstants;
 			bits = constanttype::bits;
@@ -1412,7 +1412,7 @@ static ::llvm::Value* compute_hint_addr(EmitFunctionContext& functionContext,
 	uint_least64_t shifter, mask, hintmask, tagindexmask;
 	if(memoryType.indexType == IndexType::i64)
 	{
-		if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		if(::WAVM::LLVMJIT::is_memtagstatus_armmte(functionContext.isMemTagged))
 		{
 			using constanttype = ::WAVM::IR::memtagarmmteconstants;
 			shifter = constanttype::shifter;
@@ -1444,7 +1444,7 @@ static ::llvm::Value* compute_hint_addr(EmitFunctionContext& functionContext,
 	memaddress = irBuilder.CreateAnd(memaddress, mask);
 	memaddress = irBuilder.CreateAdd(memaddress, hintptr);
 	if(memoryType.indexType == IndexType::i64
-	   && functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+	   && ::WAVM::LLVMJIT::is_memtagstatus_armmte(functionContext.isMemTagged))
 	{
 		memaddress = irBuilder.CreateAnd(memaddress, ::WAVM::IR::memtagarmmteconstants::pseudomask);
 	}
@@ -1473,7 +1473,7 @@ void EmitFunctionContext::memtag_hintstore(MemoryImm imm)
 	{
 		::llvm::Value *untaggedaddr{}, *color{};
 		auto memoryIndex{imm.memoryIndex};
-		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		if(::WAVM::LLVMJIT::is_memtagstatus_armmte(this->isMemTagged))
 		{
 			untaggedaddr = memaddress
 				= compute_hint_addr(*this, memoryIndex, memaddress, hintptr, hintindex);
@@ -1501,7 +1501,7 @@ void EmitFunctionContext::memtag_hintstorez(MemoryImm imm)
 	{
 		::llvm::Value *untaggedaddr{}, *color{};
 		auto memoryIndex{imm.memoryIndex};
-		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		if(::WAVM::LLVMJIT::is_memtagstatus_armmte(this->isMemTagged))
 		{
 			untaggedaddr = memaddress
 				= compute_hint_addr(*this, memoryIndex, memaddress, hintptr, hintindex);
@@ -1550,7 +1550,7 @@ void EmitFunctionContext::memtag_copy(MemoryImm imm)
 		uint_least64_t maskcolor, mask;
 		if(memoryType.indexType == IndexType::i64)
 		{
-			if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+			if(::WAVM::LLVMJIT::is_memtagstatus_armmte(this->isMemTagged))
 			{
 				using constanttype = ::WAVM::IR::memtagarmmteconstants;
 				maskcolor = constanttype::hint_mask;
@@ -1580,7 +1580,7 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 	if(isMemTaggedEnabled(*this))
 	{
 		memaddress = UntagAddress(*this, imm.memoryIndex, memaddress);
-		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		if(::WAVM::LLVMJIT::is_memtagstatus_armmte(this->isMemTagged))
 		{
 			if(this->moduleContext.targetArch == ::llvm::Triple::aarch64)
 			{

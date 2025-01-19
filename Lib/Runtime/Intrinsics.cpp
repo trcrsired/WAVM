@@ -110,6 +110,8 @@ Instance* Intrinsics::instantiateModuleWithFeatureSpec(
 	irModule.featureSpec.memtagFull = featureSpec.memtagFull;
 	irModule.featureSpec.memtagMte = featureSpec.memtagMte;
 	irModule.featureSpec.memtagMteSync = featureSpec.memtagMteSync;
+	irModule.featureSpec.memtagMteIrg = featureSpec.memtagMteIrg;
+	irModule.featureSpec.memtagMteSyncIrg = featureSpec.memtagMteSyncIrg;
 	DisassemblyNames names;
 
 	std::vector<FunctionImportBinding> functionImportBindings;

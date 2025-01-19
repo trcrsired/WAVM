@@ -305,9 +305,12 @@ TargetValidationResult LLVMJIT::validateTargetWithFeatureSpecUpdate(const Target
 			}
 		}
 	}
-	if((!memtagMteSupported) && (featureSpec.memtagMte || featureSpec.memtagMteSync))
+	if((!memtagMteSupported)
+	   && (featureSpec.memtagMte || featureSpec.memtagMteSync || featureSpec.memtagMteIrg
+		   || featureSpec.memtagMteSyncIrg))
 	{
-		featureSpec.memtagMte = featureSpec.memtagMteSync = false;
+		featureSpec.memtagMteIrg = featureSpec.memtagMteSyncIrg = featureSpec.memtagMte
+			= featureSpec.memtagMteSync = false;
 		featureSpec.memtag = true;
 	}
 	if(featureSpec.memtagFull) { featureSpec.memtag = false; }

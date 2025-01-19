@@ -147,8 +147,8 @@ std::shared_ptr<Process> WASI::createProcess(Runtime::Compartment* compartment,
 											 VFS::VFD* stdErr)
 {
 	::WAVM::IR::FeatureSpec featureSpec(::FeatureLevel::wavm);
-	featureSpec.memtagMteSync = featureSpec.memtagMte = featureSpec.memtagFull = featureSpec.memtag
-		= false;
+	featureSpec.memtagMteIrg = featureSpec.memtagMteSyncIrg = featureSpec.memtagMteSync
+		= featureSpec.memtagMte = featureSpec.memtagFull = featureSpec.memtag = false;
 	return WASI::createProcessWithFeatureSpec(compartment,
 											  ::std::move(inArgs),
 											  ::std::move(inEnvs),

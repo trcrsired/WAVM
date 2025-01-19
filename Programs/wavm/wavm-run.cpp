@@ -397,7 +397,8 @@ struct State
 		while(*nextArg) { runArgs.push_back(*nextArg++); };
 
 		// Check that the requested features are supported by the host CPU.
-		switch(LLVMJIT::validateTargetWithFeatureSpecUpdate(LLVMJIT::getHostTargetSpec(), featureSpec))
+		switch(
+			LLVMJIT::validateTargetWithFeatureSpecUpdate(LLVMJIT::getHostTargetSpec(), featureSpec))
 		{
 		case LLVMJIT::TargetValidationResult::valid: break;
 
@@ -650,6 +651,10 @@ struct State
 			{
 				mtgstatus = ::WAVM::LLVMJIT::memtagStatus::armmte;
 			}
+			else if(irModule.featureSpec.memtagMteIrg || irModule.featureSpec.memtagMteSyncIrg)
+			{
+				mtgstatus = ::WAVM::LLVMJIT::memtagStatus::armmteirg;
+			}
 			else if(irModule.featureSpec.memtagFull)
 			{
 				mtgstatus = ::WAVM::LLVMJIT::memtagStatus::full;
@@ -754,6 +759,10 @@ struct State
 		{
 			memtagstatus = ::WAVM::LLVMJIT::memtagStatus::armmte;
 		}
+		else if(irModule.featureSpec.memtagMteIrg || irModule.featureSpec.memtagMteSyncIrg)
+		{
+			memtagstatus = ::WAVM::LLVMJIT::memtagStatus::armmteirg;
+		}
 		else if(irModule.featureSpec.memtagFull)
 		{
 			memtagstatus = ::WAVM::LLVMJIT::memtagStatus::full;
@@ -804,31 +813,37 @@ struct State
 		std::vector<U8> fileBytes;
 		if(!loadFile(filename, fileBytes)) { return EXIT_FAILURE; }
 
-	/* check if MTE is present */
-	if(featureSpec.memtagMte || featureSpec.memtagMteSync)
-	{
-#if defined(PROT_MTE)
-		unsigned long hwcap2{getauxval(AT_HWCAP2)};
-		if(hwcap2 & HWCAP2_MTE)
+		/* check if MTE is present */
+		if(featureSpec.memtagMte || featureSpec.memtagMteSync || featureSpec.memtagMteSync
+		   || featureSpec.memtagMteSyncIrg)
 		{
-			auto syncflag{PR_MTE_TCF_ASYNC};
-			if(featureSpec.memtagMteSync) { syncflag = PR_MTE_TCF_SYNC; }
-			if(!prctl(PR_SET_TAGGED_ADDR_CTRL,
-					  PR_TAGGED_ADDR_ENABLE | syncflag | (0xfffe << PR_MTE_TAG_SHIFT),
-					  0,
-					  0,
-					  0))
+#if defined(PROT_MTE)
+			unsigned long hwcap2{getauxval(AT_HWCAP2)};
+			if(hwcap2 & HWCAP2_MTE)
 			{
-				goto mte_enabled_next;
+				auto syncflag{PR_MTE_TCF_ASYNC};
+				if(featureSpec.memtagMteSync || featureSpec.memtagMteSyncIrg)
+				{
+					syncflag = PR_MTE_TCF_SYNC;
+				}
+				if(!prctl(PR_SET_TAGGED_ADDR_CTRL,
+						  PR_TAGGED_ADDR_ENABLE | syncflag | (0xfffe << PR_MTE_TAG_SHIFT),
+						  0,
+						  0,
+						  0))
+				{
+					goto mte_enabled_next;
+				}
 			}
-		}
-		// mte disabled
+			// mte disabled
 #endif
-		featureSpec.memtagMteSync = false;
-		featureSpec.memtagMte = false;
-		featureSpec.memtag = true;
-	[[maybe_unused]] mte_enabled_next:;
-	}
+			featureSpec.memtagMteSyncIrg = false;
+			featureSpec.memtagMteIrg = false;
+			featureSpec.memtagMteSync = false;
+			featureSpec.memtagMte = false;
+			featureSpec.memtag = true;
+		[[maybe_unused]] mte_enabled_next:;
+		}
 
 		// Load the module from the byte array
 		Runtime::ModuleRef module_ = nullptr;
