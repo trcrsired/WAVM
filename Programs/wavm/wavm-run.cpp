@@ -814,7 +814,7 @@ struct State
 		if(!loadFile(filename, fileBytes)) { return EXIT_FAILURE; }
 
 		/* check if MTE is present */
-		if(featureSpec.memtagMte || featureSpec.memtagMteSync || featureSpec.memtagMteSync
+		if(featureSpec.memtagMte || featureSpec.memtagMteSync || featureSpec.memtagMteIrg
 		   || featureSpec.memtagMteSyncIrg)
 		{
 #if defined(PROT_MTE)
