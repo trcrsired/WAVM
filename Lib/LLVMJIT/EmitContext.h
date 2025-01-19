@@ -146,21 +146,24 @@ namespace WAVM { namespace LLVMJIT {
 									  memoryInfo.endAddressVariable);
 
 				if(ismemtagged == ::WAVM::LLVMJIT::memtagStatus::basic
-				   || ismemtagged == ::WAVM::LLVMJIT::memtagStatus::full)
+				   || ismemtagged == ::WAVM::LLVMJIT::memtagStatus::full
+				   || ismemtagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 				{
-					::llvm::Value* memoryTagPointerBaseOffset = ::llvm::ConstantExpr::getAdd(
-						memoryOffset,
-						emitLiteralIptr(offsetof(Runtime::MemoryRuntimeData, memtagBase),
-										memoryOffset->getType()));
-					irBuilder.CreateStore(
-						loadFromUntypedPointer(
-							::WAVM::LLVMJIT::wavmCreateInBoundsGEP(irBuilder,
-																   llvmContext.i8Type,
-																   compartmentAddress,
-																   {memoryTagPointerBaseOffset}),
-							memoryOffset->getType()),
-						memoryInfo.memtagBasePointerVariable);
-
+					if(ismemtagged != ::WAVM::LLVMJIT::memtagStatus::armmte)
+					{
+						::llvm::Value* memoryTagPointerBaseOffset = ::llvm::ConstantExpr::getAdd(
+							memoryOffset,
+							emitLiteralIptr(offsetof(Runtime::MemoryRuntimeData, memtagBase),
+											memoryOffset->getType()));
+						irBuilder.CreateStore(
+							loadFromUntypedPointer(::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
+													   irBuilder,
+													   llvmContext.i8Type,
+													   compartmentAddress,
+													   {memoryTagPointerBaseOffset}),
+												   memoryOffset->getType()),
+							memoryInfo.memtagBasePointerVariable);
+					}
 					::llvm::Value* memtagRandomBufferOffset = ::llvm::ConstantExpr::getAdd(
 						memoryOffset,
 						emitLiteralIptr(offsetof(Runtime::MemoryRuntimeData, memtagRandomBuffer),
