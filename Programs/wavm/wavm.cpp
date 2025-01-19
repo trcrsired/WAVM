@@ -58,7 +58,7 @@ static const char* getCommandListHelpText()
 
 std::string getFeatureListHelpText()
 {
-	char buffer[2048];
+	char buffer[4096];
 	char* bufferNext = buffer;
 
 	auto formatFeature
