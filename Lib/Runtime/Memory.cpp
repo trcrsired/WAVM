@@ -165,7 +165,8 @@ Memory* Runtime::createMemory(Compartment* compartment,
 		runtimeData.memtagBase = memory->baseAddressTags;
 		memoryuptr->memtagstatus = isMemTagged;
 		if(isMemTagged == ::WAVM::LLVMJIT::memtagStatus::basic
-		   || isMemTagged == ::WAVM::LLVMJIT::memtagStatus::full)
+		   || isMemTagged == ::WAVM::LLVMJIT::memtagStatus::full
+		   || isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
 		{
 			auto memtagrdbf{memory->memtagRandomBuffer};
 			runtimeData.memtagRandomBuffer = {memtagrdbf.Base, memtagrdbf.End, memtagrdbf.End};
