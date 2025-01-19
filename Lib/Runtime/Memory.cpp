@@ -506,9 +506,9 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 				goto endtagnullbyte;
 			}
 		}
-		if(memtagRandomBuffer.Base)
+		auto randombuffer{memory->memtagRandomBuffer};
+		if(randombuffer.Base)
 		{
-			auto randombuffer{memory->memtagRandomBuffer};
 			if(randombuffer.Base != randombuffer.End)
 			{
 				auto ch{randombuffer.End[-1]};
