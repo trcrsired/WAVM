@@ -495,6 +495,19 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 				}
 				return GrowResult::outOfMemory;
 			}
+		}
+		else if constexpr(platform_support_arm_mte)
+		{
+			if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmteirg)
+			{
+#if defined(__aarch64__) && ((!defined(_MSC_VER) || defined(__clang__)) || defined(__GNUC__))
+				wavm_arm_mte_stg(wavm_arm_mte_irg(memory->baseAddress, 0x1));
+#endif
+				goto endtagnullbyte;
+			}
+		}
+		if(memtagRandomBuffer.Base)
+		{
 			auto randombuffer{memory->memtagRandomBuffer};
 			if(randombuffer.Base != randombuffer.End)
 			{
@@ -510,16 +523,7 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 				*baseAddressTags = ch;
 			}
 		}
-		else if constexpr(platform_support_arm_mte)
-		{
-			if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmte
-			   || memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmteirg)
-			{
-#if defined(__aarch64__) && ((!defined(_MSC_VER) || defined(__clang__)) || defined(__GNUC__))
-				wavm_arm_mte_stg(wavm_arm_mte_irg(memory->baseAddress, 0x1));
-#endif
-			}
-		}
+	endtagnullbyte:;
 		Platform::registerVirtualAllocation(grownpages);
 
 		const Uptr newNumPages = oldNumPages + numPagesToGrow;
