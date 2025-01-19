@@ -498,34 +498,13 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 		}
 		else if constexpr(platform_support_arm_mte)
 		{
-			if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::armmteirg)
+			if(::WAVM::LLVMJIT::is_memtagstatus_armmte(memory->memtagstatus))
 			{
 #if defined(__aarch64__) && ((!defined(_MSC_VER) || defined(__clang__)) || defined(__GNUC__))
 				wavm_arm_mte_stg(wavm_arm_mte_irg(memory->baseAddress, 0x1));
 #endif
-				goto endtagnullbyte;
 			}
 		}
-		{
-			auto randombuffer{memory->memtagRandomBuffer};
-			if(randombuffer.Base)
-			{
-				if(randombuffer.Base != randombuffer.End)
-				{
-					auto ch{randombuffer.End[-1]};
-					if(ch == 0) // ensure ch is never a 0
-					{
-						if(memory->indexType == IR::IndexType::i32)
-						{
-							ch = ::WAVM::IR::memtag32constants::nullptrtag;
-						}
-						else { ch = ::WAVM::IR::memtag64constants::nullptrtag; }
-					}
-					*baseAddressTags = ch;
-				}
-			}
-		}
-	endtagnullbyte:;
 		Platform::registerVirtualAllocation(grownpages);
 
 		const Uptr newNumPages = oldNumPages + numPagesToGrow;
