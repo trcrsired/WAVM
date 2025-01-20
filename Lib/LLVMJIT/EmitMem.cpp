@@ -1080,7 +1080,7 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 	if(isMemTaggedEnabled(functionContext))
 	{
 		llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
-		if(::WAVM::LLVMJIT::is_memtagstatus_armmte(functionContext.isMemTagged))
+		if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmteirg)
 		{
 			auto basepointeraddressResult = coerceAddressToPointerWithBasePointer(
 				functionContext,
