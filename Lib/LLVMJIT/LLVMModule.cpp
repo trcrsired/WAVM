@@ -841,7 +841,11 @@ bool LLVMJIT::getInstructionSourceByAddress(Uptr address, InstructionSource& out
 #else
 			llvm::DILineInfoSpecifier::FileLineInfoKind::Default,
 #endif
-			llvm::DINameKind::None));
+			llvm::DINameKind::None)
+#if LLVM_VERSION_MAJOR >= 21
+			.value_or(::llvm::DILineInfo())
+#endif
+	);
 
 	outSource.instructionIndex = Uptr(lineInfo.Line);
 	return true;
