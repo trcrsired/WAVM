@@ -817,19 +817,21 @@ bool LLVMJIT::getInstructionSourceByAddress(Uptr address, InstructionSource& out
 
 #if LAZY_PARSE_DWARF_LINE_INFO
 	Platform::Mutex::Lock dwarfContextLock(jitModule->dwarfContextMutex);
-	llvm::DILineInfo lineInfo = jitModule->dwarfContext->getLineInfoForAddress(
-		llvm::object::SectionedAddress{address, llvm::object::SectionedAddress::UndefSection},
-		llvm::DILineInfoSpecifier(
+	llvm::DILineInfo lineInfo = jitModule->dwarfContext
+									->getLineInfoForAddress(
+										llvm::object::SectionedAddress{
+											address, llvm::object::SectionedAddress::UndefSection},
+										llvm::DILineInfoSpecifier(
 #if LLVM_VERSION_MAJOR >= 11
-			llvm::DILineInfoSpecifier::FileLineInfoKind::RawValue,
+											llvm::DILineInfoSpecifier::FileLineInfoKind::RawValue,
 #else
-			llvm::DILineInfoSpecifier::FileLineInfoKind::Default,
+											llvm::DILineInfoSpecifier::FileLineInfoKind::Default,
 #endif
-			llvm::DINameKind::None)
+											llvm::DINameKind::None))
 #if LLVM_VERSION_MAJOR >= 21
-			.value_or(::llvm::DILineInfo())
+									.value_or(::llvm::DILineInfo())
 #endif
-	);
+		;
 
 	outSource.instructionIndex = Uptr(lineInfo.Line);
 	return true;
