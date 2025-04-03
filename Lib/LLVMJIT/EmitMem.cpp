@@ -115,7 +115,7 @@ static void createconditionaltrap(EmitFunctionContext& functionContext, ::llvm::
 		irBuilder.CreateCondBr(cmpres, trapBlock, normalBlock);
 		// irBuilder.CreateBr(trapBlock);
 		irBuilder.SetInsertPoint(trapBlock);
-		irBuilder.CreateIntrinsic(::llvm::Intrinsic::trap, {}, {});
+		irBuilder.CreateIntrinsic(::llvm::Intrinsic::trap, {});
 		irBuilder.CreateUnreachable();
 		// irBuilder.CreateBr(normalBlock);
 		irBuilder.SetInsertPoint(normalBlock);
