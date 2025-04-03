@@ -87,7 +87,7 @@ static void createconditionaltrapcond(EmitFunctionContext& functionContext, ::ll
 	// irBuilder.CreateBr(trapBlock);
 	irBuilder.SetInsertPoint(trapBlock);
 	foomemorytagdebugging(functionContext,addressrshift);
-	::llvm::CreateIntrinsic(::llvm::Intrinsic::trap, {}, {});
+	irBuilder.CreateIntrinsic(::llvm::Intrinsic::trap, {});
 	irBuilder.CreateUnreachable();
 	// irBuilder.CreateBr(normalBlock);
 	irBuilder.SetInsertPoint(normalBlock);
@@ -115,7 +115,7 @@ static void createconditionaltrap(EmitFunctionContext& functionContext, ::llvm::
 		irBuilder.CreateCondBr(cmpres, trapBlock, normalBlock);
 		// irBuilder.CreateBr(trapBlock);
 		irBuilder.SetInsertPoint(trapBlock);
-		::llvm::CreateIntrinsic(::llvm::Intrinsic::trap, {}, {});
+		irBuilder.CreateIntrinsic(::llvm::Intrinsic::trap, {}, {});
 		irBuilder.CreateUnreachable();
 		// irBuilder.CreateBr(normalBlock);
 		irBuilder.SetInsertPoint(normalBlock);
@@ -883,7 +883,7 @@ static inline void llvm_runtime_arm_mte_settag(EmitFunctionContext& functionCont
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
 	if(::llvm::isa<llvm::Constant>(taggedbytes))
 	{
-		::llvm::CreateIntrinsic(zeroing ? (::llvm::Intrinsic::aarch64_settag_zero)
+		irBuilder.CreateIntrinsic(zeroing ? (::llvm::Intrinsic::aarch64_settag_zero)
 										  : (::llvm::Intrinsic::aarch64_settag),
 								  {},
 								  {address, taggedbytes});
@@ -1098,7 +1098,7 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 			auto basepointer = basepointeraddressResult.memoryBasePointer;
 			if(mask || functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmteirg)
 			{
-				memaddress = ::llvm::CreateIntrinsic(
+				memaddress = irBuilder.CreateIntrinsic(
 					::llvm::Intrinsic::aarch64_irg,
 					{},
 					{memaddress,
@@ -1320,7 +1320,7 @@ void EmitFunctionContext::memtag_random(MemoryImm imm)
 		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmteirg)
 		{
 			memaddress = armmte32_to_64ptr_value(*this, imm.memoryIndex, memaddress);
-			memaddress = ::llvm::CreateIntrinsic(
+			memaddress = irBuilder.CreateIntrinsic(
 				::llvm::Intrinsic::aarch64_irg,
 				{},
 				{memaddress, ::llvm::ConstantInt::get(this->llvmContext.i64Type, 0)});
@@ -1345,7 +1345,7 @@ void EmitFunctionContext::memtag_randommask(MemoryImm imm) // Todo
 		{
 			memaddress = armmte32_to_64ptr_value(*this, imm.memoryIndex, memaddress);
 			memaddress
-				= ::llvm::CreateIntrinsic(::llvm::Intrinsic::aarch64_irg, {}, {memaddress, mask});
+				= irBuilder.CreateIntrinsic(::llvm::Intrinsic::aarch64_irg, {}, {memaddress, mask});
 			memaddress = armmte64_to_32_value(*this, imm.memoryIndex, memaddress);
 		}
 		else
@@ -1610,7 +1610,7 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 					imm.memoryIndex);
 				memaddress = basepointeraddressResult.bytePointer;
 				auto memoryBasePointer{basepointeraddressResult.memoryBasePointer};
-				memaddress = ::llvm::CreateIntrinsic(
+				memaddress = irBuilder.CreateIntrinsic(
 					::llvm::Intrinsic::aarch64_ldg, {}, {memaddress, memaddress});
 				memaddress = armmte_host_tag_address_to_sandbox_address(
 					*this, imm.memoryIndex, memaddress, memoryBasePointer);
