@@ -583,25 +583,38 @@ namespace {
 		llvm::Value* memoryBasePointer)
 	{
 		auto& irBuilder = functionContext.irBuilder;
-		const MemoryType& memoryType
-			= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
+		const MemoryType& memoryType =
+			functionContext.moduleContext.irModule.memories.getType(memoryIndex);
 
-		memaddress = irBuilder.CreatePtrToInt(memaddress, functionContext.llvmContext.i64Type);
-		memaddress = irBuilder.CreateSub(
-			memaddress,
-			irBuilder.CreatePtrToInt(memoryBasePointer, functionContext.llvmContext.i64Type));
+		// Convert both pointers to i64 integers and compute the linear offset.
+		auto memInt  = irBuilder.CreatePtrToInt(memaddress,       functionContext.llvmContext.i64Type);
+		auto baseInt = irBuilder.CreatePtrToInt(memoryBasePointer, functionContext.llvmContext.i64Type);
+		auto diff    = irBuilder.CreateSub(memInt, baseInt);
 
 		if(memoryType.indexType == IndexType::i32)
 		{
-			constexpr ::std::uint_least64_t hint_mask{::WAVM::IR::memtagarmmteconstants::hint_mask};
-			memaddress = irBuilder.CreateTrunc(
-				irBuilder.CreateAdd(irBuilder.CreateLShr(irBuilder.CreateAnd(memaddress, hint_mask),
-														 ::WAVM::IR::memtag32constants::shifter),
-									memaddress),
-				functionContext.llvmContext.i32Type);
+			// Extract the host tag (top-byte) as an index, and combine with the untagged low bits.
+			constexpr uint_least64_t hint_mask = ::WAVM::IR::memtagarmmteconstants::hint_mask;
+			constexpr uint_least64_t low_mask  = ::WAVM::IR::memtag32constants::mask;
+			constexpr uint32_t       shifter   = ::WAVM::IR::memtag32constants::shifter;
+
+			auto tagIndex64 = irBuilder.CreateLShr(irBuilder.CreateAnd(diff, hint_mask), shifter);
+			auto low64      = irBuilder.CreateAnd(diff, low_mask);
+			auto combined64 = irBuilder.CreateOr(
+				low64,
+				irBuilder.CreateShl(irBuilder.CreateTrunc(tagIndex64, functionContext.llvmContext.i32Type),
+									shifter));
+
+			return irBuilder.CreateTrunc(combined64, functionContext.llvmContext.i32Type);
 		}
-		return memaddress;
+		else
+		{
+			// For 64-bit memories, drop the top-byte tag bits to get sandbox offset.
+			auto cleaned64 = irBuilder.CreateAnd(diff, ::WAVM::IR::memtagarmmteconstants::pseudomask);
+			return cleaned64; // i64
+		}
 	}
+
 
 }
 
