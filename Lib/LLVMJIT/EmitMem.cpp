@@ -583,38 +583,44 @@ namespace {
 		llvm::Value* memoryBasePointer)
 	{
 		auto& irBuilder = functionContext.irBuilder;
-		const MemoryType& memoryType =
-			functionContext.moduleContext.irModule.memories.getType(memoryIndex);
+		auto& C = functionContext.llvmContext;
+		const MemoryType& memoryType
+			= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
 
 		// Convert both pointers to i64 integers and compute the linear offset.
-		auto memInt  = irBuilder.CreatePtrToInt(memaddress,       functionContext.llvmContext.i64Type);
-		auto baseInt = irBuilder.CreatePtrToInt(memoryBasePointer, functionContext.llvmContext.i64Type);
-		auto diff    = irBuilder.CreateSub(memInt, baseInt);
+		auto memInt = irBuilder.CreatePtrToInt(memaddress, C.i64Type);
+		auto baseInt = irBuilder.CreatePtrToInt(memoryBasePointer, C.i64Type);
+		auto diff = irBuilder.CreateSub(memInt, baseInt); // i64
 
 		if(memoryType.indexType == IndexType::i32)
 		{
-			// Extract the host tag (top-byte) as an index, and combine with the untagged low bits.
-			constexpr uint_least64_t hint_mask = ::WAVM::IR::memtagarmmteconstants::hint_mask;
-			constexpr uint_least64_t low_mask  = ::WAVM::IR::memtag32constants::mask;
-			constexpr uint32_t       shifter   = ::WAVM::IR::memtag32constants::shifter;
+			// Constants as LLVM values (i64 width for operations on i64).
+			auto hintMask64
+				= llvm::ConstantInt::get(C.i64Type, ::WAVM::IR::memtagarmmteconstants::hint_mask);
+			auto lowMask64 = llvm::ConstantInt::get(C.i64Type, ::WAVM::IR::memtag32constants::mask);
+			auto shAmt64
+				= llvm::ConstantInt::get(C.i64Type, ::WAVM::IR::memtag32constants::shifter);
 
-			auto tagIndex64 = irBuilder.CreateLShr(irBuilder.CreateAnd(diff, hint_mask), shifter);
-			auto low64      = irBuilder.CreateAnd(diff, low_mask);
-			auto combined64 = irBuilder.CreateOr(
-				low64,
-				irBuilder.CreateShl(irBuilder.CreateTrunc(tagIndex64, functionContext.llvmContext.i32Type),
-									shifter));
+			// Extract tag index and low bits in i64.
+			auto tagIndex64
+				= irBuilder.CreateLShr(irBuilder.CreateAnd(diff, hintMask64), shAmt64); // i64
+			auto low64 = irBuilder.CreateAnd(diff, lowMask64);                          // i64
 
-			return irBuilder.CreateTrunc(combined64, functionContext.llvmContext.i32Type);
+			// Compose fields entirely in i64, then truncate to i32.
+			auto tagShift64 = irBuilder.CreateShl(tagIndex64, shAmt64); // i64
+			auto combined64 = irBuilder.CreateOr(low64, tagShift64);    // i64
+
+			return irBuilder.CreateTrunc(combined64, C.i32Type); // i32
 		}
 		else
 		{
 			// For 64-bit memories, drop the top-byte tag bits to get sandbox offset.
-			auto cleaned64 = irBuilder.CreateAnd(diff, ::WAVM::IR::memtagarmmteconstants::pseudomask);
-			return cleaned64; // i64
+			auto pseudoMask64
+				= llvm::ConstantInt::get(C.i64Type, ::WAVM::IR::memtagarmmteconstants::pseudomask);
+			auto cleaned64 = irBuilder.CreateAnd(diff, pseudoMask64); // i64
+			return cleaned64;
 		}
 	}
-
 
 }
 
