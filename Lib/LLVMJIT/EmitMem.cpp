@@ -257,7 +257,10 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 	{
 		numBytes = llvm::ConstantInt::get(address->getType(), knownNumBytes);
 	}
-	else { knownNumBytes = 0; }
+	else
+	{
+		knownNumBytes = 0;
+	}
 	const MemoryType& memoryType
 		= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
 	const bool is32bitMemoryOn64bitHost
@@ -740,9 +743,7 @@ void EmitFunctionContext::memory_fill(MemoryImm imm)
 }
 
 static inline bool isMemTaggedEnabled(EmitFunctionContext& functionContext)
-{
-	return functionContext.isMemTagged != ::WAVM::LLVMJIT::memtagStatus::none;
-}
+{ return functionContext.isMemTagged != ::WAVM::LLVMJIT::memtagStatus::none; }
 
 static inline ::llvm::Value* generateMemRandomTagByte(EmitFunctionContext& functionContext,
 													  Uptr memoryIndex)
@@ -836,9 +837,15 @@ static inline ::llvm::Value* UntagAddress(EmitFunctionContext& functionContext,
 		{
 			mask = ::WAVM::IR::memtagarmmteconstants::mask;
 		}
-		else { mask = ::WAVM::IR::memtag64constants::mask; }
+		else
+		{
+			mask = ::WAVM::IR::memtag64constants::mask;
+		}
 	}
-	else { mask = ::WAVM::IR::memtag32constants::mask; }
+	else
+	{
+		mask = ::WAVM::IR::memtag32constants::mask;
+	}
 	address = irBuilder.CreateAnd(address, mask);
 	return address;
 }
@@ -881,12 +888,21 @@ static inline void llvm_runtime_arm_mte_settag(EmitFunctionContext& functionCont
 											   ::llvm::Value* taggedbytes) noexcept
 {
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
+
+	// Ensure taggedbytes is i64, because LLVM intrinsics require i64
+	if(taggedbytes->getType()->isIntegerTy(32))
+	{
+		taggedbytes = irBuilder.CreateZExt(taggedbytes,
+										   ::llvm::Type::getInt64Ty(functionContext.llvmContext));
+		// or CreateSExt if you need sign extension, depending on semantics
+	}
+
 	if(::llvm::isa<llvm::Constant>(taggedbytes))
 	{
-		irBuilder.CreateIntrinsic(zeroing ? (::llvm::Intrinsic::aarch64_settag_zero)
-										  : (::llvm::Intrinsic::aarch64_settag),
-								  {},
-								  {address, taggedbytes});
+		irBuilder.CreateIntrinsic(
+			zeroing ? llvm::Intrinsic::aarch64_settag_zero : llvm::Intrinsic::aarch64_settag,
+			{},
+			{address, taggedbytes});
 	}
 	else
 	{
@@ -1029,11 +1045,20 @@ void EmitFunctionContext::memtag_tagbits(MemoryImm imm)
 			{
 				bits = ::WAVM::IR::memtagarmmteconstants::bits;
 			}
-			else { bits = ::WAVM::IR::memtag64constants::bits; }
+			else
+			{
+				bits = ::WAVM::IR::memtag64constants::bits;
+			}
 		}
-		else { bits = ::WAVM::IR::memtag32constants::bits; }
+		else
+		{
+			bits = ::WAVM::IR::memtag32constants::bits;
+		}
 	}
-	else { bits = 0; }
+	else
+	{
+		bits = 0;
+	}
 	push(::llvm::ConstantInt::get(memoryType.indexType == IndexType::i64
 									  ? this->llvmContext.i64Type
 									  : this->llvmContext.i32Type,
@@ -1052,9 +1077,15 @@ void EmitFunctionContext::memtag_startbit(MemoryImm imm)
 			{
 				shifter = ::WAVM::IR::memtagarmmteconstants::shifter;
 			}
-			else { shifter = ::WAVM::IR::memtag64constants::shifter; }
+			else
+			{
+				shifter = ::WAVM::IR::memtag64constants::shifter;
+			}
 		}
-		else { shifter = ::WAVM::IR::memtag32constants::shifter; }
+		else
+		{
+			shifter = ::WAVM::IR::memtag32constants::shifter;
+		}
 	}
 	else
 	{
@@ -1062,7 +1093,10 @@ void EmitFunctionContext::memtag_startbit(MemoryImm imm)
 		{
 			shifter = ::std::numeric_limits<::std::uint_least64_t>::digits;
 		}
-		else { shifter = ::std::numeric_limits<::std::uint_least32_t>::digits; }
+		else
+		{
+			shifter = ::std::numeric_limits<::std::uint_least32_t>::digits;
+		}
 	}
 	push(::llvm::ConstantInt::get(memoryType.indexType == IndexType::i64
 									  ? this->llvmContext.i64Type
@@ -1309,7 +1343,10 @@ void EmitFunctionContext::memtag_storez(MemoryImm imm)
 	{
 		StoreZTagIntoMem(*this, imm.memoryIndex, memaddress, taggedbytes, nullptr);
 	}
-	else { memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes); }
+	else
+	{
+		memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes);
+	}
 }
 
 void EmitFunctionContext::memtag_random(MemoryImm imm)
@@ -1528,7 +1565,10 @@ void EmitFunctionContext::memtag_hintstorez(MemoryImm imm)
 		}
 		StoreZTagIntoMem(*this, memoryIndex, untaggedaddr, taggedbytes, color, true);
 	}
-	else { memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes); }
+	else
+	{
+		memtag_zero_memory(*this, imm.memoryIndex, memaddress, taggedbytes);
+	}
 	push(memaddress);
 }
 
@@ -1544,7 +1584,10 @@ void EmitFunctionContext::memtag_sub(MemoryImm imm)
 			= this->moduleContext.irModule.memories.getType(imm.memoryIndex);
 		uint_least64_t mask;
 		if(memoryType.indexType == IndexType::i64) { mask = ::WAVM::IR::memtag64constants::mask; }
-		else { mask = ::WAVM::IR::memtag32constants::mask; }
+		else
+		{
+			mask = ::WAVM::IR::memtag32constants::mask;
+		}
 		ptra = irBuilder.CreateAnd(ptra, mask);
 		ptrb = irBuilder.CreateAnd(ptrb, mask);
 	}
@@ -1798,14 +1841,10 @@ static void emitStoreLane(EmitFunctionContext& functionContext,
 
 #define EMIT_LOAD_LANE_OP(name, llvmVectorType, naturalAlignmentLog2, numLanes)                    \
 	void EmitFunctionContext::name(LoadOrStoreLaneImm<naturalAlignmentLog2, numLanes> imm)         \
-	{                                                                                              \
-		emitLoadLane(*this, llvmVectorType, imm, imm.laneIndex, U64(1) << naturalAlignmentLog2);   \
-	}
+	{ emitLoadLane(*this, llvmVectorType, imm, imm.laneIndex, U64(1) << naturalAlignmentLog2); }
 #define EMIT_STORE_LANE_OP(name, llvmVectorType, naturalAlignmentLog2, numLanes)                   \
 	void EmitFunctionContext::name(LoadOrStoreLaneImm<naturalAlignmentLog2, numLanes> imm)         \
-	{                                                                                              \
-		emitStoreLane(*this, llvmVectorType, imm, imm.laneIndex, U64(1) << naturalAlignmentLog2);  \
-	}
+	{ emitStoreLane(*this, llvmVectorType, imm, imm.laneIndex, U64(1) << naturalAlignmentLog2); }
 EMIT_LOAD_LANE_OP(v128_load8_lane, llvmContext.i8x16Type, 0, 16)
 EMIT_LOAD_LANE_OP(v128_load16_lane, llvmContext.i16x8Type, 1, 8)
 EMIT_LOAD_LANE_OP(v128_load32_lane, llvmContext.i32x4Type, 2, 4)
