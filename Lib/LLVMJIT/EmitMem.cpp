@@ -892,8 +892,7 @@ static inline void llvm_runtime_arm_mte_settag(EmitFunctionContext& functionCont
 	// Ensure taggedbytes is i64, because LLVM intrinsics require i64
 	if(taggedbytes->getType()->isIntegerTy(32))
 	{
-		taggedbytes = irBuilder.CreateZExt(taggedbytes,
-										   ::llvm::Type::getInt64Ty(functionContext.llvmContext));
+		taggedbytes = irBuilder.CreateZExt(taggedbytes, functionContext.llvmContext.i64Type);
 		// or CreateSExt if you need sign extension, depending on semantics
 	}
 
@@ -1143,7 +1142,7 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 			{
 				auto color = generateMemRandomTagByte(functionContext, memoryIndex);
 				memaddress = irBuilder.CreateOr(
-					memaddress,
+					irBuilder.CreatePtrToInt(memaddress, functionContext.llvmContext.i64Type),
 					irBuilder.CreateLShr(
 						irBuilder.CreateZExt(color, functionContext.llvmContext.i64Type),
 						::WAVM::IR::memtagarmmteconstants::shifter));
