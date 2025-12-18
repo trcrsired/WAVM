@@ -1141,11 +1141,11 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 			else
 			{
 				auto color = generateMemRandomTagByte(functionContext, memoryIndex);
-				memaddress = irBuilder.CreateOr(
+				memaddress = irBuilder.CreateIntToPtr(irBuilder.CreateOr(
 					irBuilder.CreatePtrToInt(memaddress, functionContext.llvmContext.i64Type),
 					irBuilder.CreateLShr(
 						irBuilder.CreateZExt(color, functionContext.llvmContext.i64Type),
-						::WAVM::IR::memtagarmmteconstants::shifter));
+						::WAVM::IR::memtagarmmteconstants::shifter)));
 			}
 			llvm_runtime_arm_mte_settag(functionContext, zeroing, memaddress, taggedbytes);
 			memaddress = armmte_host_tag_address_to_sandbox_address(
