@@ -587,7 +587,9 @@ namespace {
 			= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
 
 		memaddress = irBuilder.CreatePtrToInt(memaddress, functionContext.llvmContext.i64Type);
-		memaddress = irBuilder.CreateSub(memaddress, memoryBasePointer);
+		memaddress = irBuilder.CreateSub(
+			memaddress,
+			irBuilder.CreatePtrToInt(memoryBasePointer, functionContext.llvmContext.i64Type));
 
 		if(memoryType.indexType == IndexType::i32)
 		{
