@@ -622,6 +622,7 @@ static U8* getValidatedMemoryOffsetRangeImpl(Memory* memory,
 	WAVM_ASSERT(memoryBase);
 	numBytes = branchlessMin(numBytes, memoryNumBytes);
 	Uptr diff{static_cast<Uptr>(memoryNumBytes - numBytes)};
+
 	return memoryBase + (boundsaddress < diff ? address : diff);
 }
 

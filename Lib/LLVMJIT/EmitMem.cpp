@@ -64,7 +64,7 @@ static llvm::Value* getMemoryNumBytes(EmitFunctionContext& functionContext, Uptr
 		emitLiteralIptr(IR::numBytesPerPage, functionContext.moduleContext.iptrType));
 }
 
-#if 0
+#if 1
 [[maybe_unused]]
 static inline void foomemorytagdebugging(EmitFunctionContext& functionContext,
 										 ::llvm::Value* memaddress)
@@ -1695,6 +1695,7 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 					::llvm::Intrinsic::aarch64_ldg, {}, {memaddress, memaddress});
 				memaddress = armmte_host_tag_address_to_sandbox_address(
 					*this, imm.memoryIndex, memaddress, memoryBasePointer);
+				foomemorytagdebugging(*this, memaddress);
 			}
 		}
 		else
