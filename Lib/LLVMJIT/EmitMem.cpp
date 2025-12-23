@@ -1693,6 +1693,7 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 				auto memoryBasePointer{basepointeraddressResult.memoryBasePointer};
 				memaddress = irBuilder.CreateIntrinsic(
 					::llvm::Intrinsic::aarch64_ldg, {}, {memaddress, memaddress});
+				foomemorytagdebugging(*this, memaddress);
 				memaddress = armmte_host_tag_address_to_sandbox_address(
 					*this, imm.memoryIndex, memaddress, memoryBasePointer);
 				foomemorytagdebugging(*this, memaddress);
