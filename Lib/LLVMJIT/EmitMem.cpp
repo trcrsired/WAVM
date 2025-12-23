@@ -584,42 +584,58 @@ namespace {
 	{
 		auto& irBuilder = functionContext.irBuilder;
 		auto& C = functionContext.llvmContext;
+
 		const MemoryType& memoryType
 			= functionContext.moduleContext.irModule.memories.getType(memoryIndex);
 
-		// Convert both pointers to i64 integers and compute the linear offset.
-		auto memInt = irBuilder.CreatePtrToInt(memaddress, C.i64Type);
-		auto baseInt = irBuilder.CreatePtrToInt(memoryBasePointer, C.i64Type);
-		auto diff = irBuilder.CreateSub(memInt, baseInt); // i64
+		// Convert host pointers to i64 integers and compute the linear offset.
+		llvm::Value* memInt = irBuilder.CreatePtrToInt(memaddress, C.i64Type);
+		llvm::Value* baseInt = irBuilder.CreatePtrToInt(memoryBasePointer, C.i64Type);
+		llvm::Value* diff = irBuilder.CreateSub(memInt, baseInt); // i64
 
 		if(memoryType.indexType == IndexType::i32)
 		{
-			// Constants as LLVM values (i64 width for operations on i64).
-			auto hintMask64
-				= llvm::ConstantInt::get(C.i64Type, ::WAVM::IR::memtagarmmteconstants::hint_mask);
-			auto lowMask64 = llvm::ConstantInt::get(C.i64Type, ::WAVM::IR::memtag32constants::mask);
-			auto shAmt64
+			// wasm32-on-ARM-MTE mapping:
+			//
+			// - ARM MTE tag lives in bits [56:59] of the host pointer.
+			// - wasm32 virtual tag lives in bits [28:31] of the 32-bit sandbox address.
+			//
+			// We compute:
+			//   tag   = (diff >> 56) & 0xF
+			//   low   = diff & 0x0FFFFFFF
+			//   wasm  = low | (tag << 28)
+			// and then truncate to i32.
+
+			// Extract ARM MTE tag (bits 56–59).
+			auto armTagShift
+				= llvm::ConstantInt::get(C.i64Type, ::WAVM::IR::memtagarmmteconstants::shifter);
+			auto armTagMask
+				= llvm::ConstantInt::get(C.i64Type, ::WAVM::IR::memtagarmmteconstants::index_mask);
+
+			llvm::Value* tag = irBuilder.CreateAnd(irBuilder.CreateLShr(diff, armTagShift),
+												   armTagMask); // i64, 0..15
+
+			// Shift tag into wasm32 position (28–31).
+			auto wasmTagShift
 				= llvm::ConstantInt::get(C.i64Type, ::WAVM::IR::memtag32constants::shifter);
+			llvm::Value* wasmTagField = irBuilder.CreateShl(tag, wasmTagShift); // i64
 
-			// Extract tag index and low bits in i64.
-			auto tagIndex64
-				= irBuilder.CreateLShr(irBuilder.CreateAnd(diff, hintMask64), shAmt64); // i64
-			auto low64 = irBuilder.CreateAnd(diff, lowMask64);                          // i64
+			// Low 28 bits of the linear offset.
+			auto lowMask = llvm::ConstantInt::get(C.i64Type, ::WAVM::IR::memtag32constants::mask);
+			llvm::Value* low = irBuilder.CreateAnd(diff, lowMask); // i64
 
-			// Compose fields entirely in i64, then truncate to i32.
-			auto tagShift64 = irBuilder.CreateShl(tagIndex64, shAmt64); // i64
-			auto combined64 = irBuilder.CreateOr(low64, tagShift64);    // i64
+			// Combine low bits with re-encoded tag.
+			llvm::Value* combined = irBuilder.CreateOr(low, wasmTagField); // i64
 
-			return irBuilder.CreateTrunc(combined64, C.i32Type); // i32
+			return irBuilder.CreateTrunc(combined, C.i32Type); // i32 sandbox address
 		}
-		else
-		{
-			// For 64-bit memories, drop the top-byte tag bits to get sandbox offset.
-			auto pseudoMask64
-				= llvm::ConstantInt::get(C.i64Type, ::WAVM::IR::memtagarmmteconstants::pseudomask);
-			auto cleaned64 = irBuilder.CreateAnd(diff, pseudoMask64); // i64
-			return cleaned64;
-		}
+
+		// 64-bit memories:
+		//
+		// ARM MTE uses top-byte-ignore (TBI). When computing (ptr - base),
+		// the tag bits cancel out: (addr + tag<<56) - (base + tag<<56) = addr - base.
+		// We must NOT mask off the top byte here.
+		return diff; // i64 sandbox offset
 	}
 
 }
