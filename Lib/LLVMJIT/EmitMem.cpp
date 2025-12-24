@@ -64,11 +64,12 @@ static llvm::Value* getMemoryNumBytes(EmitFunctionContext& functionContext, Uptr
 		emitLiteralIptr(IR::numBytesPerPage, functionContext.moduleContext.iptrType));
 }
 
-#if 1
+#if 0
 [[maybe_unused]]
 static inline void debugging_ir_memaddress(
     EmitFunctionContext& functionContext,
-    llvm::Value* memaddress)
+    llvm::Value* memaddress,
+    char const* message="")
 {
     auto& irBuilder = functionContext.irBuilder;
     auto& C = functionContext.llvmContext;
@@ -111,9 +112,9 @@ static inline void debugging_ir_memaddress(
         "wavmdebuggingprint",
         FunctionType(
             TypeTuple{ValueType::i64},
-            TypeTuple{ValueType::i64},
+            TypeTuple{ValueType::i64, ValueType::i64},
             IR::CallingConvention::intrinsic),
-        {asInt});
+        {asInt, ::llvm::ConstantInt::get(::llvm::Type::getInt64Ty(C),(std::uintptr_t)message)});
 }
 
 [[maybe_unused]]
@@ -1218,10 +1219,11 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 			else
 			{
 				auto color = generateMemRandomTagByte(functionContext, memoryIndex);
+
 				memaddress = irBuilder.CreateIntToPtr(
 					irBuilder.CreateOr(
 						irBuilder.CreatePtrToInt(memaddress, functionContext.llvmContext.i64Type),
-						irBuilder.CreateLShr(
+						irBuilder.CreateShl(
 							irBuilder.CreateZExt(color, functionContext.llvmContext.i64Type),
 							::WAVM::IR::memtagarmmteconstants::shifter)),
 					functionContext.llvmContext.i8PtrType);
