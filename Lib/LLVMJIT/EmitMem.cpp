@@ -104,9 +104,7 @@ static inline void debugging_ir_memaddress(
     else
     {
         // Defensive fallback: bitcast to i64-sized int
-        asInt = irBuilder.CreatePtrToInt(
-            irBuilder.CreateBitCast(memaddress, C.i64Type->getPointerTo()),
-            C.i64Type);
+        asInt = memaddress;
     }
 
     functionContext.emitRuntimeIntrinsic(
