@@ -229,6 +229,9 @@ namespace WAVM { namespace IR {
 	template<> constexpr ValueType inferValueType<U32>() { return ValueType::i32; }
 	template<> constexpr ValueType inferValueType<I64>() { return ValueType::i64; }
 	template<> constexpr ValueType inferValueType<U64>() { return ValueType::i64; }
+#if defined(__APPLE__) && __SIZEOF_POINTER__ == 8
+	template<> constexpr ValueType inferValueType<unsigned long>() { return ValueType::i64; }
+#endif
 	template<> constexpr ValueType inferValueType<F32>() { return ValueType::f32; }
 	template<> constexpr ValueType inferValueType<F64>() { return ValueType::f64; }
 	template<> constexpr ValueType inferValueType<Runtime::Object*>()
