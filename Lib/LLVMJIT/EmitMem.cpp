@@ -1437,10 +1437,13 @@ void EmitFunctionContext::memtag_random(MemoryImm imm)
 		if(this->isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmteirg)
 		{
 			memaddress = armmte32_to_64ptr_value(*this, imm.memoryIndex, memaddress);
-			memaddress = irBuilder.CreateIntrinsic(
-				::llvm::Intrinsic::aarch64_irg,
-				{},
-				{memaddress, ::llvm::ConstantInt::get(this->llvmContext.i64Type, 0)});
+			memaddress = irBuilder.CreatePtrToInt(
+				irBuilder.CreateIntrinsic(
+					::llvm::Intrinsic::aarch64_irg,
+					{},
+					{irBuilder.CreateIntToPtr(memaddress, this->llvmContext.i8PtrType),
+					 ::llvm::ConstantInt::get(this->llvmContext.i64Type, 0)}),
+				this->llvmContext.i64Type);
 			memaddress = armmte64_to_32_value(*this, imm.memoryIndex, memaddress);
 		}
 		else
@@ -1461,8 +1464,12 @@ void EmitFunctionContext::memtag_randommask(MemoryImm imm) // Todo
 		if(::WAVM::LLVMJIT::is_memtagstatus_armmte(this->isMemTagged))
 		{
 			memaddress = armmte32_to_64ptr_value(*this, imm.memoryIndex, memaddress);
-			memaddress
-				= irBuilder.CreateIntrinsic(::llvm::Intrinsic::aarch64_irg, {}, {memaddress, mask});
+			memaddress = irBuilder.CreatePtrToInt(
+				irBuilder.CreateIntrinsic(
+					::llvm::Intrinsic::aarch64_irg,
+					{},
+					{irBuilder.CreateIntToPtr(memaddress, this->llvmContext.i8PtrType), mask}),
+				this->llvmContext.i64Type);
 			memaddress = armmte64_to_32_value(*this, imm.memoryIndex, memaddress);
 		}
 		else
