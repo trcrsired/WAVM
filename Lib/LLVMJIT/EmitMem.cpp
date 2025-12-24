@@ -66,16 +66,59 @@ static llvm::Value* getMemoryNumBytes(EmitFunctionContext& functionContext, Uptr
 
 #if 1
 [[maybe_unused]]
-static inline void foomemorytagdebugging(EmitFunctionContext& functionContext,
-										 ::llvm::Value* memaddress)
+static inline void debugging_ir_memaddress(
+    EmitFunctionContext& functionContext,
+    llvm::Value* memaddress)
 {
-	functionContext.emitRuntimeIntrinsic(
-		"wavmdebuggingprint",
-		FunctionType(
-			TypeTuple{ValueType::i64}, TypeTuple{ValueType::i64}, IR::CallingConvention::intrinsic),
-		{functionContext.irBuilder.CreateZExt(memaddress, functionContext.llvmContext.i64Type)});
+    auto& irBuilder = functionContext.irBuilder;
+    auto& C = functionContext.llvmContext;
+
+    llvm::Type* ty = memaddress->getType();
+    llvm::Value* asInt = nullptr;
+
+    if (ty->isPointerTy())
+    {
+        // ptr → i64
+        asInt = irBuilder.CreatePtrToInt(memaddress, C.i64Type);
+    }
+    else if (ty->isIntegerTy())
+    {
+        unsigned bits = ty->getIntegerBitWidth();
+
+        if (bits < 64)
+        {
+            // intN → int64
+            asInt = irBuilder.CreateZExt(memaddress, C.i64Type);
+        }
+        else if (bits == 64)
+        {
+            // already i64
+            asInt = memaddress;
+        }
+        else
+        {
+            // Should never happen in WAVM, but handle gracefully
+            asInt = irBuilder.CreateTrunc(memaddress, C.i64Type);
+        }
+    }
+    else
+    {
+        // Defensive fallback: bitcast to i64-sized int
+        asInt = irBuilder.CreatePtrToInt(
+            irBuilder.CreateBitCast(memaddress, C.i64Type->getPointerTo()),
+            C.i64Type);
+    }
+
+    functionContext.emitRuntimeIntrinsic(
+        "wavmdebuggingprint",
+        FunctionType(
+            TypeTuple{ValueType::i64},
+            TypeTuple{ValueType::i64},
+            IR::CallingConvention::intrinsic),
+        {asInt});
 }
 
+[[maybe_unused]]
 static void createconditionaltrapcond(EmitFunctionContext& functionContext, ::llvm::Value* cmpres, ::llvm::Value* addressrshift)
 {
 	llvm::IRBuilder<>& irBuilder = functionContext.irBuilder;
@@ -86,7 +129,6 @@ static void createconditionaltrapcond(EmitFunctionContext& functionContext, ::ll
 	irBuilder.CreateCondBr(cmpres, trapBlock, normalBlock);
 	// irBuilder.CreateBr(trapBlock);
 	irBuilder.SetInsertPoint(trapBlock);
-	foomemorytagdebugging(functionContext,addressrshift);
 	irBuilder.CreateIntrinsic(::llvm::Intrinsic::trap, {});
 	irBuilder.CreateUnreachable();
 	// irBuilder.CreateBr(normalBlock);
@@ -1693,10 +1735,8 @@ void EmitFunctionContext::memtag_load(MemoryImm imm)
 				auto memoryBasePointer{basepointeraddressResult.memoryBasePointer};
 				memaddress = irBuilder.CreateIntrinsic(
 					::llvm::Intrinsic::aarch64_ldg, {}, {memaddress, memaddress});
-				foomemorytagdebugging(*this, memaddress);
 				memaddress = armmte_host_tag_address_to_sandbox_address(
 					*this, imm.memoryIndex, memaddress, memoryBasePointer);
-				foomemorytagdebugging(*this, memaddress);
 			}
 		}
 		else
