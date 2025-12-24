@@ -31,7 +31,7 @@ void Platform::RWMutex::lock(LockShareability shareability)
 	{
 		WAVM_ERROR_UNLESS(!pthread_rwlock_wrlock((pthread_rwlock_t*)&lockData));
 #if WAVM_ENABLE_ASSERTS
-		exclusiveLockingThreadId.store(static_cast<Uptr>(pthread_self()),
+		exclusiveLockingThreadId.store((Uptr)(pthread_self()),
 									   std::memory_order_relaxed);
 #endif
 	}
@@ -53,7 +53,7 @@ void Platform::RWMutex::unlock(LockShareability shareability)
 #if WAVM_ENABLE_ASSERTS
 bool Platform::RWMutex::isExclusivelyLockedByCurrentThread()
 {
-	return static_cast<pthread_t>(exclusiveLockingThreadId.load(std::memory_order_relaxed))
+	return (Uptr)(exclusiveLockingThreadId.load(std::memory_order_relaxed))
 		   == pthread_self();
 }
 #endif
