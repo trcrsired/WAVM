@@ -95,6 +95,7 @@ namespace LLVMRuntimeSymbols {
 #else
 #if defined(__APPLE__)
 		{"__bzero", (void*)&__bzero},
+		{"bzero", (void*)&__bzero},
 #endif
 #if defined(__i386__) || defined(__x86_64__)
 		{"wavm_probe_stack", (void*)&wavm_probe_stack},
@@ -319,6 +320,4 @@ TargetValidationResult LLVMJIT::validateTargetWithFeatureSpecUpdate(const Target
 }
 
 Version LLVMJIT::getVersion()
-{
-	return Version{LLVM_VERSION_MAJOR, LLVM_VERSION_MINOR, LLVM_VERSION_PATCH, 5};
-}
+{ return Version{LLVM_VERSION_MAJOR, LLVM_VERSION_MINOR, LLVM_VERSION_PATCH, 5}; }

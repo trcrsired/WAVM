@@ -171,7 +171,10 @@ Memory* Runtime::createMemory(Compartment* compartment,
 			auto memtagrdbf{memory->memtagRandomBuffer};
 			runtimeData.memtagRandomBuffer = {memtagrdbf.Base, memtagrdbf.End, memtagrdbf.End};
 		}
-		else { runtimeData.memtagRandomBuffer = {}; }
+		else
+		{
+			runtimeData.memtagRandomBuffer = {};
+		}
 		runtimeData.numPages.store(memory->numPages.load(std::memory_order_acquire),
 								   std::memory_order_release);
 	}
@@ -222,7 +225,10 @@ Memory* Runtime::cloneMemory(Memory* memory, Compartment* newCompartment)
 		{
 			runtimeData.memtagRandomBuffer = {memtagrdbf.Base, memtagrdbf.End, memtagrdbf.End};
 		}
-		else { runtimeData.memtagRandomBuffer = {}; }
+		else
+		{
+			runtimeData.memtagRandomBuffer = {};
+		}
 	}
 
 	return newMemory;
@@ -308,9 +314,7 @@ bool Runtime::isAddressOwnedByMemory(U8* address, Memory*& outMemory, Uptr& outM
 }
 
 Uptr Runtime::getMemoryNumPages(const Memory* memory)
-{
-	return memory->numPages.load(std::memory_order_seq_cst);
-}
+{ return memory->numPages.load(std::memory_order_seq_cst); }
 IR::MemoryType Runtime::getMemoryType(const Memory* memory)
 {
 	return IR::MemoryType{memory->isShared,
@@ -424,6 +428,39 @@ namespace {
 }
 #endif
 
+// Compute and align the commit/decommit range for shadow/tag memory.
+// Converts WASM pages → tag pages, computes raw byte ranges, and aligns
+// both offset and size to platform page boundaries.
+struct CommitAlignResult
+{
+	U8* ptr;
+	U64 pages; // platform pages
+};
+
+inline CommitAlignResult alignForCommitTag(U8* base, U64 oldNumPages, U64 numPagesToGrow)
+{
+	const U64 pageSize = Platform::getBytesPerPage();          // 4096 or 16384
+	const U64 tagBytesPerWasmPage = IR::numBytesTaggedPerPage; // 4096
+
+	// Raw byte offset and size in tag memory
+	U64 rawOffset = oldNumPages * tagBytesPerWasmPage;
+	U64 rawSize = numPagesToGrow * tagBytesPerWasmPage;
+
+	// Align offset down
+	U64 alignedOffset = rawOffset & ~(pageSize - 1);
+
+	// Extra bytes pulled in by aligning down
+	U64 extraBytes = rawOffset - alignedOffset;
+
+	// Total bytes to commit
+	U64 totalBytes = rawSize + extraBytes;
+
+	// Convert to platform pages
+	U64 pages = (totalBytes + pageSize - 1) / pageSize;
+
+	return {base + alignedOffset, pages};
+}
+
 GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOldNumPages)
 {
 	Uptr oldNumPages;
@@ -451,9 +488,15 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 											   >> ::WAVM::IR::memtag32constants::bits};
 				maxMemoryPages = maxmemtag32pages;
 			}
-			else { maxMemoryPages = IR::maxMemory32Pages; }
+			else
+			{
+				maxMemoryPages = IR::maxMemory32Pages;
+			}
 		}
-		else { maxMemoryPages = std::min(maxMemory64WASMPages, IR::maxMemory64Pages); }
+		else
+		{
+			maxMemoryPages = std::min(maxMemory64WASMPages, IR::maxMemory64Pages);
+		}
 		if(numPagesToGrow > memory->maxPages || oldNumPages > memory->maxPages - numPagesToGrow
 		   || numPagesToGrow > maxMemoryPages || oldNumPages > maxMemoryPages - numPagesToGrow)
 		{
@@ -483,12 +526,9 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 		}
 		if(baseAddressTags)
 		{
-			auto wasmlog2m4 = wasmlog2 - 4u;
-			auto grownpagesTagged = numPagesToGrow << wasmlog2m4;
-			if(!Platform::commitVirtualPages(
-				   baseAddressTags + oldNumPages * IR::numBytesTaggedPerPage,
-				   grownpagesTagged,
-				   flags))
+			auto [ptr, pages] = alignForCommitTag(
+				reinterpret_cast<U8*>(baseAddressTags), oldNumPages, numPagesToGrow);
+			if(!Platform::commitVirtualPages(ptr, pages, flags))
 			{
 				if(memory->resourceQuota)
 				{
@@ -496,6 +536,7 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 				}
 				return GrowResult::outOfMemory;
 			}
+
 			auto& randombuffer{memory->memtagRandomBuffer};
 			if(randombuffer.Base)
 			{
@@ -508,7 +549,10 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 						{
 							ch = ::WAVM::IR::memtag32constants::nullptrtag;
 						}
-						else { ch = ::WAVM::IR::memtag64constants::nullptrtag; }
+						else
+						{
+							ch = ::WAVM::IR::memtag64constants::nullptrtag;
+						}
 					}
 					*baseAddressTags = ch;
 				}
@@ -551,11 +595,10 @@ void Runtime::unmapMemoryPages(Memory* memory, Uptr pageIndex, Uptr numPages)
 
 	if(memory->baseAddressTags)
 	{
-		auto wasmlog2m4 = wasmlog2 - 4u;
-		auto dcmtagged = numPages << wasmlog2m4;
-		Platform::decommitVirtualPages(
-			memory->baseAddressTags + pageIndex * IR::numBytesTaggedPerPage, dcmtagged);
-		Platform::deregisterVirtualAllocation(dcmtagged);
+		auto [ptr, pages] = alignForCommitTag(
+			reinterpret_cast<U8*>(memory->baseAddressTags), pageIndex, numPages);
+
+		Platform::decommitVirtualPages(ptr, pages);
 	}
 }
 
@@ -768,12 +811,8 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsics,
 							   void,
 							   wavmdebuggingprint,
 							   size_t addr)
-{
-	fprintf(stderr, "wavmdebuggingprint: %p\n", reinterpret_cast<void*>(addr));
-}
+{ fprintf(stderr, "wavmdebuggingprint: %p\n", reinterpret_cast<void*>(addr)); }
 #endif
 
 extern "C" void wavm_memtag_trap_function()
-{
-	throwException(ExceptionTypes::invalidMemoryTagAccess, {});
-}
+{ throwException(ExceptionTypes::invalidMemoryTagAccess, {}); }
