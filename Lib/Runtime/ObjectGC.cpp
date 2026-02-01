@@ -12,6 +12,20 @@
 #include "WAVM/Platform/RWMutex.h"
 #include "WAVM/Runtime/Runtime.h"
 
+#ifdef _LIBCPP_AVAILABILITY_HAS_HASH_MEMORY
+#if _LIBCPP_AVAILABILITY_HAS_HASH_MEMORY != 0
+#ifdef __APPLE__
+
+_LIBCPP_BEGIN_NAMESPACE_STD
+[[__gnu__::__weak__]]
+inline size_t __hash_memory(const void* __ptr, size_t __size) _NOEXCEPT
+{ return __murmur2_or_cityhash<size_t>()(__ptr, __size); }
+_LIBCPP_END_NAMESPACE_STD
+
+#endif
+#endif
+#endif
+
 using namespace WAVM;
 using namespace WAVM::Runtime;
 
@@ -108,7 +122,10 @@ struct GCState
 	void initGCObject(GCObject* object, bool forceRoot = false)
 	{
 		if(forceRoot || object->numRootReferences > 0) { pendingScanObjects.push_back(object); }
-		else { unreferencedObjects.add(object); }
+		else
+		{
+			unreferencedObjects.add(object);
+		}
 	}
 
 	void scanObject(GCObject* object)
@@ -230,7 +247,10 @@ static bool collectGarbageImpl(Compartment* compartment)
 	for(GCObject* object : state.unreferencedObjects)
 	{
 		if(object == compartment) { wasCompartmentUnreferenced = true; }
-		else { delete object; }
+		else
+		{
+			delete object;
+		}
 	}
 
 	// Delete the compartment last, if it wasn't referenced.
@@ -249,9 +269,7 @@ static bool collectGarbageImpl(Compartment* compartment)
 }
 
 void Runtime::collectCompartmentGarbage(Compartment* compartment)
-{
-	collectGarbageImpl(compartment);
-}
+{ collectGarbageImpl(compartment); }
 
 bool Runtime::tryCollectCompartment(GCPointer<Compartment>&& compartmentRootRef)
 {
