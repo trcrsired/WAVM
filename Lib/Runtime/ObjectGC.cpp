@@ -18,7 +18,7 @@
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 [[__gnu__::__weak__]]
-inline size_t __hash_memory(const void* __ptr, size_t __size) _NOEXCEPT
+size_t __hash_memory(_LIBCPP_NOESCAPE const void* __ptr, size_t __size) _NOEXCEPT
 { return __murmur2_or_cityhash<size_t>()(__ptr, __size); }
 _LIBCPP_END_NAMESPACE_STD
 
