@@ -3,6 +3,15 @@
 [![Discord](https://img.shields.io/discord/484466837988573194)](https://discordapp.com/invite/fchkxFM)
 [![Azure Build Status](https://dev.azure.com/WAVM/WAVM/_apis/build/status/WAVM.WAVM)](https://dev.azure.com/WAVM/WAVM/_build/latest?definitionId=1)
 
+# WAVM-MEMTAG
+
+This project was originally created as a research fork of WAVM because, at the time, the upstream project was inactive and could not be updated to support modern LLVM versions. These modifications were necessary for the experiments described in our CCSW 2025 paper, *WebAssembly Memory Tagging*.  
+
+Since then, the original WAVM author has returned and resumed development. However, the upstream codebase has diverged significantly, making our research extensions difficult to merge cleanly. It is also unclear whether the upstream project would want to incorporate these experimental memory‑tagging changes.  
+
+To avoid confusion and to respect the direction of the upstream project, this fork has been renamed **WAVM‑MEMTAG** to reflect its purpose as a standalone research artifact focused on memory‑tagging support for WebAssembly.
+[WebAssembly Memory Tagging](https://dl.acm.org/doi/10.1145/3733812.3765536)
+
 # WAVM
 
 [Getting Started](Doc/GettingStarted.md) | [Building WAVM from Source](Doc/Building.md) | [Exploring the WAVM source](Doc/CodeOrganization.md)
