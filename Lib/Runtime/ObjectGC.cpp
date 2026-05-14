@@ -17,9 +17,15 @@
 #ifdef __APPLE__
 
 _LIBCPP_BEGIN_NAMESPACE_STD
+#ifdef _LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+#endif
 [[__gnu__::__weak__]]
 size_t __hash_memory(_LIBCPP_NOESCAPE const void* __ptr, size_t __size) _NOEXCEPT
 { return __murmur2_or_cityhash<size_t>()(__ptr, __size); }
+#ifdef _LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+#endif
 _LIBCPP_END_NAMESPACE_STD
 
 #endif
