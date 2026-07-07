@@ -1,6 +1,7 @@
 #include "WAVM/IR/Validate.h"
 #include <stdint.h>
 #include <algorithm>
+#include <cstdlib>
 #include <memory>
 #include <utility>
 #include <vector>
