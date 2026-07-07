@@ -3,6 +3,7 @@
 #include <string.h>
 #include <algorithm>
 #include <atomic>
+#include <cstdlib>
 #include <memory>
 #include <random>
 #include <vector>
