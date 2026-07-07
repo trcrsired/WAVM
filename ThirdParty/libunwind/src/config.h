@@ -28,6 +28,9 @@
     #define _LIBUNWIND_SUPPORT_COMPACT_UNWIND 1
     #define _LIBUNWIND_SUPPORT_DWARF_UNWIND 1
   #endif
+  #if defined(__aarch64__) || defined(__arm64__) || defined(__arm64e__)
+    #define _LIBUNWIND_TRACE_RET_INJECT 1
+  #endif
 #elif defined(_WIN32)
   #ifdef __SEH__
     #define _LIBUNWIND_SUPPORT_SEH_UNWIND 1
@@ -61,18 +64,25 @@
   #endif
 #endif
 
+#ifdef _LIBUNWIND_TRACE_RET_INJECT
+#define _LIBUNWIND_TRACE_NO_INLINE __attribute__((noinline, disable_tail_calls))
+#else
+#define _LIBUNWIND_TRACE_NO_INLINE
+#endif
+
 #if defined(_LIBUNWIND_HIDE_SYMBOLS)
   // The CMake file passes -fvisibility=hidden to control ELF/Mach-O visibility.
   #define _LIBUNWIND_EXPORT
   #define _LIBUNWIND_HIDDEN
 #else
-  #if !defined(__ELF__) && !defined(__MACH__) && !defined(_AIX)
-    #define _LIBUNWIND_EXPORT __declspec(dllexport)
-    #define _LIBUNWIND_HIDDEN
-  #else
-    #define _LIBUNWIND_EXPORT __attribute__((visibility("default")))
-    #define _LIBUNWIND_HIDDEN __attribute__((visibility("hidden")))
-  #endif
+#if !defined(__ELF__) && !defined(__MACH__) && !defined(_AIX) &&               \
+    !defined(__wasm__)
+#define _LIBUNWIND_EXPORT __declspec(dllexport)
+#define _LIBUNWIND_HIDDEN
+#else
+#define _LIBUNWIND_EXPORT __attribute__((visibility("default")))
+#define _LIBUNWIND_HIDDEN __attribute__((visibility("hidden")))
+#endif
 #endif
 
 #define STR(a) #a
