@@ -1,5 +1,6 @@
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include "POSIXPrivate.h"
 #include "WAVM/Inline/BasicTypes.h"
 #include "WAVM/Platform/Diagnostics.h"
@@ -27,7 +28,10 @@ void Platform::dumpErrorCallStack(Uptr numOmittedFramesFromTop)
 		{
 			frameDescription = "<unknown function>";
 		}
-		else { frameDescription = asString(source); }
+		else
+		{
+			frameDescription = asString(source);
+		}
 		std::fprintf(stderr, "  %s\n", frameDescription.c_str());
 	}
 	std::fflush(stderr);
