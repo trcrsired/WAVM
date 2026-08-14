@@ -95,6 +95,8 @@ EmitModuleContext::EmitModuleContext(const IR::Module& inIRModule,
 		= diBuilder.createBasicType("externref", 8, llvm::dwarf::DW_ATE_address);
 	diValueTypes[(Uptr)ValueType::funcref]
 		= diBuilder.createBasicType("funcref", 8, llvm::dwarf::DW_ATE_address);
+	diValueTypes[(Uptr)ValueType::exnref]
+		= diBuilder.createBasicType("exnref", 8, llvm::dwarf::DW_ATE_address);
 
 	auto zeroAsMetadata = llvm::ConstantAsMetadata::get(emitLiteral(llvmContext, I32(0)));
 	auto i32MaxAsMetadata = llvm::ConstantAsMetadata::get(emitLiteral(llvmContext, I32(INT32_MAX)));

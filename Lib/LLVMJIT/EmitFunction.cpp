@@ -96,6 +96,7 @@ void EmitFunctionContext::traceOperator(const std::string& operatorDescription)
 		case ControlContext::Type::loop: controlStackString += "L"; break;
 		case ControlContext::Type::try_: controlStackString += "T"; break;
 		case ControlContext::Type::catch_: controlStackString += "C"; break;
+		case ControlContext::Type::tryTable: controlStackString += "t"; break;
 		default: WAVM_UNREACHABLE();
 		};
 		if(!controlStack[stackIndex].isReachable) { controlStackString += ")"; }
@@ -273,6 +274,7 @@ struct UnreachableOpVisitor
 		else { --unreachableControlDepth; }
 	}
 	void try_(ControlStructureImm imm) { ++unreachableControlDepth; }
+	void try_table(TryTableImm imm) { ++unreachableControlDepth; }
 	void catch_(ExceptionTypeImm imm)
 	{
 		if(!unreachableControlDepth) { context.catch_(imm); }

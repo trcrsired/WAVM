@@ -48,7 +48,8 @@ namespace WAVM { namespace LLVMJIT {
 				ifElse,
 				loop,
 				try_,
-				catch_
+				catch_,
+				tryTable
 			};
 
 			Type type;
@@ -315,8 +316,25 @@ namespace WAVM { namespace LLVMJIT {
 
 		std::vector<CatchContext> catchStack;
 
+		// A try_table context: the landingpad that catches exceptions thrown in the try_table body,
+		// and the catch clauses to dispatch to when an exception is caught.
+		struct TryTableContext
+		{
+			llvm::LandingPadInst* landingPadInst;
+			llvm::BasicBlock* landingPadBlock;
+			Uptr catchTableIndex;
+		};
+
+		std::vector<TryTableContext> tryTableStack;
+
 		void endTryWithoutCatch();
 		void endTryCatch();
+		void endTryTable();
+
+		// Emits a call to a noreturn exception-raising function as an invoke to the innermost
+		// enclosing landingpad, if any.
+		void emitRaiseFunctionCall(llvm::Function* raiseFunction,
+								   llvm::ArrayRef<llvm::Value*> args);
 
 #define VISIT_OPCODE(encoding, name, nameString, Imm, ...) void name(IR::Imm imm);
 		WAVM_ENUM_OPERATORS(VISIT_OPCODE)

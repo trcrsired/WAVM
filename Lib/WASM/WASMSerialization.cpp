@@ -73,6 +73,7 @@ namespace WAVM { namespace IR {
 		case -5: return ValueType::v128;
 		case -16: return ValueType::funcref;
 		case -17: return ValueType::externref;
+		case -23: return ValueType::exnref;
 		default: throw FatalSerializationException("invalid value type encoding");
 		};
 	}
@@ -87,6 +88,7 @@ namespace WAVM { namespace IR {
 		case ValueType::v128: return -5;
 		case ValueType::funcref: return -16;
 		case ValueType::externref: return -17;
+		case ValueType::exnref: return -23;
 
 		case ValueType::none:
 		case ValueType::any:
@@ -155,6 +157,7 @@ namespace WAVM { namespace IR {
 			{
 			case 0x70: referenceType = ReferenceType::funcref; break;
 			case 0x6F: referenceType = ReferenceType::externref; break;
+			case 0x69: referenceType = ReferenceType::exnref; break;
 			default: throw FatalSerializationException("invalid reference type encoding");
 			}
 		}
@@ -165,6 +168,7 @@ namespace WAVM { namespace IR {
 			{
 			case ReferenceType::funcref: encodedReferenceType = 0x70; break;
 			case ReferenceType::externref: encodedReferenceType = 0x6F; break;
+			case ReferenceType::exnref: encodedReferenceType = 0x69; break;
 
 			case ReferenceType::none:
 			default: WAVM_UNREACHABLE();
@@ -232,7 +236,7 @@ namespace WAVM { namespace IR {
 		case 1: kind = ExternKind::table; break;
 		case 2: kind = ExternKind::memory; break;
 		case 3: kind = ExternKind::global; break;
-		case 5: kind = ExternKind::tag; break;
+		case 4: kind = ExternKind::tag; break;
 		default: throw FatalSerializationException("invalid reference type encoding");
 		};
 	}
@@ -245,7 +249,7 @@ namespace WAVM { namespace IR {
 		case ExternKind::table: encodedKind = 1; break;
 		case ExternKind::memory: encodedKind = 2; break;
 		case ExternKind::global: encodedKind = 3; break;
-		case ExternKind::tag: encodedKind = 5; break;
+		case ExternKind::tag: encodedKind = 4; break;
 		case ExternKind::invalid:
 		default: WAVM_UNREACHABLE();
 		};
@@ -544,6 +548,102 @@ static void serialize(OutputStream& stream,
 	default: WAVM_UNREACHABLE();
 	};
 	serializeVarInt32(stream, encodedBlockType);
+}
+
+static void serialize(InputStream& stream,
+					  TryTableImm& imm,
+					  FunctionDef& functionDef,
+					  const ModuleSerializationState&)
+{
+	Iptr encodedBlockType;
+	serializeVarInt32(stream, encodedBlockType);
+	if(encodedBlockType >= 0)
+	{
+		imm.type.format = IndexedBlockType::functionType;
+		imm.type.index = encodedBlockType;
+	}
+	else if(encodedBlockType == -64)
+	{
+		imm.type.format = IndexedBlockType::noParametersOrResult;
+		imm.type.resultType = ValueType::none;
+	}
+	else
+	{
+		imm.type.format = IndexedBlockType::oneResult;
+		imm.type.resultType = decodeValueType(encodedBlockType);
+	}
+	std::vector<CatchClause> catchClauses;
+	Uptr numCatchClauses = 0;
+	serializeVarUInt32(stream, numCatchClauses);
+	catchClauses.resize(numCatchClauses);
+	for(auto& catchClause : catchClauses)
+	{
+		U32 encodedKind = 0;
+		serializeVarUInt32(stream, encodedKind);
+		switch(encodedKind)
+		{
+		case 0: catchClause.kind = CatchClauseKind::catch_; break;
+		case 1: catchClause.kind = CatchClauseKind::catch_ref; break;
+		case 2: catchClause.kind = CatchClauseKind::catch_all; break;
+		case 3: catchClause.kind = CatchClauseKind::catch_all_ref; break;
+		default: throw FatalSerializationException("invalid catch clause kind");
+		};
+		if(catchClause.kind == CatchClauseKind::catch_
+		   || catchClause.kind == CatchClauseKind::catch_ref)
+		{
+			U32 exceptionTypeIndex = 0;
+			serializeVarUInt32(stream, exceptionTypeIndex);
+			catchClause.exceptionTypeIndex = exceptionTypeIndex;
+		}
+		U32 labelDepth = 0;
+		serializeVarUInt32(stream, labelDepth);
+		catchClause.labelDepth = labelDepth;
+	}
+	imm.catchTableIndex = functionDef.catchClauses.size();
+	functionDef.catchClauses.push_back(std::move(catchClauses));
+}
+
+static void serialize(OutputStream& stream,
+					  const TryTableImm& imm,
+					  const FunctionDef& functionDef,
+					  const ModuleSerializationState&)
+{
+	Iptr encodedBlockType;
+	switch(imm.type.format)
+	{
+	case IndexedBlockType::noParametersOrResult: encodedBlockType = -64; break;
+	case IndexedBlockType::oneResult:
+		encodedBlockType = encodeValueType(imm.type.resultType);
+		break;
+	case IndexedBlockType::functionType: encodedBlockType = imm.type.index; break;
+	default: WAVM_UNREACHABLE();
+	};
+	serializeVarInt32(stream, encodedBlockType);
+	WAVM_ASSERT(imm.catchTableIndex < functionDef.catchClauses.size());
+	const auto& catchClauses = functionDef.catchClauses[imm.catchTableIndex];
+	Uptr numCatchClauses = catchClauses.size();
+	serializeVarUInt32(stream, numCatchClauses);
+	for(const auto& catchClause : catchClauses)
+	{
+		U32 encodedKind = 0;
+		switch(catchClause.kind)
+		{
+		case CatchClauseKind::catch_: encodedKind = 0; break;
+		case CatchClauseKind::catch_ref: encodedKind = 1; break;
+		case CatchClauseKind::catch_all: encodedKind = 2; break;
+		case CatchClauseKind::catch_all_ref: encodedKind = 3; break;
+		default: WAVM_UNREACHABLE();
+		};
+		serializeVarUInt32(stream, encodedKind);
+		if(catchClause.kind == CatchClauseKind::catch_
+		   || catchClause.kind == CatchClauseKind::catch_ref)
+		{
+			U32 exceptionTypeIndex = catchClause.exceptionTypeIndex;
+			serializeVarUInt32(stream, exceptionTypeIndex);
+		}
+		U32 labelDepth = catchClause.labelDepth;
+		serializeVarUInt32(stream, labelDepth);
+	}
 }
 
 template<typename Stream>
@@ -1236,11 +1336,19 @@ template<typename Stream> void serializeImportSection(Stream& moduleStream, Modu
 					break;
 				}
 				case ExternKind::tag: {
-					ExceptionType exceptionType;
-					serialize(sectionStream, exceptionType);
+					U8 attribute = 0;
+					serializeNativeValue(sectionStream, attribute);
+					U32 tagTypeIndex = 0;
+					serializeVarUInt32(sectionStream, tagTypeIndex);
+					if(tagTypeIndex >= module_.types.size())
+					{
+						throw FatalSerializationException("invalid tag type index");
+					}
 					kindIndex = module_.exceptionTypes.imports.size();
 					module_.exceptionTypes.imports.push_back(
-						{exceptionType, std::move(moduleName), std::move(exportName)});
+						{module_.types[tagTypeIndex].params(),
+						 std::move(moduleName),
+						 std::move(exportName)});
 					break;
 				}
 
@@ -1300,7 +1408,18 @@ template<typename Stream> void serializeImportSection(Stream& moduleStream, Modu
 					serialize(sectionStream, exceptionTypeImport.moduleName);
 					serialize(sectionStream, exceptionTypeImport.exportName);
 					serialize(sectionStream, kind);
-					serialize(sectionStream, exceptionTypeImport.type);
+					Uptr typeIndex = 0;
+					for(Uptr index = 0; index < module_.types.size(); ++index)
+					{
+						if(module_.types[index].params() == exceptionTypeImport.type.params)
+						{
+							typeIndex = index;
+							break;
+						}
+					}
+					U8 attribute = 0;
+					serializeNativeValue(sectionStream, attribute);
+					serializeVarUInt32(sectionStream, typeIndex);
 					break;
 				}
 

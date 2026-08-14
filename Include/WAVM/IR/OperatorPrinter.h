@@ -32,6 +32,31 @@ namespace WAVM { namespace IR {
 			const FunctionType type = resolveBlockType(module_, imm.type);
 			return std::string(" : ") + asString(type.params()) + " -> " + asString(type.results());
 		}
+		std::string describeImm(TryTableImm imm)
+		{
+			const FunctionType type = resolveBlockType(module_, imm.type);
+			std::string result
+				= std::string(" : ") + asString(type.params()) + " -> " + asString(type.results());
+			WAVM_ASSERT(imm.catchTableIndex < functionDef.catchClauses.size());
+			for(const auto& catchClause : functionDef.catchClauses[imm.catchTableIndex])
+			{
+				result += " (";
+				switch(catchClause.kind)
+				{
+				case CatchClauseKind::catch_:
+					result += "catch " + std::to_string(catchClause.exceptionTypeIndex);
+					break;
+				case CatchClauseKind::catch_ref:
+					result += "catch_ref " + std::to_string(catchClause.exceptionTypeIndex);
+					break;
+				case CatchClauseKind::catch_all: result += "catch_all"; break;
+				case CatchClauseKind::catch_all_ref: result += "catch_all_ref"; break;
+				default: WAVM_UNREACHABLE();
+				};
+				result += " " + std::to_string(catchClause.labelDepth) + ")";
+			}
+			return result;
+		}
 		std::string describeImm(SelectImm imm) { return std::string(" ") + asString(imm.type); }
 		std::string describeImm(BranchImm imm) { return " " + std::to_string(imm.targetDepth); }
 		std::string describeImm(BranchTableImm imm)

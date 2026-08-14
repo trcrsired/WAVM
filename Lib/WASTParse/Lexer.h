@@ -62,6 +62,9 @@
 	VISIT_LITERAL_TOKEN(f64x2)                                                                     \
 	VISIT_LITERAL_TOKEN(externref)                                                                 \
 	VISIT_LITERAL_TOKEN(funcref)                                                                   \
+	VISIT_LITERAL_TOKEN(exnref)                                                                    \
+	VISIT_LITERAL_TOKEN(catch_ref)                                                                 \
+	VISIT_LITERAL_TOKEN(catch_all_ref)                                                             \
 	VISIT_LITERAL_TOKEN(extern)                                                                    \
 	VISIT_LITERAL_TOKEN(declare)                                                                   \
 	VISIT_LITERAL_TOKEN(shared)                                                                    \

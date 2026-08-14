@@ -30,10 +30,11 @@ namespace WAVM { namespace IR {
 		f64,
 		v128,
 		externref,
-		funcref
+		funcref,
+		exnref
 	};
 
-	static constexpr U8 numValueTypes = U8(ValueType::funcref) + 1;
+	static constexpr U8 numValueTypes = U8(ValueType::exnref) + 1;
 
 	// The reference types subset of ValueType.
 	enum class ReferenceType : U8
@@ -41,7 +42,8 @@ namespace WAVM { namespace IR {
 		none = U8(ValueType::none),
 
 		externref = U8(ValueType::externref),
-		funcref = U8(ValueType::funcref)
+		funcref = U8(ValueType::funcref),
+		exnref = U8(ValueType::exnref)
 	};
 
 	inline ValueType asValueType(ReferenceType type) { return ValueType(type); }
@@ -54,7 +56,7 @@ namespace WAVM { namespace IR {
 
 	inline bool isReferenceType(ValueType type)
 	{
-		return type == ValueType::externref || type == ValueType::funcref;
+		return type == ValueType::externref || type == ValueType::funcref || type == ValueType::exnref;
 	}
 
 	inline bool isSubtype(ValueType subtype, ValueType supertype)
@@ -97,7 +99,8 @@ namespace WAVM { namespace IR {
 		case ValueType::f64: return 8;
 		case ValueType::v128: return 16;
 		case ValueType::externref:
-		case ValueType::funcref: return sizeof(void*);
+		case ValueType::funcref:
+		case ValueType::exnref: return sizeof(void*);
 
 		case ValueType::none:
 		case ValueType::any:
@@ -120,6 +123,7 @@ namespace WAVM { namespace IR {
 		case ValueType::v128: return "v128";
 		case ValueType::externref: return "externref";
 		case ValueType::funcref: return "funcref";
+		case ValueType::exnref: return "exnref";
 		default: WAVM_UNREACHABLE();
 		};
 	}
@@ -131,6 +135,7 @@ namespace WAVM { namespace IR {
 		case ReferenceType::none: return "none";
 		case ReferenceType::externref: return "externref";
 		case ReferenceType::funcref: return "funcref";
+		case ReferenceType::exnref: return "exnref";
 		default: WAVM_UNREACHABLE();
 		};
 	}
@@ -363,6 +368,33 @@ namespace WAVM { namespace IR {
 			ValueType resultType;
 			Uptr index;
 		};
+	};
+
+	// The kinds of catch clauses that may appear in a try_table instruction.
+	enum class CatchClauseKind : U8
+	{
+		catch_ = 0,      // catch tag label
+		catch_ref = 1,   // catch_ref tag label
+		catch_all = 2,   // catch_all label
+		catch_all_ref = 3 // catch_all_ref label
+	};
+
+	// A single catch clause of a try_table instruction.
+	struct CatchClause
+	{
+		CatchClauseKind kind;
+		Uptr exceptionTypeIndex;
+		Uptr labelDepth;
+
+		friend bool operator==(const CatchClause& left, const CatchClause& right)
+		{
+			return left.kind == right.kind && left.exceptionTypeIndex == right.exceptionTypeIndex
+				   && left.labelDepth == right.labelDepth;
+		}
+		friend bool operator!=(const CatchClause& left, const CatchClause& right)
+		{
+			return !(left == right);
+		}
 	};
 
 	inline std::string asString(const FunctionType& functionType)

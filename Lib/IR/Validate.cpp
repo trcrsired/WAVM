@@ -79,6 +79,7 @@ static void validate(const IR::Module& module_, IR::ValueType valueType)
 	case ValueType::v128: VALIDATE_FEATURE("v128 value type", simd) break;
 	case ValueType::externref:
 	case ValueType::funcref: VALIDATE_FEATURE(asString(valueType), referenceTypes) break;
+	case ValueType::exnref: VALIDATE_FEATURE("exnref", exceptionHandling) break;
 
 	case ValueType::none:
 	case ValueType::any:
@@ -100,6 +101,7 @@ static void validate(const IR::Module& module_, ReferenceType type)
 	{
 	case ReferenceType::funcref: break;
 	case ReferenceType::externref: VALIDATE_FEATURE(asString(type), referenceTypes); break;
+	case ReferenceType::exnref: VALIDATE_FEATURE(asString(type), exceptionHandling); break;
 
 	case ReferenceType::none:
 	default:
@@ -371,6 +373,7 @@ struct FunctionValidationContext
 			case ControlContext::Type::loop: controlStackString += "L"; break;
 			case ControlContext::Type::try_: controlStackString += "R"; break;
 			case ControlContext::Type::catch_: controlStackString += "C"; break;
+			case ControlContext::Type::tryTable: controlStackString += "T"; break;
 			default: WAVM_UNREACHABLE();
 			};
 			if(!controlStack[stackIndex].isReachable) { controlStackString += ")"; }
@@ -511,6 +514,40 @@ struct FunctionValidationContext
 		VALIDATE_FEATURE("catch_all", exceptionHandling);
 #endif
 		validateCatch();
+	}
+
+	void try_table(TryTableImm imm)
+	{
+		VALIDATE_FEATURE("try_table", exceptionHandling);
+		const FunctionType type = validateBlockType(module_, imm.type);
+		popAndValidateTypeTuple("try_table arguments", type.params());
+		pushControlStack(ControlContext::Type::tryTable, type.params(), type.results());
+		pushOperandTuple(type.params());
+
+		// Validate the catch clauses. The label depths are relative to the labels enclosing the
+		// try_table, so they must be shifted by one to account for the try_table's own label.
+		WAVM_ASSERT(imm.catchTableIndex < functionDef.catchClauses.size());
+		for(const auto& catchClause : functionDef.catchClauses[imm.catchTableIndex])
+		{
+			if(catchClause.kind == CatchClauseKind::catch_
+			   || catchClause.kind == CatchClauseKind::catch_ref)
+			{
+				VALIDATE_INDEX(catchClause.exceptionTypeIndex, module_.tagSegments.size());
+			}
+			else if(catchClause.kind != CatchClauseKind::catch_all
+					&& catchClause.kind != CatchClauseKind::catch_all_ref)
+			{
+				throw ValidationException("invalid catch clause kind");
+			}
+			validateBranchDepth(catchClause.labelDepth + 1);
+		}
+	}
+
+	void throw_ref(NoImm)
+	{
+		VALIDATE_FEATURE("throw_ref", exceptionHandling);
+		popAndValidateOperand("throw_ref operand", ValueType::exnref);
+		enterUnreachable();
 	}
 
 	void return_(NoImm)
@@ -871,6 +908,7 @@ private:
 			loop,
 			try_,
 			catch_,
+			tryTable,
 		};
 
 		Type type;

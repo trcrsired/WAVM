@@ -145,6 +145,14 @@ namespace WAVM { namespace IR {
 		Uptr catchDepth;
 	};
 
+	struct TryTableImm
+	{
+		IndexedBlockType type;
+
+		// An index into the FunctionDef's catchClauses array.
+		Uptr catchTableIndex;
+	};
+
 	struct DataSegmentAndMemImm
 	{
 		Uptr dataSegmentIndex;

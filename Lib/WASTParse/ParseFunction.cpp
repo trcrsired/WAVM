@@ -913,6 +913,69 @@ static WAVM_FORCENOINLINE void parseTryInstr(CursorState* cursor, Uptr depth)
 	cursor->functionState->validatingCodeStream.end();
 }
 
+static WAVM_FORCENOINLINE void parseTryTableInstr(CursorState* cursor, Uptr depth)
+{
+	Name branchTargetName;
+	TryTableImm imm;
+	ControlStructureImm controlImm;
+	parseControlImm(cursor, branchTargetName, controlImm);
+	imm.type = controlImm.type;
+
+	// Parse the catch clauses. Their label depths are relative to the labels enclosing the
+	// try_table, so they are resolved before the try_table's own label is pushed.
+	std::vector<CatchClause> catchClauses;
+	while(cursor->nextToken->type == t_leftParenthesis)
+	{
+		++cursor->nextToken;
+		CatchClause catchClause;
+		switch(cursor->nextToken->type)
+		{
+		case t_catch_:
+		case t_catch_ref: {
+			catchClause.kind = cursor->nextToken->type == t_catch_
+								   ? CatchClauseKind::catch_
+								   : CatchClauseKind::catch_ref;
+			++cursor->nextToken;
+			ExceptionTypeImm exceptionTypeImm;
+			parseImm(cursor, exceptionTypeImm);
+			catchClause.exceptionTypeIndex = exceptionTypeImm.exceptionTypeIndex;
+			break;
+		}
+		case t_catch_all:
+		case t_catch_all_ref: {
+			catchClause.kind = cursor->nextToken->type == t_catch_all
+								   ? CatchClauseKind::catch_all
+								   : CatchClauseKind::catch_all_ref;
+			++cursor->nextToken;
+			break;
+		}
+		default:
+			parseErrorf(cursor->parseState, cursor->nextToken, "expected catch clause kind");
+			throw RecoverParseException();
+		};
+		if(!tryParseAndResolveBranchTargetRef(cursor, catchClause.labelDepth))
+		{
+			parseErrorf(cursor->parseState, cursor->nextToken, "expected catch clause label");
+			throw RecoverParseException();
+		}
+		require(cursor, t_rightParenthesis);
+		catchClauses.push_back(catchClause);
+	}
+
+	imm.catchTableIndex = cursor->functionState->functionDef.catchClauses.size();
+	cursor->functionState->functionDef.catchClauses.push_back(std::move(catchClauses));
+
+	ScopedBranchTarget branchTarget(cursor->functionState, branchTargetName);
+	cursor->functionState->validatingCodeStream.try_table(imm);
+
+	// Parse the try_table body.
+	parseInstrSequence(cursor, depth);
+
+	require(cursor, t_end);
+	parseAndValidateRedundantBranchTargetName(cursor, branchTargetName, "try_table", "end");
+	cursor->functionState->validatingCodeStream.end();
+}
+
 static WAVM_FORCENOINLINE void parseExprSequence(CursorState* cursor, Uptr depth)
 {
 	while(cursor->nextToken->type != t_rightParenthesis) { parseExpr(cursor, depth); };
@@ -1018,6 +1081,12 @@ static void parseInstrSequence(CursorState* cursor, Uptr depth)
 				checkRecursionDepth(cursor, depth + 1);
 				++cursor->nextToken;
 				parseTryInstr(cursor, depth + 1);
+				break;
+			}
+			case t_try_table: {
+				checkRecursionDepth(cursor, depth + 1);
+				++cursor->nextToken;
+				parseTryTableInstr(cursor, depth + 1);
 				break;
 			}
 #define VISIT_OP(opcode, name, nameString, Imm, ...)                                               \

@@ -120,6 +120,7 @@ bool WAST::tryParseValueType(CursorState* cursor, ValueType& outValueType)
 	case t_v128: outValueType = ValueType::v128; break;
 	case t_externref: outValueType = ValueType::externref; break;
 	case t_funcref: outValueType = ValueType::funcref; break;
+	case t_exnref: outValueType = ValueType::exnref; break;
 	default: outValueType = ValueType::none; return false;
 	};
 
@@ -149,6 +150,10 @@ bool WAST::tryParseReferenceType(CursorState* cursor, IR::ReferenceType& outRefT
 	case t_funcref:
 		++cursor->nextToken;
 		outRefType = ReferenceType::funcref;
+		return true;
+	case t_exnref:
+		++cursor->nextToken;
+		outRefType = ReferenceType::exnref;
 		return true;
 	default: return false;
 	};

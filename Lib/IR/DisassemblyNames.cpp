@@ -266,8 +266,9 @@ void IR::getDisassemblyNames(const Module& module_, DisassemblyNames& outNames)
 	outNames.globals.insert(outNames.globals.end(), module_.globals.size(), "");
 	outNames.elemSegments.insert(outNames.elemSegments.end(), module_.elemSegments.size(), "");
 	outNames.dataSegments.insert(outNames.dataSegments.end(), module_.dataSegments.size(), "");
-	outNames.exceptionTypes.insert(
-		outNames.exceptionTypes.end(), module_.exceptionTypes.size(), "");
+	outNames.exceptionTypes.insert(outNames.exceptionTypes.end(),
+								   module_.exceptionTypes.size() + module_.tagSegments.size(),
+								   "");
 
 	// Deserialize the name section, if it is present.
 	Uptr customSectionIndex = 0;

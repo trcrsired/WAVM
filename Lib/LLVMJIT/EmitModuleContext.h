@@ -53,6 +53,7 @@ namespace WAVM { namespace LLVMJIT {
 		llvm::Value* fpExceptionMetadata;
 
 		llvm::Function* wavmThrowWasmEhtagFunction = nullptr;
+		llvm::Function* wavmRethrowWasmEhtagFunction = nullptr;
 
 		llvm::Function* wavmMemtagTrapFunction = nullptr;
 		llvm::Function* wavmAArch64MteSetTagFunction = nullptr;

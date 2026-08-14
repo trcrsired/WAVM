@@ -37,6 +37,7 @@ using namespace WAVM::LLVMJIT;
 namespace LLVMRuntimeSymbols {
 
 	extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t, ::std::uint_least64_t);
+	extern "C" void wavm_throw_ref(::std::uint_least64_t);
 	extern "C" void wavm_memtag_trap_function();
 	extern "C" void wavm_aarch64_mte_settag(void*, ::std::size_t) noexcept;
 	extern "C" void wavm_aarch64_mte_settag_zero(void*, ::std::size_t) noexcept;
@@ -75,6 +76,7 @@ namespace LLVMRuntimeSymbols {
 		{"memset", (void*)&memset},
 		{"_Unwind_Resume", (void*)&_Unwind_Resume},
 		{"wavm_throw_wasm_ehtag", (void*)&wavm_throw_wasm_ehtag},
+		{"wavm_throw_ref", (void*)&wavm_throw_ref},
 		{"wavm_memtag_trap_function", (void*)&wavm_memtag_trap_function},
 #if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__))
 		{"wavm_aarch64_mte_settag", (void*)&wavm_aarch64_mte_settag},
@@ -198,6 +200,10 @@ LLVMContext::LLVMContext()
 	valueTypes[(Uptr)ValueType::v128] = i64x2Type;
 	valueTypes[(Uptr)ValueType::externref] = externrefType;
 	valueTypes[(Uptr)ValueType::funcref] = externrefType;
+	// An exnref is represented as an i64: the wasm exception's payload value (the address of the
+	// exception object in wasm memory), so that the wasm-side personality function can use it as a
+	// wasm address.
+	valueTypes[(Uptr)ValueType::exnref] = i64Type;
 
 	// Create zero constants of each type.
 	typedZeroConstants[(Uptr)ValueType::none] = nullptr;
@@ -209,6 +215,7 @@ LLVMContext::LLVMContext()
 	typedZeroConstants[(Uptr)ValueType::v128] = emitLiteral(*this, V128());
 	typedZeroConstants[(Uptr)ValueType::externref] = typedZeroConstants[(Uptr)ValueType::funcref]
 		= llvm::Constant::getNullValue(externrefType);
+	typedZeroConstants[(Uptr)ValueType::exnref] = emitLiteral(*this, (U64)0);
 }
 
 TargetSpec LLVMJIT::getHostTargetSpec()

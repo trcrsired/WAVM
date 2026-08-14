@@ -552,6 +552,8 @@ struct FunctionPrintContext
 		string += "\nrethrow " + getBranchTargetId(imm.catchDepth);
 	}
 
+	void throw_ref(NoImm) { string += "\nthrow_ref"; }
+
 	void ref_null(ReferenceTypeImm imm)
 	{
 		string += "\nref.null ";
@@ -748,6 +750,33 @@ struct FunctionPrintContext
 		pushControlStack(ControlContext::Type::try_, labelId);
 		printControlSignature(imm.type);
 	}
+
+	void try_table(TryTableImm imm)
+	{
+		string += "\ntry_table";
+		std::string labelId = printControlLabel("try_table");
+		pushControlStack(ControlContext::Type::tryTable, labelId);
+		printControlSignature(imm.type);
+		WAVM_ASSERT(imm.catchTableIndex < functionDef.catchClauses.size());
+		for(const auto& catchClause : functionDef.catchClauses[imm.catchTableIndex])
+		{
+			string += "\n(";
+			switch(catchClause.kind)
+			{
+			case CatchClauseKind::catch_:
+				string += "catch " + moduleContext.names.exceptionTypes[catchClause.exceptionTypeIndex];
+				break;
+			case CatchClauseKind::catch_ref:
+				string += "catch_ref "
+						  + moduleContext.names.exceptionTypes[catchClause.exceptionTypeIndex];
+				break;
+			case CatchClauseKind::catch_all: string += "catch_all"; break;
+			case CatchClauseKind::catch_all_ref: string += "catch_all_ref"; break;
+			default: WAVM_UNREACHABLE();
+			};
+			string += " " + getBranchTargetId(catchClause.labelDepth + 1) + ")";
+		}
+	}
 	void catch_(ExceptionTypeImm imm)
 	{
 		string += DEDENT_STRING;
@@ -794,7 +823,8 @@ private:
 			loop,
 			try_,
 			catch_,
-			delegate
+			delegate,
+			tryTable
 		};
 		Type type;
 		std::string labelId;

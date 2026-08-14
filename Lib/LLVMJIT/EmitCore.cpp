@@ -147,6 +147,7 @@ void EmitFunctionContext::end(NoImm)
 
 	if(currentContext.type == ControlContext::Type::try_) { endTryWithoutCatch(); }
 	else if(currentContext.type == ControlContext::Type::catch_) { endTryCatch(); }
+	else if(currentContext.type == ControlContext::Type::tryTable) { endTryTable(); }
 
 	branchToEndOfControlContext();
 

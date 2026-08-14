@@ -179,6 +179,29 @@ namespace WAVM {
 			}
 		}
 
+		void verifyMatches(CatchClause a, CatchClause b)
+		{
+			if(a.kind != b.kind || a.exceptionTypeIndex != b.exceptionTypeIndex
+			   || a.labelDepth != b.labelDepth)
+			{
+				failVerification();
+			}
+		}
+
+		void verifyMatches(TryTableImm a, TryTableImm b)
+		{
+			if(a.type.format != b.type.format || a.type.index != b.type.index
+			   || a.type.resultType != b.type.resultType)
+			{
+				failVerification();
+			}
+			if(aFunction->catchClauses[a.catchTableIndex]
+			   != bFunction->catchClauses[b.catchTableIndex])
+			{
+				failVerification();
+			}
+		}
+
 		template<typename Value> void verifyMatches(LiteralImm<Value> a, LiteralImm<Value> b)
 		{
 			if(memcmp(&a.value, &b.value, sizeof(Value))) { failVerification(); }

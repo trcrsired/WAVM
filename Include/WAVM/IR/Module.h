@@ -99,6 +99,7 @@ namespace WAVM { namespace IR {
 		std::vector<ValueType> nonParameterLocalTypes;
 		std::vector<U8> code;
 		std::vector<std::vector<Uptr>> branchTables;
+		std::vector<std::vector<CatchClause>> catchClauses;
 	};
 
 	// A table definition
