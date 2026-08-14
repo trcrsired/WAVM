@@ -75,6 +75,7 @@ bool Runtime::generateStub(const std::string& moduleName,
 					encoder.ref_null({IR::ReferenceType::externref});
 					break;
 				case IR::ValueType::funcref: encoder.ref_null({IR::ReferenceType::funcref}); break;
+				case IR::ValueType::exnref: encoder.ref_null({IR::ReferenceType::exnref}); break;
 
 				case IR::ValueType::none:
 				case IR::ValueType::any:

@@ -203,6 +203,7 @@ static Value asValue(ValueType type, const wasm_val_t* value)
 	}
 	case ValueType::externref: return Value(value->ref);
 	case ValueType::funcref: return Value(asFunction(value->ref));
+	case ValueType::exnref: return Value(value->i64);
 
 	case ValueType::none:
 	case ValueType::any:
@@ -226,6 +227,7 @@ static wasm_val_t as_val(const Value& value)
 	}
 	case ValueType::externref: result.ref = value.object; break;
 	case ValueType::funcref: result.ref = asObject(value.function); break;
+	case ValueType::exnref: result.i64 = value.i64; break;
 
 	case ValueType::none:
 	case ValueType::any:
@@ -325,6 +327,7 @@ wasm_valkind_t wasm_valtype_kind(const wasm_valtype_t* type)
 	case ValueType::v128: return WASM_V128;
 	case ValueType::externref: return WASM_ANYREF;
 	case ValueType::funcref: return WASM_FUNCREF;
+	case ValueType::exnref: return WASM_ANYREF;
 
 	case ValueType::none:
 	case ValueType::any:

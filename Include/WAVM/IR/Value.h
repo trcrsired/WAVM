@@ -80,6 +80,14 @@ namespace WAVM { namespace IR {
 						 reinterpret_cast<Uptr>(value.object));
 				return std::string(buffer);
 			}
+			case ValueType::exnref: {
+				char buffer[29];
+				snprintf(buffer,
+						 sizeof(buffer),
+						 "exnref 0x%.16" WAVM_PRIxPTR,
+						 (Uptr)value.i64);
+				return std::string(buffer);
+			}
 
 			case ValueType::none:
 			case ValueType::any:
@@ -100,7 +108,8 @@ namespace WAVM { namespace IR {
 			case ValueType::i32:
 			case ValueType::f32: return left.i32 == right.i32;
 			case ValueType::i64:
-			case ValueType::f64: return left.i64 == right.i64;
+			case ValueType::f64:
+			case ValueType::exnref: return left.i64 == right.i64;
 			case ValueType::v128:
 				return left.v128.u64x2[0] == right.v128.u64x2[0]
 					   && left.v128.u64x2[1] == right.v128.u64x2[1];

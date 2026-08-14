@@ -715,6 +715,7 @@ struct State
 				case ValueType::v128:
 				case ValueType::externref:
 				case ValueType::funcref:
+				case ValueType::exnref:
 					Errors::fatalf("Cannot parse command-line argument for %s function parameter",
 								   asString(functionType.params()[argIndex]));
 

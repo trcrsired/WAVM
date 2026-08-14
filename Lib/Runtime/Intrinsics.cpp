@@ -175,6 +175,7 @@ Instance* Intrinsics::instantiateModuleWithFeatureSpec(
 
 				case ValueType::externref:
 				case ValueType::funcref:
+				case ValueType::exnref:
 					Errors::fatal("Intrinsic reference-typed globals are not supported");
 
 				case ValueType::none:

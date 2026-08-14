@@ -784,6 +784,10 @@ static ResultSet asResultSet(const Value& value, ResultSet::Type expectedType)
 			resultSet.type = ResultSet::Type::ref_extern;
 			resultSet.object = asObject(value.function);
 			break;
+		case ValueType::exnref:
+			resultSet.type = ResultSet::Type::ref_extern;
+			resultSet.object = nullptr;
+			break;
 
 		case ValueType::none:
 		case ValueType::any:
@@ -1178,7 +1182,8 @@ static void processBenchmark(TestScriptState& state, const BenchmarkCommand* ben
 		case ValueType::v128: encoder.v128_const({arg.v128}); break;
 
 		case ValueType::externref:
-		case ValueType::funcref: Errors::unimplemented("Benchmark invoke reference arguments");
+		case ValueType::funcref:
+		case ValueType::exnref: Errors::unimplemented("Benchmark invoke reference arguments");
 
 		case ValueType::any:
 		case ValueType::none:

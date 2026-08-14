@@ -316,6 +316,10 @@ void EmitFunctionContext::try_(ControlStructureImm imm)
 	// Push a control context that ends at the end block/phi.
 	pushControlStack(ControlContext::Type::try_, blockType.results(), endBlock, endPHIs);
 
+	// Remember the landingpad on the control context, so that the 'rethrow' instruction can find
+	// the landingpad of the catch at the requested depth.
+	controlStack.back().landingPadInst = catchStack.back().landingPadInst;
+
 	// Push a branch target for the end block/phi.
 	pushBranchTarget(blockType.results(), endBlock, endPHIs);
 
@@ -650,9 +654,15 @@ void EmitFunctionContext::throw_ref(NoImm)
 	enterUnreachable();
 }
 
-void EmitFunctionContext::rethrow(RethrowImm)
+void EmitFunctionContext::rethrow(RethrowImm imm)
 {
-	CatchContext& catchContext = catchStack.back();
+	// 'rethrow $depth' rethrows the exception caught by the catch clause at the given label depth,
+	// which is validated to be a catch handler. Resuming its landingpad continues unwinding that
+	// exception to the enclosing handlers.
+	WAVM_ASSERT(imm.catchDepth < controlStack.size());
+	ControlContext& catchContext = controlStack[controlStack.size() - imm.catchDepth - 1];
+	WAVM_ASSERT(catchContext.type == ControlContext::Type::catch_);
+	WAVM_ASSERT(catchContext.landingPadInst);
 	irBuilder.CreateResume(catchContext.landingPadInst);
 	enterUnreachable();
 }

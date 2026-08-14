@@ -61,6 +61,9 @@ namespace WAVM { namespace LLVMJIT {
 			Uptr outerStackSize;
 			Uptr outerBranchTargetStackSize;
 			bool isReachable;
+
+			// For a try/catch context, the landingpad that catches exceptions thrown in its body.
+			llvm::LandingPadInst* landingPadInst = nullptr;
 		};
 
 		struct BranchTarget
