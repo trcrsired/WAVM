@@ -18,13 +18,13 @@
 
 // Extensions that are expected to be standardized without breaking backward compatibility. These
 // are enabled by default.
-#define WAVM_ENUM_MATURE_FEATURES(V)
+#define WAVM_ENUM_MATURE_FEATURES(V)                                                               \
+	V(exceptionHandling, "exception-handling", "Exception handling")
 
 // Proposed standard extensions. These are disabled by default, but may be enabled on the
 // command-line.
 #define WAVM_ENUM_PROPOSED_FEATURES(V)                                                             \
 	V(atomics, "atomics", "Shared memories and atomic instructions")                               \
-	V(exceptionHandling, "exception-handling", "Exception handling")                               \
 	V(extendedNameSection, "extended-name-section", "Extended name section")                       \
 	V(multipleMemories, "multi-memory", "Multiple memories")                                       \
 	V(memory64, "memory64", "Memories with 64-bit addresses")
