@@ -657,13 +657,30 @@ void EmitFunctionContext::throw_ref(NoImm)
 void EmitFunctionContext::rethrow(RethrowImm imm)
 {
 	// 'rethrow $depth' rethrows the exception caught by the catch clause at the given label depth,
-	// which is validated to be a catch handler. Resuming its landingpad continues unwinding that
-	// exception to the enclosing handlers.
+	// which is validated to be a catch handler. The rethrow is emitted as a fresh throw of that
+	// exception's tag and payload, invoked to the innermost enclosing landingpad, so that it
+	// propagates through the enclosing try blocks just like the wasm rethrow instruction.
 	WAVM_ASSERT(imm.catchDepth < controlStack.size());
 	ControlContext& catchContext = controlStack[controlStack.size() - imm.catchDepth - 1];
 	WAVM_ASSERT(catchContext.type == ControlContext::Type::catch_);
 	WAVM_ASSERT(catchContext.landingPadInst);
-	irBuilder.CreateResume(catchContext.landingPadInst);
+
+	auto unwindehptr = irBuilder.CreateExtractValue(catchContext.landingPadInst, {0});
+	auto ehtagId = ::WAVM::LLVMJIT::wavmCreateLoad(
+		irBuilder,
+		llvmContext.i64Type,
+		irBuilder.CreateGEP(llvmContext.i8Type,
+							unwindehptr,
+							{::llvm::ConstantInt::get(llvmContext.i64Type, EhTagOffset)}));
+	auto userData = ::WAVM::LLVMJIT::wavmCreateLoad(
+		irBuilder,
+		llvmContext.i64Type,
+		irBuilder.CreateGEP(llvmContext.i8Type,
+							unwindehptr,
+							{::llvm::ConstantInt::get(llvmContext.i64Type, UserDataOffset)}));
+
+	auto ehtagfunc = getWavmThrowWasmEhtagFunction(moduleContext);
+	emitRaiseFunctionCall(ehtagfunc, {ehtagId, userData});
 	enterUnreachable();
 }
 
