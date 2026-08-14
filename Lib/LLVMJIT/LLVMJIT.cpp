@@ -38,6 +38,9 @@ namespace LLVMRuntimeSymbols {
 
 	extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t, ::std::uint_least64_t);
 	extern "C" void wavm_throw_ref(::std::uint_least64_t);
+#if defined(_MSC_VER)
+	extern "C" void wavm_rethrow_current();
+#endif
 	extern "C" void wavm_memtag_trap_function();
 	extern "C" void wavm_aarch64_mte_settag(void*, ::std::size_t) noexcept;
 	extern "C" void wavm_aarch64_mte_settag_zero(void*, ::std::size_t) noexcept;
@@ -49,14 +52,7 @@ namespace LLVMRuntimeSymbols {
 	extern "C" void __gxx_personality_seh0();
 #else
 	extern "C" void __chkstk();
-	extern "C" void pseudo_gxx_personality_seh0(PEXCEPTION_RECORD ms_exc,
-												void* this_frame,
-												PCONTEXT ms_orig_context,
-												PDISPATCHER_CONTEXT ms_disp)
-	{
-		return _GCC_specific_handler(
-			ms_exc, this_frame, ms_orig_context, ms_disp, __gxx_personality_imp);
-	}
+	extern "C" void __CxxFrameHandler3();
 #endif
 #else
 #if defined(__APPLE__)
@@ -74,9 +70,14 @@ namespace LLVMRuntimeSymbols {
 	static HashMap<std::string, void*> map = {
 		{"memmove", (void*)&memmove},
 		{"memset", (void*)&memset},
+#if !defined(_MSC_VER)
 		{"_Unwind_Resume", (void*)&_Unwind_Resume},
+#endif
 		{"wavm_throw_wasm_ehtag", (void*)&wavm_throw_wasm_ehtag},
 		{"wavm_throw_ref", (void*)&wavm_throw_ref},
+#if defined(_MSC_VER)
+		{"wavm_rethrow_current", (void*)&wavm_rethrow_current},
+#endif
 		{"wavm_memtag_trap_function", (void*)&wavm_memtag_trap_function},
 #if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__))
 		{"wavm_aarch64_mte_settag", (void*)&wavm_aarch64_mte_settag},

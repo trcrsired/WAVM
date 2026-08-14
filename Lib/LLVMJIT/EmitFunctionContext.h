@@ -320,19 +320,29 @@ namespace WAVM { namespace LLVMJIT {
 		// and the catch clauses to dispatch to when an exception is caught.
 		struct TryTableContext
 		{
+#if defined(_MSC_VER)
+			// MSVC uses funclet-based EH.
+			llvm::CatchSwitchInst* catchSwitchInst;
+			llvm::CatchPadInst* catchPadInst;
+#else
 			llvm::LandingPadInst* landingPadInst;
 			llvm::BasicBlock* landingPadBlock;
+#endif
 			Uptr catchTableIndex;
 		};
 
 		std::vector<TryTableContext> tryTableStack;
+
+		// The stack of enclosing MSVC funclet pads (catchpads), used to mark calls made inside a
+		// catch handler's dispatch with the correct funclet token.
+		std::vector<llvm::Value*> funcletPadStack;
 
 		void endTryWithoutCatch();
 		void endTryCatch();
 		void endTryTable();
 
 		// Emits a call to a noreturn exception-raising function as an invoke to the innermost
-		// enclosing landingpad, if any.
+		// enclosing EH pad, if any.
 		void emitRaiseFunctionCall(llvm::Function* raiseFunction,
 								   llvm::ArrayRef<llvm::Value*> args);
 

@@ -43,6 +43,33 @@ using namespace WAVM::Runtime;
 namespace {
 	inline constexpr ::std::uint_least64_t exceptionclass{0x334c4aa53cddfc65};
 
+#if defined(_MSC_VER)
+	// MSVC uses the Windows funclet-based exception handling model. A wasm exception is thrown via
+	// _CxxThrowException as a pointer to this record, and caught by a catchswitch/catchpad whose
+	// handler extracts it with llvm.eh.exceptionpointer.
+	struct wavm_eh_record
+	{
+		::std::uint_least64_t magic;   // = exceptionclass
+		::std::uint_least64_t ehtag;
+		::std::uint_least64_t userdata;
+	};
+
+	inline constexpr ::std::size_t EhTagOffset{8};
+	inline constexpr ::std::size_t UserDataOffset{16};
+
+	// The _ThrowInfo for the wasm exception record. It only needs to be non-null for
+	// _CxxThrowException; catch-all catchpads match any exception.
+	struct WavmMsvcThrowInfo
+	{
+		::std::uint_least32_t attributes;
+		void* pCatchableTypeArray;
+		void* pThrowUnwindMap;
+		const void* pCatchableTypes;
+	};
+	WavmMsvcThrowInfo wavmThrowInfo{0, nullptr, nullptr, nullptr};
+
+	extern "C" void __cdecl _CxxThrowException(void*, void*);
+#else
 	struct wavm_eh_tag_unwind_eh
 	{
 		_Unwind_Exception itaniumeh;
@@ -50,24 +77,39 @@ namespace {
 		::std::uint_least64_t userdata;
 	};
 
-	// Maps a wasm exception's payload value (the address of the exception object in wasm memory,
-	// which is what an exnref refers to) to the host _Unwind_Exception that was raised for it. This
-	// is used by throw_ref to re-raise a caught exception.
-	thread_local std::unordered_map<::std::uint_least64_t, _Unwind_Exception*>
-		exnrefToUnwindExceptionMap;
-
-	// Stores the host _Unwind_Exception structs allocated for each thrown exception. They must stay
-	// alive for as long as the exception may be caught/rethrown, so they are never freed.
-	thread_local std::vector<std::unique_ptr<wavm_eh_tag_unwind_eh>> exceptionPool;
-
 	inline constexpr ::std::size_t EhTagOffset{__builtin_offsetof(wavm_eh_tag_unwind_eh, ehtag)};
 	inline constexpr ::std::size_t UserDataOffset{
 		__builtin_offsetof(wavm_eh_tag_unwind_eh, userdata)};
+#endif
+
+	// Maps a wasm exception's payload value (the address of the exception object in wasm memory,
+	// which is what an exnref refers to) to the host exception object that was raised for it. This
+	// is used by throw_ref to re-raise a caught exception.
+	thread_local std::unordered_map<::std::uint_least64_t, void*> exnrefToUnwindExceptionMap;
+
+#if defined(_MSC_VER)
+	// Stores the host exception record structs allocated for each thrown exception. They must stay
+	// alive for as long as the exception may be caught/rethrown, so they are never freed.
+	thread_local std::vector<std::unique_ptr<wavm_eh_record>> exceptionPool;
+#else
+	// Stores the host _Unwind_Exception structs allocated for each thrown exception. They must stay
+	// alive for as long as the exception may be caught/rethrown, so they are never freed.
+	thread_local std::vector<std::unique_ptr<wavm_eh_tag_unwind_eh>> exceptionPool;
+#endif
 
 }
 
 extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t tag, ::std::uint_least64_t value)
 {
+#if defined(_MSC_VER)
+	auto exception = std::make_unique<wavm_eh_record>();
+	exception->magic = exceptionclass;
+	exception->ehtag = tag;
+	exception->userdata = value;
+	exnrefToUnwindExceptionMap[value] = exception.get();
+	exceptionPool.push_back(std::move(exception));
+	_CxxThrowException(exceptionPool.back().get(), &wavmThrowInfo);
+#else
 	auto exception = std::make_unique<wavm_eh_tag_unwind_eh>();
 	exception->itaniumeh.exception_class = exceptionclass;
 	exception->ehtag = tag;
@@ -76,6 +118,7 @@ extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t tag, ::std::uint_lea
 	_Unwind_Exception* exceptionObject = __builtin_addressof(exception->itaniumeh);
 	exceptionPool.push_back(std::move(exception));
 	_Unwind_RaiseException(exceptionObject);
+#endif
 }
 
 extern "C" void wavm_throw_ref(::std::uint_least64_t exnref)
@@ -83,11 +126,24 @@ extern "C" void wavm_throw_ref(::std::uint_least64_t exnref)
 	auto mapIt = exnrefToUnwindExceptionMap.find(exnref);
 	if(mapIt != exnrefToUnwindExceptionMap.end())
 	{
-		_Unwind_RaiseException(mapIt->second);
+#if defined(_MSC_VER)
+		_CxxThrowException(mapIt->second, &wavmThrowInfo);
+#else
+		_Unwind_RaiseException(static_cast<_Unwind_Exception*>(mapIt->second));
+#endif
 	}
 	// If the exnref doesn't map to a live exception, abort.
 	std::abort();
 }
+
+// Rethrows the exception currently being handled. Only used on MSVC, from the no-match path of a
+// catch handler's dispatch.
+#if defined(_MSC_VER)
+extern "C" void wavm_rethrow_current()
+{
+	_CxxThrowException(nullptr, nullptr);
+}
+#endif
 
 static llvm::Function* getWavmThrowWasmEhtagFunction(EmitModuleContext& moduleContext)
 {
@@ -121,6 +177,23 @@ static llvm::Function* getWavmRethrowWasmEhtagFunction(EmitModuleContext& module
 	}
 	return moduleContext.wavmRethrowWasmEhtagFunction;
 }
+
+#if defined(_MSC_VER)
+static llvm::Function* getWavmRethrowCurrentFunction(EmitModuleContext& moduleContext)
+{
+	if(!moduleContext.wavmRethrowCurrentFunction)
+	{
+		LLVMContext& llvmContext = moduleContext.llvmContext;
+		moduleContext.wavmRethrowCurrentFunction = llvm::Function::Create(
+			llvm::FunctionType::get(llvm::Type::getVoidTy(llvmContext), {}, false),
+			llvm::GlobalValue::LinkageTypes::ExternalLinkage,
+			"wavm_rethrow_current",
+			moduleContext.llvmModule);
+		moduleContext.wavmRethrowCurrentFunction->addFnAttr(::llvm::Attribute::AttrKind::NoReturn);
+	}
+	return moduleContext.wavmRethrowCurrentFunction;
+}
+#endif
 
 // Coerces an i64 value (the user data carried by a wasm exception) to the LLVM type for a
 // WebAssembly value type.
@@ -272,6 +345,36 @@ void EmitFunctionContext::try_table(TryTableImm imm)
 	// Repush the try_table arguments.
 	pushMultiple(tryTableArgs, blockType.params().size());
 
+#if defined(_MSC_VER)
+	// MSVC uses the funclet-based EH model. Create a catchswitch with a single catch-all catchpad
+	// that catches any wasm exception thrown in the try_table body. The catchpad's handler then
+	// dispatches on the exception's tag.
+	auto dispatchBlock = llvm::BasicBlock::Create(llvmContext, "catchDispatch", function);
+	auto catchPadBlock = llvm::BasicBlock::Create(llvmContext, "catchPad", function);
+	{
+		::llvm::IRBuilderBase::InsertPointGuard guard(irBuilder);
+
+		// The catchswitch's funclet parent is the innermost enclosing funclet pad, if any.
+		llvm::Value* parentPad = funcletPadStack.empty()
+									 ? llvm::ConstantTokenNone::get(llvmContext)
+									 : funcletPadStack.back();
+
+		irBuilder.SetInsertPoint(dispatchBlock);
+		auto catchSwitchInst
+			= irBuilder.CreateCatchSwitch(parentPad, nullptr, 1); // unwind to caller
+		catchSwitchInst->addHandler(catchPadBlock);
+
+		irBuilder.SetInsertPoint(catchPadBlock);
+		auto catchPadInst = irBuilder.CreateCatchPad(catchSwitchInst,
+													 {llvm::Constant::getNullValue(llvmContext.i8PtrType),
+													  llvm::ConstantInt::get(llvmContext.i32Type, 64),
+													  llvm::Constant::getNullValue(llvmContext.i8PtrType)});
+
+		tryStack.push_back(TryContext{dispatchBlock});
+		tryTableStack.push_back(TryTableContext{catchSwitchInst, catchPadInst, imm.catchTableIndex});
+		funcletPadStack.push_back(catchPadInst);
+	}
+#else
 	// Create the landingpad block that is the unwind target for any calls in the try_table body,
 	// and that the catch clauses will dispatch from.
 	auto landingPadBlock = llvm::BasicBlock::Create(llvmContext, "tryTableLandingPad", function);
@@ -285,6 +388,7 @@ void EmitFunctionContext::try_table(TryTableImm imm)
 		tryStack.push_back(TryContext{landingPadBlock});
 		tryTableStack.push_back(TryTableContext{landingPadInst, landingPadBlock, imm.catchTableIndex});
 	}
+#endif
 }
 
 void EmitFunctionContext::endTryTable()
@@ -296,18 +400,28 @@ void EmitFunctionContext::endTryTable()
 	WAVM_ASSERT(!tryTableStack.empty());
 	TryTableContext& tryTableContext = tryTableStack.back();
 
-	// Emit the landingpad dispatch in the landingpad block.
-	llvm::BasicBlock* savedInsertionPoint = irBuilder.GetInsertBlock();
-	irBuilder.SetInsertPoint(tryTableContext.landingPadBlock);
-
-	auto unwindehptr = irBuilder.CreateExtractValue(tryTableContext.landingPadInst, {0});
-	auto magic = ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, llvmContext.i64Type, unwindehptr);
-	auto isUserExceptionType = irBuilder.CreateICmpEQ(
-		magic, ::llvm::ConstantInt::get(llvmContext.i64Type, exceptionclass));
-
 	WAVM_ASSERT(tryTableContext.catchTableIndex < functionDef.catchClauses.size());
 	const std::vector<IR::CatchClause>& catchClauses
 		= functionDef.catchClauses[tryTableContext.catchTableIndex];
+
+	// Emit the dispatch in the catch pad block.
+	llvm::BasicBlock* savedInsertionPoint = irBuilder.GetInsertBlock();
+#if defined(_MSC_VER)
+	irBuilder.SetInsertPoint(tryTableContext.catchPadInst->getParent());
+
+	// Get the pointer to the caught exception record via llvm.eh.exceptionpointer.
+	llvm::Function* exceptionPointerFn = moduleContext.getLLVMIntrinsic(
+		{llvmContext.i8PtrType}, llvm::Intrinsic::eh_exceptionpointer);
+	auto unwindehptr = irBuilder.CreateCall(
+		exceptionPointerFn->getFunctionType(), exceptionPointerFn, {tryTableContext.catchPadInst});
+#else
+	irBuilder.SetInsertPoint(tryTableContext.landingPadBlock);
+
+	auto unwindehptr = irBuilder.CreateExtractValue(tryTableContext.landingPadInst, {0});
+#endif
+	auto magic = ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, llvmContext.i64Type, unwindehptr);
+	auto isUserExceptionType = irBuilder.CreateICmpEQ(
+		magic, ::llvm::ConstantInt::get(llvmContext.i64Type, exceptionclass));
 
 	// Create a check block and a match block for each catch clause, and a no-match block that
 	// rethrows the exception.
@@ -384,14 +498,32 @@ void EmitFunctionContext::endTryTable()
 			target.phis[argIndex]->addIncoming(coerceToCanonicalType(payload),
 											   irBuilder.GetInsertBlock());
 		}
+#if defined(_MSC_VER)
+		irBuilder.CreateCatchRet(tryTableContext.catchPadInst, target.block);
+#else
 		irBuilder.CreateBr(target.block);
+#endif
 	}
 
 	// Emit the no-match block, which rethrows the exception to an outer handler.
 	irBuilder.SetInsertPoint(noMatchBlock);
+#if defined(_MSC_VER)
+	// Rethrow the currently handled exception. The call must be marked as belonging to the
+	// catchpad's funclet.
+	auto rethrowFn = getWavmRethrowCurrentFunction(moduleContext);
+	llvm::SmallVector<llvm::Value*, 1> funcletInputs = {tryTableContext.catchPadInst};
+	llvm::OperandBundleDef funcletBundle("funclet", funcletInputs);
+	irBuilder.CreateCall(rethrowFn->getFunctionType(), rethrowFn, {}, {funcletBundle});
+	irBuilder.CreateUnreachable();
+#else
 	irBuilder.CreateResume(tryTableContext.landingPadInst);
+#endif
 
 	irBuilder.SetInsertPoint(savedInsertionPoint);
+#if defined(_MSC_VER)
+	WAVM_ASSERT(!funcletPadStack.empty());
+	funcletPadStack.pop_back();
+#endif
 	tryTableStack.pop_back();
 }
 #if 1
