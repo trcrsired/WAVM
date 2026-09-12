@@ -49,7 +49,7 @@ namespace {
 	// handler extracts it with llvm.eh.exceptionpointer.
 	struct wavm_eh_record
 	{
-		::std::uint_least64_t magic;   // = exceptionclass
+		::std::uint_least64_t magic; // = exceptionclass
 		::std::uint_least64_t ehtag;
 		::std::uint_least64_t userdata;
 	};
@@ -139,10 +139,7 @@ extern "C" void wavm_throw_ref(::std::uint_least64_t exnref)
 // Rethrows the exception currently being handled. Only used on MSVC, from the no-match path of a
 // catch handler's dispatch.
 #if defined(_MSC_VER)
-extern "C" void wavm_rethrow_current()
-{
-	_CxxThrowException(nullptr, nullptr);
-}
+extern "C" void wavm_rethrow_current() { _CxxThrowException(nullptr, nullptr); }
 #endif
 
 static llvm::Function* getWavmThrowWasmEhtagFunction(EmitModuleContext& moduleContext)
@@ -173,7 +170,8 @@ static llvm::Function* getWavmRethrowWasmEhtagFunction(EmitModuleContext& module
 			llvm::GlobalValue::LinkageTypes::ExternalLinkage,
 			"wavm_throw_ref",
 			moduleContext.llvmModule);
-		moduleContext.wavmRethrowWasmEhtagFunction->addFnAttr(::llvm::Attribute::AttrKind::NoReturn);
+		moduleContext.wavmRethrowWasmEhtagFunction->addFnAttr(
+			::llvm::Attribute::AttrKind::NoReturn);
 	}
 	return moduleContext.wavmRethrowWasmEhtagFunction;
 }
@@ -208,8 +206,8 @@ static llvm::Value* coerceI64ToValueType(llvm::IRBuilder<>& irBuilder,
 	case IR::ValueType::i32: return irBuilder.CreateTrunc(i64Value, llvmContext.i32Type);
 	case IR::ValueType::f64: return irBuilder.CreateBitCast(i64Value, llvmContext.f64Type);
 	case IR::ValueType::f32:
-		return irBuilder.CreateBitCast(
-			irBuilder.CreateTrunc(i64Value, llvmContext.i32Type), llvmContext.f32Type);
+		return irBuilder.CreateBitCast(irBuilder.CreateTrunc(i64Value, llvmContext.i32Type),
+									   llvmContext.f32Type);
 	case IR::ValueType::exnref: return i64Value;
 	case IR::ValueType::externref:
 	case IR::ValueType::funcref:
@@ -228,11 +226,8 @@ void EmitFunctionContext::emitRaiseFunctionCall(llvm::Function* raiseFunction,
 	if(unwindToBlock)
 	{
 		auto returnBlock = llvm::BasicBlock::Create(llvmContext, "raiseReturn", function);
-		irBuilder.CreateInvoke(raiseFunction->getFunctionType(),
-							   raiseFunction,
-							   returnBlock,
-							   unwindToBlock,
-							   args);
+		irBuilder.CreateInvoke(
+			raiseFunction->getFunctionType(), raiseFunction, returnBlock, unwindToBlock, args);
 		irBuilder.SetInsertPoint(returnBlock);
 		irBuilder.CreateUnreachable();
 	}
@@ -274,7 +269,10 @@ llvm::BasicBlock* EmitContext::getInnermostUnwindToBlock()
 		auto temp = tryStack.back().unwindToBlock;
 		return temp;
 	}
-	else { return nullptr; }
+	else
+	{
+		return nullptr;
+	}
 }
 
 static inline void generate_catch_common(EmitFunctionContext& emitFunctionContext)
@@ -359,9 +357,8 @@ void EmitFunctionContext::try_table(TryTableImm imm)
 		::llvm::IRBuilderBase::InsertPointGuard guard(irBuilder);
 
 		// The catchswitch's funclet parent is the innermost enclosing funclet pad, if any.
-		llvm::Value* parentPad = funcletPadStack.empty()
-									 ? llvm::ConstantTokenNone::get(llvmContext)
-									 : funcletPadStack.back();
+		llvm::Value* parentPad = funcletPadStack.empty() ? llvm::ConstantTokenNone::get(llvmContext)
+														 : funcletPadStack.back();
 
 		irBuilder.SetInsertPoint(dispatchBlock);
 		auto catchSwitchInst
@@ -369,13 +366,15 @@ void EmitFunctionContext::try_table(TryTableImm imm)
 		catchSwitchInst->addHandler(catchPadBlock);
 
 		irBuilder.SetInsertPoint(catchPadBlock);
-		auto catchPadInst = irBuilder.CreateCatchPad(catchSwitchInst,
-													 {llvm::Constant::getNullValue(llvmContext.i8PtrType),
-													  llvm::ConstantInt::get(llvmContext.i32Type, 64),
-													  llvm::Constant::getNullValue(llvmContext.i8PtrType)});
+		auto catchPadInst
+			= irBuilder.CreateCatchPad(catchSwitchInst,
+									   {llvm::Constant::getNullValue(llvmContext.i8PtrType),
+										llvm::ConstantInt::get(llvmContext.i32Type, 64),
+										llvm::Constant::getNullValue(llvmContext.i8PtrType)});
 
 		tryStack.push_back(TryContext{dispatchBlock});
-		tryTableStack.push_back(TryTableContext{catchSwitchInst, catchPadInst, imm.catchTableIndex});
+		tryTableStack.push_back(
+			TryTableContext{catchSwitchInst, catchPadInst, imm.catchTableIndex});
 		funcletPadStack.push_back(catchPadInst);
 	}
 #else
@@ -390,7 +389,8 @@ void EmitFunctionContext::try_table(TryTableImm imm)
 		landingPadInst->addClause(::llvm::ConstantPointerNull::get(irBuilder.getPtrTy()));
 
 		tryStack.push_back(TryContext{landingPadBlock});
-		tryTableStack.push_back(TryTableContext{landingPadInst, landingPadBlock, imm.catchTableIndex});
+		tryTableStack.push_back(
+			TryTableContext{landingPadInst, landingPadBlock, imm.catchTableIndex});
 	}
 #endif
 }
@@ -443,7 +443,10 @@ void EmitFunctionContext::endTryTable()
 	// Only wasm exceptions (with the WAVM exception class) can be caught by a catch clause;
 	// anything else is rethrown.
 	if(checkBlocks.empty()) { irBuilder.CreateBr(noMatchBlock); }
-	else { irBuilder.CreateCondBr(isUserExceptionType, checkBlocks[0], noMatchBlock); }
+	else
+	{
+		irBuilder.CreateCondBr(isUserExceptionType, checkBlocks[0], noMatchBlock);
+	}
 
 	// Emit each catch clause's check.
 	for(Uptr clauseIndex = 0; clauseIndex < catchClauses.size(); ++clauseIndex)
@@ -451,9 +454,8 @@ void EmitFunctionContext::endTryTable()
 		const IR::CatchClause& catchClause = catchClauses[clauseIndex];
 		irBuilder.SetInsertPoint(checkBlocks[clauseIndex]);
 
-		llvm::BasicBlock* nextBlock = clauseIndex + 1 < catchClauses.size()
-										  ? checkBlocks[clauseIndex + 1]
-										  : noMatchBlock;
+		llvm::BasicBlock* nextBlock
+			= clauseIndex + 1 < catchClauses.size() ? checkBlocks[clauseIndex + 1] : noMatchBlock;
 		if(catchClause.kind == IR::CatchClauseKind::catch_
 		   || catchClause.kind == IR::CatchClauseKind::catch_ref)
 		{
@@ -466,7 +468,8 @@ void EmitFunctionContext::endTryTable()
 			auto isehtagId = irBuilder.CreateICmpEQ(
 				ehtagId,
 				::llvm::ConstantInt::get(
-					llvmContext.i64Type, irModule.tagSegments[catchClause.exceptionTypeIndex].tagindex));
+					llvmContext.i64Type,
+					irModule.tagSegments[catchClause.exceptionTypeIndex].tagindex));
 			irBuilder.CreateCondBr(isehtagId, matchBlocks[clauseIndex], nextBlock);
 		}
 		else
@@ -640,6 +643,7 @@ void EmitFunctionContext::throw_(ExceptionTypeImm imm)
 	auto& tagseg{irModule.tagSegments[imm.exceptionTypeIndex]};
 
 	auto ehtagfunc = getWavmThrowWasmEhtagFunction(moduleContext);
+	ehptr = irBuilder.CreateZExt(ehptr, llvmContext.i64Type);
 	emitRaiseFunctionCall(ehtagfunc,
 						  {::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex), ehptr});
 	enterUnreachable();
