@@ -82,6 +82,13 @@ namespace {
 		__builtin_offsetof(wavm_eh_tag_unwind_eh, userdata)};
 #endif
 
+	// The host exception record type used on each platform.
+#if defined(_MSC_VER)
+	typedef wavm_eh_record WavmEhRecord;
+#else
+	typedef wavm_eh_tag_unwind_eh WavmEhRecord;
+#endif
+
 	// The data an exnref value carries: the exception's tag identity and payload. An exnref is a
 	// copyable value, so catching an exception copies this out and releases the record; throw_ref
 	// builds a fresh record from the stored value. Because the payload is a single word, an
@@ -92,34 +99,32 @@ namespace {
 		::std::uint_least64_t userdata;
 	};
 
-	// The values exnref handles name, kept as a bounded ring: when it fills, the oldest value is
-	// evicted and its slot's generation is bumped so stale exnrefs fail closed. Exnref liveness
-	// cannot be tracked without GC, so a bounded table is the compromise.
 	struct EhTrackingState
 	{
+		// The values exnref handles name, kept as a bounded ring: when it fills, the oldest value
+		// is evicted and its slot's generation is bumped so stale exnrefs fail closed. Exnref
+		// liveness cannot be tracked without GC, so a bounded table is the compromise.
 		std::vector<ExnrefValue> exnrefValues;
 		std::vector<U32> exnrefGenerations;
 		Uptr exnrefNext{0};
+
+		// The exception record backing the wasm raise currently in flight. Its address names it
+		// to the unwind machinery for the whole raise — including after phase 2 abandons the
+		// raise frames — so it must be a stable thread-local rather than a stack or heap
+		// allocation. At most one wasm record is ever in flight: a landing pad claims the record
+		// (wavm_eh_catch_entered/wavm_eh_table_caught) or re-raises it (wavm_rethrow_record)
+		// before any handler code can raise another.
+		WavmEhRecord raiseRecord;
+
+		// Whether raiseRecord is currently named by the unwind machinery: set when a raise
+		// begins and cleared when a handler claims the record or the raise finishes uncaught. A
+		// new wasm raise while it is set would clobber an unclaimed record, which no emitted
+		// code path can do.
+		bool raiseInFlight{false};
 	};
 	thread_local EhTrackingState ehTracking;
 
 	inline constexpr Uptr exnrefValueCapacity{1024};
-
-#if !defined(_MSC_VER)
-	// The exception record backing the wasm raise currently in flight. Its address names it to
-	// the unwind machinery for the whole raise — including after phase 2 abandons the raise
-	// frames — so it must be a stable thread-local rather than a stack or pool allocation. At
-	// most one wasm record is ever in flight: a landing pad claims the record
-	// (wavm_eh_catch_entered/wavm_eh_table_caught) or re-raises it (wavm_rethrow_record) before
-	// any handler code can raise another.
-	thread_local wavm_eh_tag_unwind_eh ehRaiseRecord;
-
-	// Whether ehRaiseRecord is currently named by the unwind machinery: set when a raise begins
-	// and cleared when a handler claims the record or the raise returns uncaught. A new wasm
-	// raise while it is set would clobber an unclaimed record, which no emitted code path can
-	// do.
-	thread_local bool ehRaiseInFlight{false};
-#endif
 
 	// Stores an exnref value and returns its handle: generation in the high bits and index+1 in
 	// the low bits, so that 0 remains the null exnref.
@@ -161,34 +166,34 @@ namespace {
 }
 
 #if !defined(_MSC_VER)
-// Raises ehRaiseRecord via _Unwind_RaiseException. Does not return: a raise that finds no wasm
-// or host handler returns, and is converted to a WAVM uncaughtException runtime error.
+// Raises ehTracking.raiseRecord via _Unwind_RaiseException. Does not return: a raise that finds
+// no wasm or host handler returns, and is converted to a WAVM uncaughtException runtime error.
 static void ehRaiseCurrentRecord()
 {
-	ehRaiseInFlight = true;
-	_Unwind_Reason_Code reason = _Unwind_RaiseException(&ehRaiseRecord.itaniumeh);
+	ehTracking.raiseInFlight = true;
+	_Unwind_Reason_Code reason = _Unwind_RaiseException(&ehTracking.raiseRecord.itaniumeh);
 	(void)reason;
-	ehRaiseInFlight = false;
+	ehTracking.raiseInFlight = false;
 	Runtime::throwException(Runtime::ExceptionTypes::uncaughtException,
-							{IR::UntaggedValue(U64(ehRaiseRecord.ehtag)),
-							 IR::UntaggedValue(U64(ehRaiseRecord.userdata))});
+							{IR::UntaggedValue(U64(ehTracking.raiseRecord.ehtag)),
+							 IR::UntaggedValue(U64(ehTracking.raiseRecord.userdata))});
 }
 #endif
 
 extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t tag, ::std::uint_least64_t value)
 {
+	if(ehTracking.raiseInFlight) { std::abort(); }
+	ehTracking.raiseRecord = WavmEhRecord{};
 #if defined(_MSC_VER)
-	auto* exception = new wavm_eh_record();
-	exception->magic = exceptionclass;
-	exception->ehtag = tag;
-	exception->userdata = value;
-	_CxxThrowException(exception, &wavmThrowInfo);
+	ehTracking.raiseRecord.magic = exceptionclass;
+	ehTracking.raiseRecord.ehtag = tag;
+	ehTracking.raiseRecord.userdata = value;
+	ehTracking.raiseInFlight = true;
+	_CxxThrowException(&ehTracking.raiseRecord, &wavmThrowInfo);
 #else
-	if(ehRaiseInFlight) { std::abort(); }
-	ehRaiseRecord = wavm_eh_tag_unwind_eh{};
-	ehRaiseRecord.itaniumeh.exception_class = exceptionclass;
-	ehRaiseRecord.ehtag = tag;
-	ehRaiseRecord.userdata = value;
+	ehTracking.raiseRecord.itaniumeh.exception_class = exceptionclass;
+	ehTracking.raiseRecord.ehtag = tag;
+	ehTracking.raiseRecord.userdata = value;
 	ehRaiseCurrentRecord();
 #endif
 }
@@ -198,13 +203,10 @@ extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t tag, ::std::uint_lea
 // re-raise.
 extern "C" void wavm_rethrow_record(void* recordPtr)
 {
+	if(recordPtr != &ehTracking.raiseRecord) { std::abort(); }
 #if defined(_MSC_VER)
-	auto* exception = reinterpret_cast<wavm_eh_record*>(recordPtr);
-	if(!exception || exception->magic != exceptionclass) { std::abort(); }
-	_CxxThrowException(exception, &wavmThrowInfo);
+	_CxxThrowException(&ehTracking.raiseRecord, &wavmThrowInfo);
 #else
-	auto* exception = reinterpret_cast<wavm_eh_tag_unwind_eh*>(recordPtr);
-	if(exception != &ehRaiseRecord) { std::abort(); }
 	ehRaiseCurrentRecord();
 #endif
 }
@@ -215,25 +217,18 @@ extern "C" void wavm_rethrow_record(void* recordPtr)
 // retains it regardless of which catch scopes are still live.
 extern "C" ::std::uint_least64_t wavm_eh_catch_entered(void* recordPtr)
 {
-#if defined(_MSC_VER)
-	std::abort();
-#else
-	if(recordPtr != &ehRaiseRecord) { std::abort(); }
-	ehRaiseInFlight = false;
-	return ehMakeExnref(ExnrefValue{ehRaiseRecord.ehtag, ehRaiseRecord.userdata});
-#endif
+	if(recordPtr != &ehTracking.raiseRecord) { std::abort(); }
+	ehTracking.raiseInFlight = false;
+	return ehMakeExnref(
+		ExnrefValue{ehTracking.raiseRecord.ehtag, ehTracking.raiseRecord.userdata});
 }
 
 // Called when a try_table catch/catch_all clause accepts an exception: the clause produces no
 // exnref, so the record is simply released.
 extern "C" void wavm_eh_table_caught(void* recordPtr)
 {
-#if defined(_MSC_VER)
-	std::abort();
-#else
-	if(recordPtr != &ehRaiseRecord) { std::abort(); }
-	ehRaiseInFlight = false;
-#endif
+	if(recordPtr != &ehTracking.raiseRecord) { std::abort(); }
+	ehTracking.raiseInFlight = false;
 }
 
 // Implements the throw_ref instruction. The exnref operand is the handle produced by a
@@ -242,24 +237,21 @@ extern "C" void wavm_eh_table_caught(void* recordPtr)
 // entry, or a forged value — fails closed with a runtime error instead of dereferencing it.
 extern "C" void wavm_throw_ref(::std::uint_least64_t exnref)
 {
-#if defined(_MSC_VER)
-	auto* exception = reinterpret_cast<wavm_eh_record*>(Uptr(exnref));
-	if(!exception || exception->magic != exceptionclass)
-	{
-		Runtime::throwException(Runtime::ExceptionTypes::invalidExnref, {});
-	}
-	_CxxThrowException(exception, &wavmThrowInfo);
-#else
 	ExnrefValue value;
 	if(!ehExnrefToValue(exnref, value))
 	{
 		Runtime::throwException(Runtime::ExceptionTypes::invalidExnref, {});
 	}
-	if(ehRaiseInFlight) { std::abort(); }
-	ehRaiseRecord = wavm_eh_tag_unwind_eh{};
-	ehRaiseRecord.itaniumeh.exception_class = exceptionclass;
-	ehRaiseRecord.ehtag = value.ehtag;
-	ehRaiseRecord.userdata = value.userdata;
+	if(ehTracking.raiseInFlight) { std::abort(); }
+	ehTracking.raiseRecord = WavmEhRecord{};
+	ehTracking.raiseRecord.ehtag = value.ehtag;
+	ehTracking.raiseRecord.userdata = value.userdata;
+#if defined(_MSC_VER)
+	ehTracking.raiseRecord.magic = exceptionclass;
+	ehTracking.raiseInFlight = true;
+	_CxxThrowException(&ehTracking.raiseRecord, &wavmThrowInfo);
+#else
+	ehTracking.raiseRecord.itaniumeh.exception_class = exceptionclass;
 	ehRaiseCurrentRecord();
 #endif
 }
@@ -645,17 +637,34 @@ void EmitFunctionContext::endTryTable()
 			irBuilder.CreateGEP(llvmContext.i8Type,
 								unwindehptr,
 								{::llvm::ConstantInt::get(llvmContext.i64Type, UserDataOffset)}));
-#if defined(_MSC_VER)
-		// For the exnref parameter produced by catch_ref/catch_all_ref, the exnref value is the
-		// address of the exception record itself.
-		llvm::Value* exnrefValue = irBuilder.CreatePtrToInt(unwindehptr, llvmContext.i64Type);
-#else
-		// A catch_ref/catch_all_ref clause keeps the record referenceable through the exnref it
-		// pushes; a plain catch/catch_all clause releases it unless a live catch scope still
-		// holds it. wavm_eh_catch_entered registers the record and returns the exnref handle.
+		// A catch_ref/catch_all_ref clause produces an exnref naming the caught exception:
+		// wavm_eh_catch_entered copies the record out as an exnref value and returns its handle.
+		// A plain catch/catch_all clause produces no exnref, so wavm_eh_table_caught just claims
+		// the record.
 		const bool clauseProducesExnref = catchClause.kind == IR::CatchClauseKind::catch_ref
 										  || catchClause.kind == IR::CatchClauseKind::catch_all_ref;
 		llvm::Value* exnrefValue = nullptr;
+#if defined(_MSC_VER)
+		// Calls inside the catchpad must be marked as belonging to the funclet.
+		llvm::SmallVector<llvm::Value*, 1> funcletInputs = {tryTableContext.catchPadInst};
+		llvm::OperandBundleDef funcletBundle("funclet", funcletInputs);
+		if(clauseProducesExnref)
+		{
+			llvm::Function* catchEnteredFn = getWavmEhCatchEnteredFunction(moduleContext);
+			exnrefValue = irBuilder.CreateCall(catchEnteredFn->getFunctionType(),
+											   catchEnteredFn,
+											   {unwindehptr},
+											   {funcletBundle});
+		}
+		else
+		{
+			llvm::Function* tableCaughtFn = getWavmEhTableCaughtFunction(moduleContext);
+			irBuilder.CreateCall(tableCaughtFn->getFunctionType(),
+								 tableCaughtFn,
+								 {unwindehptr},
+								 {funcletBundle});
+		}
+#else
 		if(clauseProducesExnref)
 		{
 			exnrefValue = irBuilder.CreateCall(
