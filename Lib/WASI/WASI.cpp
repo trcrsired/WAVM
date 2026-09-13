@@ -161,6 +161,29 @@ std::shared_ptr<Process> WASI::createProcess(Runtime::Compartment* compartment,
 
 Resolver& WASI::getProcessResolver(Process& process) { return process.resolver; }
 
+void WASI::setNetworkEnabled(Process& process, bool isEnabled)
+{
+	process.networkEnabled = isEnabled;
+}
+
+I32 WASI::addSocketFD(Process& process, VFS::VFD* socketVFD, bool isListening)
+{
+	WAVM_ASSERT(socketVFD);
+
+	const __wasi_rights_t rights = isListening ? SOCKET_LISTEN_RIGHTS : SOCKET_RIGHTS;
+
+	Platform::RWMutex::ExclusiveLock fdsLock(process.fdMapMutex);
+	const __wasi_fd_t fd = process.fdMap.add(
+		UINT32_MAX,
+		std::make_shared<FDE>(socketVFD, rights, 0, isListening ? "socket-listen" : "socket"));
+	if(fd == UINT32_MAX)
+	{
+		socketVFD->close();
+		return -1;
+	}
+	return I32(fd);
+}
+
 Process* WASI::getProcessFromContextRuntimeData(Runtime::ContextRuntimeData* contextRuntimeData)
 {
 	return (Process*)Runtime::getUserData(

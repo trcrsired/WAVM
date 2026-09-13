@@ -49,6 +49,15 @@
 // Only allow directory or file operations to be derived from directories.
 #define INHERITING_DIRECTORY_RIGHTS (DIRECTORY_RIGHTS | REGULAR_FILE_RIGHTS)
 
+// The rights granted to a connected socket.
+#define SOCKET_RIGHTS                                                                              \
+	(__WASI_RIGHT_FD_READ | __WASI_RIGHT_FD_FDSTAT_SET_FLAGS | __WASI_RIGHT_FD_WRITE               \
+	 | __WASI_RIGHT_FD_FILESTAT_GET | __WASI_RIGHT_POLL_FD_READWRITE                               \
+	 | __WASI_RIGHT_SOCK_SHUTDOWN)
+
+// The rights granted to a socket that can accept connections.
+#define SOCKET_LISTEN_RIGHTS (SOCKET_RIGHTS | __WASI_RIGHT_SOCK_ACCEPT)
+
 namespace WAVM { namespace VFS {
 	enum class Result;
 	struct DirEntStream;
@@ -112,6 +121,10 @@ namespace WAVM { namespace WASI {
 		IndexMap<__wasi_fd_t, std::shared_ptr<WASI::FDE>> fdMap{0, INT32_MAX};
 
 		VFS::FileSystem* fileSystem = nullptr;
+
+		// Whether the process is allowed to use the network (the sock_* syscalls). Sockets can
+		// only enter the process's FD table if this was enabled when the socket FD was created.
+		bool networkEnabled = false;
 
 		ProcessResolver resolver;
 

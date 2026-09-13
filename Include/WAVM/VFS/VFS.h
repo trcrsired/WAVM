@@ -98,6 +98,43 @@ namespace WAVM { namespace VFS {
 		FileType type;
 	};
 
+	// A platform-neutral IP socket address.
+	struct SocketAddress
+	{
+		enum class Family : U8
+		{
+			ipv4,
+			ipv6
+		};
+
+		Family family;
+		U16 port;   // In host byte order.
+		U32 scopeId; // Only used for IPv6.
+		U8 ipBytes[16]; // In network byte order; only the first 4 bytes are used for IPv4.
+	};
+
+	// A platform-neutral socket option identifier. WASI-level option numbers are translated to
+	// these by the WASI layer.
+	enum class SocketOptionLevel : U32
+	{
+		socket,
+		tcp,
+		ipv6
+	};
+
+	enum class SocketOption : U32
+	{
+		reuseAddress,
+		broadcast,
+		keepAlive,
+		type, // get-only; the value is a FileType (streamSocket/datagramSocket)
+		error, // get-only
+		sendBufferSize,
+		recvBufferSize,
+		noDelay,
+		v6Only
+	};
+
 	struct IOReadBuffer
 	{
 		void* data;
@@ -157,7 +194,18 @@ namespace WAVM { namespace VFS {
 		v(brokenPipe, "Pipe is broken") \
 		v(missingDevice, "Device is missing") \
 		v(busy, "Device or resource busy") \
-		v(notSupported, "Operation not supported")
+		v(notSupported, "Operation not supported") \
+		/* Socket errors */ \
+		v(notSocket, "Not a socket") \
+		v(notConnected, "Socket is not connected") \
+		v(connectionRefused, "Connection refused") \
+		v(connectionReset, "Connection reset by peer") \
+		v(connectionAborted, "Connection aborted") \
+		v(timedOut, "Connection timed out") \
+		v(addressInUse, "Address is already in use") \
+		v(addressNotAvailable, "Address is not available") \
+		v(hostUnreachable, "Host is unreachable") \
+		v(networkUnreachable, "Network is unreachable")
 
 	enum class Result : I32
 	{
@@ -212,6 +260,53 @@ namespace WAVM { namespace VFS {
 			= 0;
 
 		virtual Result openDir(DirEntStream*& outStream) = 0;
+
+		// Socket operations. The default implementations return notSupported for FDs that
+		// aren't sockets.
+
+		// Accepts a pending connection on a listening socket. On success, outVFD is set to a new
+		// VFD for the accepted connection with the given flags applied.
+		virtual Result sockAccept(VFD*& outVFD, const VFDFlags& acceptedFlags);
+
+		// Receives data into the given buffers. If peek is true, the data isn't removed from
+		// the socket's receive queue. If waitAll is true, blocks until the buffers are full.
+		// outDataTruncated is set to true if the incoming message was larger than the buffers.
+		// If outSourceAddress is non-null, it is set to the address the message was received
+		// from (only meaningful for datagram sockets).
+		virtual Result sockRecv(const IOReadBuffer* buffers,
+								Uptr numBuffers,
+								bool peek,
+								bool waitAll,
+								Uptr* outNumBytesRead,
+								bool* outDataTruncated,
+								SocketAddress* outSourceAddress);
+
+		// Sends the contents of the given buffers on a socket. If destAddress is non-null, the
+		// message is sent to that address (only meaningful for datagram sockets).
+		virtual Result sockSend(const IOWriteBuffer* buffers,
+								Uptr numBuffers,
+								const SocketAddress* destAddress,
+								Uptr* outNumBytesWritten);
+
+		// Shuts down the read and/or write halves of a socket connection.
+		virtual Result sockShutdown(bool shutRead, bool shutWrite);
+
+		// Binds a socket to a local address.
+		virtual Result sockBind(const SocketAddress& localAddress);
+
+		// Marks a bound socket as listening for incoming connections.
+		virtual Result sockListen(U32 backlog);
+
+		// Connects a socket to a remote address.
+		virtual Result sockConnect(const SocketAddress& remoteAddress);
+
+		// Gets the address a socket is bound to, or the address of the connected peer.
+		virtual Result sockGetLocalAddress(SocketAddress& outAddress);
+		virtual Result sockGetPeerAddress(SocketAddress& outAddress);
+
+		// Gets or sets a socket option as a 32-bit integer value.
+		virtual Result sockSetOpt(SocketOptionLevel level, SocketOption option, U32 value);
+		virtual Result sockGetOpt(SocketOptionLevel level, SocketOption option, U32& outValue);
 
 		Result read(void* outData,
 					Uptr numBytes,

@@ -4,6 +4,7 @@
 #include "WAVM/Logging/Logging.h"
 #include "WAVM/Platform/Clock.h"
 #include "WAVM/Platform/RWMutex.h"
+#include "WAVM/Platform/Socket.h"
 #include "WAVM/Runtime/Runtime.h"
 #include "WAVM/VFS/VFS.h"
 #include "WAVM/WASI/WASIABI64.h"
@@ -56,6 +57,17 @@ static __wasi_errno_t asWASIErrNo(VFS::Result result)
 	case Result::missingDevice: return __WASI_ENXIO;
 	case Result::busy: return __WASI_EBUSY;
 	case Result::notSupported: return __WASI_ENOTSUP;
+
+	case Result::notSocket: return __WASI_ENOTSOCK;
+	case Result::notConnected: return __WASI_ENOTCONN;
+	case Result::connectionRefused: return __WASI_ECONNREFUSED;
+	case Result::connectionReset: return __WASI_ECONNRESET;
+	case Result::connectionAborted: return __WASI_ECONNABORTED;
+	case Result::timedOut: return __WASI_ETIMEDOUT;
+	case Result::addressInUse: return __WASI_EADDRINUSE;
+	case Result::addressNotAvailable: return __WASI_EADDRNOTAVAIL;
+	case Result::hostUnreachable: return __WASI_EHOSTUNREACH;
+	case Result::networkUnreachable: return __WASI_ENETUNREACH;
 
 	default: WAVM_UNREACHABLE();
 	};
@@ -233,6 +245,81 @@ static Uptr truncatingMemcpy(void* dest, const void* source, Uptr numSourceBytes
 	if(numBytes > numDestBytes) { numBytes = numDestBytes; }
 	if(numBytes > 0) { memcpy(dest, source, numBytes); }
 	return numBytes;
+}
+
+// Adds a VFD to the process's FD table with the given rights. On success returns the new FD;
+// on failure (FD table full) closes the VFD and returns UINT32_MAX.
+static __wasi_fd_t addVFD(Process* process,
+						VFD* vfd,
+						__wasi_rights_t rights,
+						std::string&& description)
+{
+	Platform::RWMutex::ExclusiveLock fdsLock(process->fdMapMutex);
+	const __wasi_fd_t fd = process->fdMap.add(
+		UINT32_MAX, std::make_shared<FDE>(vfd, rights, 0, std::move(description)));
+	if(fd == UINT32_MAX)
+	{
+		const VFS::Result closeResult = vfd->close();
+		if(closeResult != VFS::Result::success)
+		{
+			Log::printf(Log::Category::debug,
+						"Error when closing VFD due to full FD table: %s\n",
+						VFS::describeResult(closeResult));
+		}
+	}
+	return fd;
+}
+
+// Returns ENOTSOCK unless the VFD is a socket.
+static __wasi_errno_t requireSocket(const FDE& fde)
+{
+	VFS::VFDInfo vfdInfo;
+	if(fde.vfd->getVFDInfo(vfdInfo) != VFS::Result::success) { return __WASI_EIO; }
+	if(vfdInfo.type != VFS::FileType::streamSocket && vfdInfo.type != VFS::FileType::datagramSocket)
+	{
+		return __WASI_ENOTSOCK;
+	}
+	return __WASI_ESUCCESS;
+}
+
+// Translates a (level, option) pair using wasi-libc's SOL_*/SO_*/TCP_*/IPV6_* constants to a
+// VFS socket option. Returns ENOPROTOOPT for unmapped options.
+static __wasi_errno_t translateSocketOption(U32 level,
+											U32 option,
+											VFS::SocketOptionLevel& outLevel,
+											VFS::SocketOption& outOption)
+{
+	switch(level)
+	{
+	case __WASI_SOCK_SOL_SOCKET:
+		outLevel = VFS::SocketOptionLevel::socket;
+		switch(option)
+		{
+		case __WASI_SOCK_SO_REUSEADDR: outOption = VFS::SocketOption::reuseAddress; return __WASI_ESUCCESS;
+		case __WASI_SOCK_SO_TYPE: outOption = VFS::SocketOption::type; return __WASI_ESUCCESS;
+		case __WASI_SOCK_SO_ERROR: outOption = VFS::SocketOption::error; return __WASI_ESUCCESS;
+		case __WASI_SOCK_SO_BROADCAST: outOption = VFS::SocketOption::broadcast; return __WASI_ESUCCESS;
+		case __WASI_SOCK_SO_SNDBUF: outOption = VFS::SocketOption::sendBufferSize; return __WASI_ESUCCESS;
+		case __WASI_SOCK_SO_RCVBUF: outOption = VFS::SocketOption::recvBufferSize; return __WASI_ESUCCESS;
+		case __WASI_SOCK_SO_KEEPALIVE: outOption = VFS::SocketOption::keepAlive; return __WASI_ESUCCESS;
+		default: return __WASI_ENOPROTOOPT;
+		}
+	case __WASI_SOCK_SOL_TCP:
+		outLevel = VFS::SocketOptionLevel::tcp;
+		switch(option)
+		{
+		case __WASI_SOCK_TCP_NODELAY: outOption = VFS::SocketOption::noDelay; return __WASI_ESUCCESS;
+		default: return __WASI_ENOPROTOOPT;
+		}
+	case __WASI_SOCK_SOL_IPV6:
+		outLevel = VFS::SocketOptionLevel::ipv6;
+		switch(option)
+		{
+		case __WASI_SOCK_IPV6_V6ONLY: outOption = VFS::SocketOption::v6Only; return __WASI_ESUCCESS;
+		default: return __WASI_ENOPROTOOPT;
+		}
+	default: return __WASI_ENOPROTOOPT;
+	};
 }
 
 #include "DefineIntrinsicsI32.h"

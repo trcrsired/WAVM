@@ -11,6 +11,7 @@ set(POSIXSources
 	POSIX/MutexPOSIX.cpp
 	POSIX/RandomPOSIX.cpp
 	POSIX/RWMutexPOSIX.cpp
+	POSIX/SocketPOSIX.cpp
 	POSIX/ThreadPOSIX.cpp
 	POSIX/POSIXPrivate.h)
 
@@ -28,6 +29,7 @@ set(WindowsSources
 	Windows/MutexWindows.cpp
 	Windows/RandomWindows.cpp
 	Windows/RWMutexWindows.cpp
+	Windows/SocketWindows.cpp
 	Windows/ThreadWindows.cpp
 	Windows/WindowsPrivate.h)
 
@@ -55,6 +57,7 @@ set(Headers
 	${WAVM_INCLUDE_DIR}/Platform/Event.h
 	${WAVM_INCLUDE_DIR}/Platform/Signal.h
 	${WAVM_INCLUDE_DIR}/Platform/File.h
+	${WAVM_INCLUDE_DIR}/Platform/Socket.h
 	${WAVM_INCLUDE_DIR}/Platform/Intrinsic.h
 	${WAVM_INCLUDE_DIR}/Platform/Memory.h
 	${WAVM_INCLUDE_DIR}/Platform/Mutex.h

@@ -25,6 +25,7 @@
 #include "WAVM/ObjectCache/ObjectCache.h"
 #include "WAVM/Platform/File.h"
 #include "WAVM/Platform/Memory.h"
+#include "WAVM/Platform/Socket.h"
 #include "WAVM/Runtime/Linker.h"
 #include "WAVM/Runtime/Runtime.h"
 #include "WAVM/VFS/SandboxFS.h"
@@ -199,6 +200,14 @@ void showRunHelp(Log::Category outputCategory)
 				"                        of supported ABIs below. The default is to detect the\n"
 				"                        ABI based on the module imports/exports.\n"
 				"  --mount-root <dir>    Mounts <dir> as the WASI root directory\n"
+				"  --enable-network      Allows the WASI process to use the network (the\n"
+				"                        sock_* syscalls). Disabled by default.\n"
+				"  --tcplisten <addr>    Binds and listens on a TCP socket at [host:]port and\n"
+				"                        grants the WASI process an FD for it. Implies\n"
+				"                        --enable-network. May occur multiple times.\n"
+				"  --tcpconnect <addr>   Connects a TCP socket to host:port and grants the\n"
+				"                        WASI process an FD for it. Implies --enable-network.\n"
+				"                        May occur multiple times.\n"
 				"  --wasi-trace=<level>  Sets the level of WASI tracing:\n"
 				"                        - syscalls\n"
 				"                        - syscalls-with-callstacks\n"
@@ -252,6 +261,9 @@ struct State
 	ABI abi = ABI::detect;
 	bool precompiled = false;
 	bool allowCaching = true;
+	bool allowNetwork = false;
+	std::vector<std::string> tcpListenAddresses;
+	std::vector<std::string> tcpConnectAddresses;
 	WASI::SyscallTraceLevel wasiTraceLavel = WASI::SyscallTraceLevel::none;
 
 	// Objects that need to be cleaned up before exiting.
@@ -329,6 +341,27 @@ struct State
 			}
 			else if(!strcmp(*nextArg, "--precompiled")) { precompiled = true; }
 			else if(!strcmp(*nextArg, "--nocache")) { allowCaching = false; }
+			else if(!strcmp(*nextArg, "--enable-network")) { allowNetwork = true; }
+			else if(!strcmp(*nextArg, "--tcplisten"))
+			{
+				++nextArg;
+				if(!*nextArg)
+				{
+					Log::printf(Log::error, "Expected address following '--tcplisten'.\n");
+					return false;
+				}
+				tcpListenAddresses.push_back(*nextArg);
+			}
+			else if(!strcmp(*nextArg, "--tcpconnect"))
+			{
+				++nextArg;
+				if(!*nextArg)
+				{
+					Log::printf(Log::error, "Expected address following '--tcpconnect'.\n");
+					return false;
+				}
+				tcpConnectAddresses.push_back(*nextArg);
+			}
 			else if(!strcmp(*nextArg, "--mount-root"))
 			{
 				if(rootMountPath)
@@ -609,6 +642,71 @@ struct State
 													 Platform::getStdFD(Platform::StdDevice::out),
 													 Platform::getStdFD(Platform::StdDevice::err),
 													 irModule.featureSpec);
+
+			// Grant network access if requested. Preopened sockets imply network access.
+			if(allowNetwork || tcpListenAddresses.size() || tcpConnectAddresses.size())
+			{
+				WASI::setNetworkEnabled(*wasiProcess, true);
+			}
+
+			for(const std::string& listenAddress : tcpListenAddresses)
+			{
+				VFS::VFD* socketVFD = nullptr;
+				const VFS::Result result
+					= Platform::createListenSocket(listenAddress, socketVFD);
+				if(result != VFS::Result::success)
+				{
+					Log::printf(Log::error,
+								"Failed to listen on \"%s\": %s\n",
+								listenAddress.c_str(),
+								VFS::describeResult(result));
+					return false;
+				}
+
+				const I32 fd = WASI::addSocketFD(*wasiProcess, socketVFD, true);
+				if(fd < 0)
+				{
+					Log::printf(Log::error, "The WASI FD table is full.\n");
+					return false;
+				}
+				Log::printf(Log::debug,
+							"Listening on %s as WASI fd %d\n",
+							listenAddress.c_str(),
+							fd);
+			}
+
+			for(const std::string& connectAddress : tcpConnectAddresses)
+			{
+				VFS::VFD* socketVFD = nullptr;
+				const VFS::Result result
+					= Platform::createConnectedSocket(connectAddress, socketVFD);
+				if(result != VFS::Result::success)
+				{
+					Log::printf(Log::error,
+								"Failed to connect to \"%s\": %s\n",
+								connectAddress.c_str(),
+								VFS::describeResult(result));
+					return false;
+				}
+
+				const I32 fd = WASI::addSocketFD(*wasiProcess, socketVFD, false);
+				if(fd < 0)
+				{
+					Log::printf(Log::error, "The WASI FD table is full.\n");
+					return false;
+				}
+				Log::printf(Log::debug,
+							"Connected to %s as WASI fd %d\n",
+							connectAddress.c_str(),
+							fd);
+			}
+		}
+		else if(allowNetwork || tcpListenAddresses.size() || tcpConnectAddresses.size())
+		{
+			Log::printf(
+				Log::error,
+				"--enable-network/--tcplisten/--tcpconnect may only be used with the WASI ABI.\n");
+			return false;
 		}
 		else if(abi == ABI::bare)
 		{

@@ -64,58 +64,6 @@ WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasi,
 	return TRACE_SYSCALL_RETURN(result);
 }
 
-WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasi,
-									"sock_recv",
-									__wasi_errno_return_t,
-									wasi_sock_recv,
-									__wasi_fd_t sock,
-									WASIAddressIPtr ri_data,
-									WASIAddressIPtr ri_data_len,
-									__wasi_riflags_t ri_flags,
-									WASIAddressIPtr ro_datalen,
-									WASIAddressIPtr ro_flags)
-{
-	UNIMPLEMENTED_SYSCALL_IPTR("sock_recv",
-							   "(%u, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT
-							   ", 0x%04x, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT ")",
-							   sock,
-							   ri_data,
-							   ri_data_len,
-							   ri_flags,
-							   ro_datalen,
-							   ro_flags);
-}
-
-WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasi,
-									"sock_send",
-									__wasi_errno_return_t,
-									wasi_sock_send,
-									__wasi_fd_t sock,
-									WASIAddressIPtr si_data,
-									WASIAddressIPtr si_data_len,
-									__wasi_siflags_t si_flags,
-									WASIAddressIPtr so_datalen)
-{
-	UNIMPLEMENTED_SYSCALL_IPTR("sock_send",
-							   "(%u, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT
-							   ", 0x%04x, " WASIADDRESSIPTR_FORMAT ")",
-							   sock,
-							   si_data,
-							   si_data_len,
-							   si_flags,
-							   so_datalen);
-}
-
-WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasi,
-									"sock_shutdown",
-									__wasi_errno_return_t,
-									wasi_sock_shutdown,
-									__wasi_fd_t sock,
-									__wasi_sdflags_t how)
-{
-	UNIMPLEMENTED_SYSCALL_IPTR("sock_shutdown", "(%u, 0x%02x)", sock, how);
-}
-
 WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasi, "sched_yield", __wasi_errno_return_t, wasi_sched_yield)
 {
 	TRACE_SYSCALL_IPTR("sched_yield", "()");

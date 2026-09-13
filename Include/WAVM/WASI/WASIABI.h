@@ -211,6 +211,7 @@ typedef uint64_t __wasi_rights_t;
 #define __WASI_RIGHT_PATH_UNLINK_FILE (UINT64_C(0x0000000004000000))
 #define __WASI_RIGHT_POLL_FD_READWRITE (UINT64_C(0x0000000008000000))
 #define __WASI_RIGHT_SOCK_SHUTDOWN (UINT64_C(0x0000000010000000))
+#define __WASI_RIGHT_SOCK_ACCEPT (UINT64_C(0x0000000020000000))
 
 typedef uint16_t __wasi_roflags_t;
 #define __WASI_SOCK_RECV_DATA_TRUNCATED (UINT16_C(0x0001))
@@ -218,6 +219,54 @@ typedef uint16_t __wasi_roflags_t;
 typedef uint8_t __wasi_sdflags_t;
 #define __WASI_SHUT_RD (UINT8_C(0x01))
 #define __WASI_SHUT_WR (UINT8_C(0x02))
+
+// WAVM's non-standard WASI preview1 socket extension.
+//
+// In addition to the standard sock_accept/sock_recv/sock_send/sock_shutdown syscalls, WAVM
+// implements an extension that allows creating and connecting sockets when network access
+// has been granted to the process. The argument values below match wasi-libc's <sys/socket.h>
+// and <netinet/*.h> constants so that a libc can pass them through unmodified.
+//
+//   sock_open(af:u32, type:u32, fdOut:ptr) -> errno
+//   sock_bind(fd, addr:ptr, addrLen:u32) -> errno
+//   sock_listen(fd, backlog:u32) -> errno
+//   sock_connect(fd, addr:ptr, addrLen:u32) -> errno
+//   sock_getlocaladdr(fd, addr:ptr, addrLen:ptr) -> errno
+//   sock_getpeeraddr(fd, addr:ptr, addrLen:ptr) -> errno
+//   sock_send_to(fd, siData:ptr, siDataLen:u32, siFlags:u16, addr:ptr, addrLen:u32, soDatalen:ptr) -> errno
+//   sock_recv_from(fd, riData:ptr, riDataLen:u32, riFlags:u16, addr:ptr, addrLen:ptr, roDatalen:ptr, roFlags:ptr) -> errno
+//   sock_setsockopt(fd, level:u32, optName:u32, optVal:ptr, optLen:u32) -> errno
+//   sock_getsockopt(fd, level:u32, optName:u32, optVal:ptr, optLen:ptr) -> errno
+//
+// addr is a POSIX-layout struct sockaddr_in or sockaddr_in6 in the module's memory.
+
+// sock_open address families (match wasi-libc AF_*).
+#define __WASI_SOCK_AF_INET (UINT32_C(1))
+#define __WASI_SOCK_AF_INET6 (UINT32_C(2))
+
+// sock_open socket types (match wasi-libc SOCK_*).
+#define __WASI_SOCK_TYPE_DGRAM (UINT32_C(5))
+#define __WASI_SOCK_TYPE_STREAM (UINT32_C(6))
+
+// sock_setsockopt/sock_getsockopt levels (match wasi-libc SOL_*).
+#define __WASI_SOCK_SOL_SOCKET (UINT32_C(0x7fffffff))
+#define __WASI_SOCK_SOL_TCP (UINT32_C(6))
+#define __WASI_SOCK_SOL_IPV6 (UINT32_C(41))
+
+// sock_setsockopt/sock_getsockopt option names for __WASI_SOCK_SOL_SOCKET (match wasi-libc SO_*).
+#define __WASI_SOCK_SO_REUSEADDR (UINT32_C(2))
+#define __WASI_SOCK_SO_TYPE (UINT32_C(3))
+#define __WASI_SOCK_SO_ERROR (UINT32_C(4))
+#define __WASI_SOCK_SO_BROADCAST (UINT32_C(6))
+#define __WASI_SOCK_SO_SNDBUF (UINT32_C(7))
+#define __WASI_SOCK_SO_RCVBUF (UINT32_C(8))
+#define __WASI_SOCK_SO_KEEPALIVE (UINT32_C(9))
+
+// sock_setsockopt/sock_getsockopt option names for __WASI_SOCK_SOL_TCP (match TCP_*).
+#define __WASI_SOCK_TCP_NODELAY (UINT32_C(1))
+
+// sock_setsockopt/sock_getsockopt option names for __WASI_SOCK_SOL_IPV6 (match IPV6_*).
+#define __WASI_SOCK_IPV6_V6ONLY (UINT32_C(26))
 
 typedef uint16_t __wasi_siflags_t;
 
