@@ -95,50 +95,46 @@ namespace {
 	typedef U32 EhSlot;
 	inline constexpr EhSlot invalidEhSlot{~EhSlot(0)};
 
-	// One entry per exception record that may still be named by a live exnref value, registered
-	// when a try_table catch_ref/catch_all_ref clause accepts the exception. `bound` is an address
-	// in the stack frame that registered the entry: on downward-growing stacks, entries pushed by
-	// calls deeper than the current one, or by code in the current frame that has since finished,
-	// have a bound at or below the current bound and are stale.
-	struct CaughtExceptionEntry
+	// The data an exnref value carries: the exception's tag identity and payload. An exnref is a
+	// copyable value, so catching an exception copies this out and releases the record; throw_ref
+	// builds a fresh record from the stored value. Because the payload is a single word, an
+	// exnref can never contain another exnref, so the value is always self-contained.
+	struct ExnrefValue
 	{
-		Uptr bound;
-		EhSlot slot;
+		::std::uint_least64_t ehtag;
+		::std::uint_least64_t userdata;
 	};
 
-	// All tracking of owned exception records. Records live in recordPool, a deque so that their
-	// addresses never move: a record in flight is referenced by the unwind machinery for the whole
-	// raise, and a held record may still be named by an exnref. Freed slots are recycled through
-	// freeSlots, so the pool only grows to the largest number of simultaneously live records and
-	// amortizes allocation over all of them.
+	// All tracking of exception records and exnref values. Records live in recordPool, a deque so
+	// that their addresses never move: a record in flight is referenced by the unwind machinery
+	// for the whole raise. Freed slots are recycled through freeSlots, so the pool only grows to
+	// the largest number of simultaneously in-flight records.
 	struct EhTrackingState
 	{
 		std::deque<WavmEhRecord> recordPool;
 
-		// Generation per pool slot. An exnref encodes the slot and its generation, so bumping the
-		// generation on free invalidates exnrefs that outlived the record, including ones that
-		// would otherwise alias a record later allocated in the same slot.
+		// Generation per pool slot, bumped on free; not user-visible, but kept so the pool can
+		// safely recycle slots.
 		std::vector<U32> slotGenerations;
 
 		// Pool slots that are free for reuse.
 		std::vector<EhSlot> freeSlots;
-
-		std::vector<CaughtExceptionEntry> caughtExceptions;
 
 		// Slots of records currently inside a raise call: marked before
 		// _Unwind_RaiseException/_CxxThrowException and unmarked when a handler claims the record
 		// (wavm_eh_catch_entered/wavm_eh_table_caught) or the raise returns uncaught.
 		std::vector<EhSlot> inFlightRecords;
 
-		// Slots of records whose catch-scope entries went stale. They are kept alive, up to
-		// maxDeadRecords, so an exnref that outlived its catch scope can still be rethrown by
-		// throw_ref (legal per the spec, though clang only emits exnrefs scoped to their
-		// handler). Once evicted, a throw_ref naming them fails closed.
-		std::vector<EhSlot> deadRecords;
+		// The values exnref handles name, kept as a bounded ring: when it fills, the oldest value
+		// is evicted and its slot's generation is bumped so stale exnrefs fail closed. Exnref
+		// liveness cannot be tracked without GC, so a bounded table is the compromise.
+		std::vector<ExnrefValue> exnrefValues;
+		std::vector<U32> exnrefGenerations;
+		Uptr exnrefNext{0};
 	};
 	thread_local EhTrackingState ehTracking;
 
-	inline constexpr Uptr maxDeadRecords{32};
+	inline constexpr Uptr exnrefValueCapacity{1024};
 
 	static bool ehVectorContains(const std::vector<EhSlot>& vec, EhSlot slot)
 	{
@@ -191,8 +187,8 @@ namespace {
 		return slot;
 	}
 
-	// Frees a pool slot: bumps its generation so stale exnrefs naming it fail, and recycles the
-	// slot. Idempotent: a slot may be named by more than one tracking list.
+	// Frees a pool slot: bumps its generation so stale references naming it fail, and recycles
+	// the slot. Idempotent: a slot may be named by more than one tracking list.
 	static void ehFreeRecord(EhSlot slot)
 	{
 		if(ehVectorContains(ehTracking.freeSlots, slot)) { return; }
@@ -200,82 +196,48 @@ namespace {
 		ehTracking.freeSlots.push_back(slot);
 	}
 
-	static bool ehRecordIsHeld(EhSlot slot)
+	// Stores an exnref value and returns its handle: generation in the high bits and index+1 in
+	// the low bits, so that 0 remains the null exnref.
+	static U64 ehMakeExnref(const ExnrefValue& value)
 	{
-		for(const CaughtExceptionEntry& entry : ehTracking.caughtExceptions)
+		Uptr index;
+		if(ehTracking.exnrefValues.size() < exnrefValueCapacity)
 		{
-			if(entry.slot == slot) { return true; }
+			index = ehTracking.exnrefValues.size();
+			ehTracking.exnrefValues.push_back(value);
+			ehTracking.exnrefGenerations.push_back(0);
 		}
-		return false;
+		else
+		{
+			index = ehTracking.exnrefNext;
+			ehTracking.exnrefValues[index] = value;
+			++ehTracking.exnrefGenerations[index];
+			ehTracking.exnrefNext = (ehTracking.exnrefNext + 1) % exnrefValueCapacity;
+		}
+		return (U64(ehTracking.exnrefGenerations[index]) << 32) | U64(index + 1);
 	}
 
-	// The exnref value naming a record: generation in the high bits and slot+1 in the low bits,
-	// so that 0 remains the null exnref.
-	static U64 ehMakeExnref(EhSlot slot)
+	// Decodes an exnref to its value, or returns false for null, out-of-range, or evicted
+	// values.
+	static bool ehExnrefToValue(U64 exnref, ExnrefValue& value)
 	{
-		return (U64(ehTracking.slotGenerations[slot]) << 32) | U64(slot + 1);
+		const U64 indexField = exnref & 0xffffffff;
+		if(!indexField) { return false; }
+		const Uptr index = Uptr(indexField - 1);
+		if(index >= ehTracking.exnrefValues.size()
+		   || ehTracking.exnrefGenerations[index] != U32(exnref >> 32))
+		{
+			return false;
+		}
+		value = ehTracking.exnrefValues[index];
+		return true;
 	}
 
-	// Decodes an exnref to a pool slot, or returns invalidEhSlot for null, out-of-range, or
-	// stale-generation values.
-	static EhSlot ehExnrefToSlot(U64 exnref)
+	// Frees all records except `exceptSlot`, whose slot the caller has already freed. Only
+	// called when an exception propagated past all wasm frames, so every in-flight record
+	// belongs to a raise frame the resulting host exception unwinds through.
+	static void ehFreeAllInFlight(EhSlot exceptSlot)
 	{
-		const U64 slotField = exnref & 0xffffffff;
-		if(!slotField) { return invalidEhSlot; }
-		const EhSlot slot = EhSlot(slotField - 1);
-		if(Uptr(slot) >= ehTracking.slotGenerations.size()
-		   || ehTracking.slotGenerations[slot] != U32(exnref >> 32))
-		{
-			return invalidEhSlot;
-		}
-		return slot;
-	}
-
-	// Frees a record once nothing can reference it: not held by a catch scope and not in flight.
-	static void ehReleaseRecord(EhSlot slot)
-	{
-		if(slot == invalidEhSlot) { return; }
-		if(ehRecordIsHeld(slot) || ehVectorContains(ehTracking.inFlightRecords, slot)) { return; }
-		ehVectorErase(ehTracking.deadRecords, slot);
-		ehFreeRecord(slot);
-	}
-
-	// Moves a record to the dead list, freeing the oldest dead record nothing references if the
-	// list overflows.
-	static void ehDeadlistRecord(EhSlot slot)
-	{
-		if(slot == invalidEhSlot || ehVectorContains(ehTracking.deadRecords, slot)) { return; }
-		ehTracking.deadRecords.push_back(slot);
-		while(ehTracking.deadRecords.size() > maxDeadRecords)
-		{
-			auto it = ehTracking.deadRecords.begin();
-			for(; it != ehTracking.deadRecords.end(); ++it)
-			{
-				if(!ehRecordIsHeld(*it) && !ehVectorContains(ehTracking.inFlightRecords, *it)) { break; }
-			}
-			if(it == ehTracking.deadRecords.end()) { break; }
-			const EhSlot evicted = *it;
-			ehTracking.deadRecords.erase(it);
-			ehFreeRecord(evicted);
-		}
-	}
-
-	// Frees all records except `exceptSlot`, whose slot the caller has already freed (entries
-	// still naming it are dropped without a second free). Only called when an exception
-	// propagated past all wasm frames, so every catch scope that held a record is dead and every
-	// in-flight record belongs to a raise frame the resulting host exception unwinds through.
-	static void ehFreeAllCaught(EhSlot exceptSlot)
-	{
-		for(const CaughtExceptionEntry& entry : ehTracking.caughtExceptions)
-		{
-			if(entry.slot != exceptSlot) { ehFreeRecord(entry.slot); }
-		}
-		ehTracking.caughtExceptions.clear();
-		for(EhSlot slot : ehTracking.deadRecords)
-		{
-			if(slot != exceptSlot) { ehFreeRecord(slot); }
-		}
-		ehTracking.deadRecords.clear();
 		for(EhSlot slot : ehTracking.inFlightRecords)
 		{
 			if(slot != exceptSlot) { ehFreeRecord(slot); }
@@ -293,14 +255,14 @@ static void ehRaiseWasmRecord(EhSlot slot)
 	WavmEhRecord* exception = ehRecordAt(slot);
 	if(!ehVectorContains(ehTracking.inFlightRecords, slot)) { ehTracking.inFlightRecords.push_back(slot); }
 	_Unwind_Reason_Code reason = _Unwind_RaiseException(&exception->itaniumeh);
-	// The exception propagated past all wasm frames, so all records held by catch scopes are
-	// dead too.
+	// The exception propagated past all wasm frames, so every other in-flight record is dead
+	// too.
 	(void)reason;
 	const ::std::uint_least64_t tag = exception->ehtag;
 	const ::std::uint_least64_t userdata = exception->userdata;
 	ehVectorErase(ehTracking.inFlightRecords, slot);
 	ehFreeRecord(slot);
-	ehFreeAllCaught(slot);
+	ehFreeAllInFlight(slot);
 	Runtime::throwException(Runtime::ExceptionTypes::uncaughtException,
 							{IR::UntaggedValue(U64(tag)), IR::UntaggedValue(U64(userdata))});
 }
@@ -342,55 +304,39 @@ extern "C" void wavm_rethrow_record(void* recordPtr)
 #endif
 }
 
-// Called when a try_table catch_ref/catch_all_ref clause accepts an exception: the exnref value
-// the clause pushes names this record, so it is registered as held by a catch scope and its
-// handle is returned. Before pushing the new entry, entries pushed by frames that have returned
-// or by code in this frame that has finished are removed (on a downward-growing stack their
-// bound is at or below this call's bound). Their records go to the dead list rather than being
-// freed, so an exnref that outlived its scope can still rethrow them.
+// Called when a try_table catch_ref/catch_all_ref clause accepts an exception: copies the
+// record's tag and payload out as an exnref value, releases the record, and returns the handle
+// the clause pushes. The value is self-contained, so the exnref stays valid for as long as the
+// bounded value table retains it regardless of which catch scopes are still live.
 extern "C" ::std::uint_least64_t wavm_eh_catch_entered(void* recordPtr)
 {
 	auto* record = reinterpret_cast<WavmEhRecord*>(recordPtr);
 	const EhSlot slot = ehSlotOfRecord(record);
 	if(slot == invalidEhSlot) { std::abort(); }
-	char boundMarker;
-	const Uptr bound = Uptr(&boundMarker);
 
-	// The exception has landed: it is no longer in flight, and if it was dead-listed while an
-	// exnref still named it, it is live again.
+	// The exception has landed: claim it out of the in-flight set, copy its data out as the
+	// exnref value, and free the record.
 	ehVectorErase(ehTracking.inFlightRecords, slot);
-	ehVectorErase(ehTracking.deadRecords, slot);
-
-	for(auto it = ehTracking.caughtExceptions.begin(); it != ehTracking.caughtExceptions.end();)
-	{
-		if(it->bound <= bound && !ehVectorContains(ehTracking.inFlightRecords, it->slot))
-		{
-			const EhSlot stale = it->slot;
-			it = ehTracking.caughtExceptions.erase(it);
-			if(stale != slot) { ehDeadlistRecord(stale); }
-		}
-		else { ++it; }
-	}
-	ehTracking.caughtExceptions.push_back({bound, slot});
-	return ehMakeExnref(slot);
+	const U64 exnref = ehMakeExnref(ExnrefValue{record->ehtag, record->userdata});
+	ehFreeRecord(slot);
+	return exnref;
 }
 
 // Called when a try_table catch/catch_all clause accepts an exception: the clause produces no
-// exnref, so the record is freed unless a live catch scope still holds it.
+// exnref, so the record is simply released.
 extern "C" void wavm_eh_table_caught(void* recordPtr)
 {
 	auto* record = reinterpret_cast<WavmEhRecord*>(recordPtr);
 	const EhSlot slot = ehSlotOfRecord(record);
 	if(slot == invalidEhSlot) { std::abort(); }
 	ehVectorErase(ehTracking.inFlightRecords, slot);
-	ehReleaseRecord(slot);
+	ehFreeRecord(slot);
 }
 
-// Implements the throw_ref instruction. The exnref operand is the handle produced by the
-// catch_ref/catch_all_ref clause that caught the exception. The handle is only valid while it
-// names a record WAVM still owns: held by a live catch scope, kept on the dead list, or in
-// flight. Anything else — null, a stale handle, or a forged value — fails closed with a
-// runtime error instead of dereferencing it.
+// Implements the throw_ref instruction. The exnref operand is the handle produced by a
+// catch_ref/catch_all_ref clause and names a stored {tag, payload} value. The reference is
+// only valid while the bounded value table retains it; anything else — null, an evicted
+// entry, or a forged value — fails closed with a runtime error instead of dereferencing it.
 extern "C" void wavm_throw_ref(::std::uint_least64_t exnref)
 {
 #if defined(_MSC_VER)
@@ -401,12 +347,17 @@ extern "C" void wavm_throw_ref(::std::uint_least64_t exnref)
 	}
 	_CxxThrowException(exception, &wavmThrowInfo);
 #else
-	const EhSlot slot = ehExnrefToSlot(exnref);
-	const bool valid = slot != invalidEhSlot
-					   && (ehVectorContains(ehTracking.inFlightRecords, slot)
-						   || ehRecordIsHeld(slot)
-						   || ehVectorErase(ehTracking.deadRecords, slot));
-	if(!valid) { Runtime::throwException(Runtime::ExceptionTypes::invalidExnref, {}); }
+	ExnrefValue value;
+	if(!ehExnrefToValue(exnref, value))
+	{
+		Runtime::throwException(Runtime::ExceptionTypes::invalidExnref, {});
+	}
+	const EhSlot slot = ehAllocateRecord();
+	auto* exception = ehRecordAt(slot);
+	*exception = wavm_eh_tag_unwind_eh{};
+	exception->itaniumeh.exception_class = exceptionclass;
+	exception->ehtag = value.ehtag;
+	exception->userdata = value.userdata;
 	ehRaiseWasmRecord(slot);
 #endif
 }
