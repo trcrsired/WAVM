@@ -1,5 +1,7 @@
 #include <stddef.h>
+#ifndef _MSC_VER
 #include <unwind.h>
+#endif
 #include <cstdint>
 #include <cstdlib>
 #include <vector>
