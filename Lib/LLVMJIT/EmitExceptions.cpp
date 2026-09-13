@@ -2,7 +2,6 @@
 #include <unwind.h>
 #include <cstdint>
 #include <cstdlib>
-#include <deque>
 #include <vector>
 #include "EmitFunctionContext.h"
 #include "EmitModuleContext.h"
@@ -83,18 +82,6 @@ namespace {
 		__builtin_offsetof(wavm_eh_tag_unwind_eh, userdata)};
 #endif
 
-	// The host exception record type used on each platform.
-#if defined(_MSC_VER)
-	typedef wavm_eh_record WavmEhRecord;
-#else
-	typedef wavm_eh_tag_unwind_eh WavmEhRecord;
-#endif
-
-	// Index into EhTrackingState::recordPool identifying a record slot. Records are named by slot
-	// rather than pointer so that references are bounds-checked and paired with a generation.
-	typedef U32 EhSlot;
-	inline constexpr EhSlot invalidEhSlot{~EhSlot(0)};
-
 	// The data an exnref value carries: the exception's tag identity and payload. An exnref is a
 	// copyable value, so catching an exception copies this out and releases the record; throw_ref
 	// builds a fresh record from the stored value. Because the payload is a single word, an
@@ -105,29 +92,11 @@ namespace {
 		::std::uint_least64_t userdata;
 	};
 
-	// All tracking of exception records and exnref values. Records live in recordPool, a deque so
-	// that their addresses never move: a record in flight is referenced by the unwind machinery
-	// for the whole raise. Freed slots are recycled through freeSlots, so the pool only grows to
-	// the largest number of simultaneously in-flight records.
+	// The values exnref handles name, kept as a bounded ring: when it fills, the oldest value is
+	// evicted and its slot's generation is bumped so stale exnrefs fail closed. Exnref liveness
+	// cannot be tracked without GC, so a bounded table is the compromise.
 	struct EhTrackingState
 	{
-		std::deque<WavmEhRecord> recordPool;
-
-		// Generation per pool slot, bumped on free; not user-visible, but kept so the pool can
-		// safely recycle slots.
-		std::vector<U32> slotGenerations;
-
-		// Pool slots that are free for reuse.
-		std::vector<EhSlot> freeSlots;
-
-		// Slots of records currently inside a raise call: marked before
-		// _Unwind_RaiseException/_CxxThrowException and unmarked when a handler claims the record
-		// (wavm_eh_catch_entered/wavm_eh_table_caught) or the raise returns uncaught.
-		std::vector<EhSlot> inFlightRecords;
-
-		// The values exnref handles name, kept as a bounded ring: when it fills, the oldest value
-		// is evicted and its slot's generation is bumped so stale exnrefs fail closed. Exnref
-		// liveness cannot be tracked without GC, so a bounded table is the compromise.
 		std::vector<ExnrefValue> exnrefValues;
 		std::vector<U32> exnrefGenerations;
 		Uptr exnrefNext{0};
@@ -136,65 +105,21 @@ namespace {
 
 	inline constexpr Uptr exnrefValueCapacity{1024};
 
-	static bool ehVectorContains(const std::vector<EhSlot>& vec, EhSlot slot)
-	{
-		for(EhSlot element : vec)
-		{
-			if(element == slot) { return true; }
-		}
-		return false;
-	}
+#if !defined(_MSC_VER)
+	// The exception record backing the wasm raise currently in flight. Its address names it to
+	// the unwind machinery for the whole raise — including after phase 2 abandons the raise
+	// frames — so it must be a stable thread-local rather than a stack or pool allocation. At
+	// most one wasm record is ever in flight: a landing pad claims the record
+	// (wavm_eh_catch_entered/wavm_eh_table_caught) or re-raises it (wavm_rethrow_record) before
+	// any handler code can raise another.
+	thread_local wavm_eh_tag_unwind_eh ehRaiseRecord;
 
-	// Removes the first occurrence of `slot` from `vec`, returning whether it was present.
-	static bool ehVectorErase(std::vector<EhSlot>& vec, EhSlot slot)
-	{
-		for(auto it = vec.begin(); it != vec.end(); ++it)
-		{
-			if(*it == slot)
-			{
-				vec.erase(it);
-				return true;
-			}
-		}
-		return false;
-	}
-
-	// Returns the pool slot holding `record`, or invalidEhSlot if the pointer does not name a
-	// pooled record.
-	static EhSlot ehSlotOfRecord(const WavmEhRecord* record)
-	{
-		for(Uptr slot = 0; slot < ehTracking.recordPool.size(); ++slot)
-		{
-			if(&ehTracking.recordPool[slot] == record) { return EhSlot(slot); }
-		}
-		return invalidEhSlot;
-	}
-
-	static WavmEhRecord* ehRecordAt(EhSlot slot) { return &ehTracking.recordPool[slot]; }
-
-	// Allocates a pool slot, reusing a freed one if available, and returns it.
-	static EhSlot ehAllocateRecord()
-	{
-		if(!ehTracking.freeSlots.empty())
-		{
-			const EhSlot slot = ehTracking.freeSlots.back();
-			ehTracking.freeSlots.pop_back();
-			return slot;
-		}
-		const EhSlot slot = EhSlot(ehTracking.recordPool.size());
-		ehTracking.recordPool.push_back(WavmEhRecord{});
-		ehTracking.slotGenerations.push_back(0);
-		return slot;
-	}
-
-	// Frees a pool slot: bumps its generation so stale references naming it fail, and recycles
-	// the slot. Idempotent: a slot may be named by more than one tracking list.
-	static void ehFreeRecord(EhSlot slot)
-	{
-		if(ehVectorContains(ehTracking.freeSlots, slot)) { return; }
-		++ehTracking.slotGenerations[slot];
-		ehTracking.freeSlots.push_back(slot);
-	}
+	// Whether ehRaiseRecord is currently named by the unwind machinery: set when a raise begins
+	// and cleared when a handler claims the record or the raise returns uncaught. A new wasm
+	// raise while it is set would clobber an unclaimed record, which no emitted code path can
+	// do.
+	thread_local bool ehRaiseInFlight{false};
+#endif
 
 	// Stores an exnref value and returns its handle: generation in the high bits and index+1 in
 	// the low bits, so that 0 remains the null exnref.
@@ -233,38 +158,20 @@ namespace {
 		return true;
 	}
 
-	// Frees all records except `exceptSlot`, whose slot the caller has already freed. Only
-	// called when an exception propagated past all wasm frames, so every in-flight record
-	// belongs to a raise frame the resulting host exception unwinds through.
-	static void ehFreeAllInFlight(EhSlot exceptSlot)
-	{
-		for(EhSlot slot : ehTracking.inFlightRecords)
-		{
-			if(slot != exceptSlot) { ehFreeRecord(slot); }
-		}
-		ehTracking.inFlightRecords.clear();
-	}
 }
 
 #if !defined(_MSC_VER)
-// Raises the wasm exception record in `slot` via _Unwind_RaiseException. Does not return: a
-// raise that finds no wasm or host handler returns, and is converted to a WAVM
-// uncaughtException runtime error.
-static void ehRaiseWasmRecord(EhSlot slot)
+// Raises ehRaiseRecord via _Unwind_RaiseException. Does not return: a raise that finds no wasm
+// or host handler returns, and is converted to a WAVM uncaughtException runtime error.
+static void ehRaiseCurrentRecord()
 {
-	WavmEhRecord* exception = ehRecordAt(slot);
-	if(!ehVectorContains(ehTracking.inFlightRecords, slot)) { ehTracking.inFlightRecords.push_back(slot); }
-	_Unwind_Reason_Code reason = _Unwind_RaiseException(&exception->itaniumeh);
-	// The exception propagated past all wasm frames, so every other in-flight record is dead
-	// too.
+	ehRaiseInFlight = true;
+	_Unwind_Reason_Code reason = _Unwind_RaiseException(&ehRaiseRecord.itaniumeh);
 	(void)reason;
-	const ::std::uint_least64_t tag = exception->ehtag;
-	const ::std::uint_least64_t userdata = exception->userdata;
-	ehVectorErase(ehTracking.inFlightRecords, slot);
-	ehFreeRecord(slot);
-	ehFreeAllInFlight(slot);
+	ehRaiseInFlight = false;
 	Runtime::throwException(Runtime::ExceptionTypes::uncaughtException,
-							{IR::UntaggedValue(U64(tag)), IR::UntaggedValue(U64(userdata))});
+							{IR::UntaggedValue(U64(ehRaiseRecord.ehtag)),
+							 IR::UntaggedValue(U64(ehRaiseRecord.userdata))});
 }
 #endif
 
@@ -277,18 +184,18 @@ extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t tag, ::std::uint_lea
 	exception->userdata = value;
 	_CxxThrowException(exception, &wavmThrowInfo);
 #else
-	const EhSlot slot = ehAllocateRecord();
-	auto* exception = ehRecordAt(slot);
-	*exception = wavm_eh_tag_unwind_eh{};
-	exception->itaniumeh.exception_class = exceptionclass;
-	exception->ehtag = tag;
-	exception->userdata = value;
-	ehRaiseWasmRecord(slot);
+	if(ehRaiseInFlight) { std::abort(); }
+	ehRaiseRecord = wavm_eh_tag_unwind_eh{};
+	ehRaiseRecord.itaniumeh.exception_class = exceptionclass;
+	ehRaiseRecord.ehtag = tag;
+	ehRaiseRecord.userdata = value;
+	ehRaiseCurrentRecord();
 #endif
 }
 
 // Re-raises the exception record that just landed on a catch dispatch but matched no clause.
-// The record is still marked in flight (no clause claimed it), so this is a plain re-raise.
+// The record is still named by the unwind machinery (no clause claimed it), so this is a plain
+// re-raise.
 extern "C" void wavm_rethrow_record(void* recordPtr)
 {
 #if defined(_MSC_VER)
@@ -297,40 +204,36 @@ extern "C" void wavm_rethrow_record(void* recordPtr)
 	_CxxThrowException(exception, &wavmThrowInfo);
 #else
 	auto* exception = reinterpret_cast<wavm_eh_tag_unwind_eh*>(recordPtr);
-	if(!exception || exception->itaniumeh.exception_class != exceptionclass) { std::abort(); }
-	const EhSlot slot = ehSlotOfRecord(exception);
-	if(slot == invalidEhSlot) { std::abort(); }
-	ehRaiseWasmRecord(slot);
+	if(exception != &ehRaiseRecord) { std::abort(); }
+	ehRaiseCurrentRecord();
 #endif
 }
 
 // Called when a try_table catch_ref/catch_all_ref clause accepts an exception: copies the
-// record's tag and payload out as an exnref value, releases the record, and returns the handle
-// the clause pushes. The value is self-contained, so the exnref stays valid for as long as the
-// bounded value table retains it regardless of which catch scopes are still live.
+// record's tag and payload out as an exnref value and returns the handle the clause pushes. The
+// value is self-contained, so the exnref stays valid for as long as the bounded value table
+// retains it regardless of which catch scopes are still live.
 extern "C" ::std::uint_least64_t wavm_eh_catch_entered(void* recordPtr)
 {
-	auto* record = reinterpret_cast<WavmEhRecord*>(recordPtr);
-	const EhSlot slot = ehSlotOfRecord(record);
-	if(slot == invalidEhSlot) { std::abort(); }
-
-	// The exception has landed: claim it out of the in-flight set, copy its data out as the
-	// exnref value, and free the record.
-	ehVectorErase(ehTracking.inFlightRecords, slot);
-	const U64 exnref = ehMakeExnref(ExnrefValue{record->ehtag, record->userdata});
-	ehFreeRecord(slot);
-	return exnref;
+#if defined(_MSC_VER)
+	std::abort();
+#else
+	if(recordPtr != &ehRaiseRecord) { std::abort(); }
+	ehRaiseInFlight = false;
+	return ehMakeExnref(ExnrefValue{ehRaiseRecord.ehtag, ehRaiseRecord.userdata});
+#endif
 }
 
 // Called when a try_table catch/catch_all clause accepts an exception: the clause produces no
 // exnref, so the record is simply released.
 extern "C" void wavm_eh_table_caught(void* recordPtr)
 {
-	auto* record = reinterpret_cast<WavmEhRecord*>(recordPtr);
-	const EhSlot slot = ehSlotOfRecord(record);
-	if(slot == invalidEhSlot) { std::abort(); }
-	ehVectorErase(ehTracking.inFlightRecords, slot);
-	ehFreeRecord(slot);
+#if defined(_MSC_VER)
+	std::abort();
+#else
+	if(recordPtr != &ehRaiseRecord) { std::abort(); }
+	ehRaiseInFlight = false;
+#endif
 }
 
 // Implements the throw_ref instruction. The exnref operand is the handle produced by a
@@ -352,13 +255,12 @@ extern "C" void wavm_throw_ref(::std::uint_least64_t exnref)
 	{
 		Runtime::throwException(Runtime::ExceptionTypes::invalidExnref, {});
 	}
-	const EhSlot slot = ehAllocateRecord();
-	auto* exception = ehRecordAt(slot);
-	*exception = wavm_eh_tag_unwind_eh{};
-	exception->itaniumeh.exception_class = exceptionclass;
-	exception->ehtag = value.ehtag;
-	exception->userdata = value.userdata;
-	ehRaiseWasmRecord(slot);
+	if(ehRaiseInFlight) { std::abort(); }
+	ehRaiseRecord = wavm_eh_tag_unwind_eh{};
+	ehRaiseRecord.itaniumeh.exception_class = exceptionclass;
+	ehRaiseRecord.ehtag = value.ehtag;
+	ehRaiseRecord.userdata = value.userdata;
+	ehRaiseCurrentRecord();
 #endif
 }
 
