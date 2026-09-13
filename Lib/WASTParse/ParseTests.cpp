@@ -612,6 +612,14 @@ static std::unique_ptr<Command> parseCommand(CursorState* cursor,
 				{
 					expectedType = ExpectedTrapType::invalidArgument;
 				}
+				else if(stringStartsWith(expectedErrorMessage.c_str(), "uncaught exception"))
+				{
+					expectedType = ExpectedTrapType::uncaughtException;
+				}
+				else if(stringStartsWith(expectedErrorMessage.c_str(), "invalid exnref"))
+				{
+					expectedType = ExpectedTrapType::invalidExnref;
+				}
 				else
 				{
 					parseErrorf(cursor->parseState, errorToken, "unrecognized trap type");

@@ -182,6 +182,10 @@ static bool tryParseReferencedType(CursorState* cursor, IR::ReferenceType& outRe
 		++cursor->nextToken;
 		outRefType = ReferenceType::funcref;
 		return true;
+	case t_exnref:
+		++cursor->nextToken;
+		outRefType = ReferenceType::exnref;
+		return true;
 	default: return false;
 	};
 }

@@ -1346,6 +1346,30 @@ void WAST::parseModuleBody(CursorState* cursor, IR::Module& outModule)
 			parseDeclaration(cursor);
 		};
 
+		// Derive tag section entries from the exception_type declarations so that throw and
+		// try_table catch clauses can index them the same way binary-format tag sections are
+		// indexed. Each tag segment references the index of the tag's function type (params ->
+		// no results) in the module's type table. This runs before the post-declaration
+		// callbacks so that they see the derived tag section as present.
+		if(!cursor->parseState->unresolvedErrors.size()
+		   && moduleState.module_.tagSegments.empty()
+		   && moduleState.module_.exceptionTypes.size())
+		{
+			for(Uptr exceptionTypeIndex = 0;
+				exceptionTypeIndex < moduleState.module_.exceptionTypes.size();
+				++exceptionTypeIndex)
+			{
+				const ExceptionType& exceptionType
+					= moduleState.module_.exceptionTypes.getType(exceptionTypeIndex);
+				const FunctionType tagSignature(TypeTuple(), exceptionType.params);
+				TagSegment tagSegment{
+					0,
+					(::std::uint_least32_t)getUniqueFunctionTypeIndex(&moduleState, tagSignature)
+						.index};
+				moduleState.module_.tagSegments.push_back(tagSegment);
+			}
+		}
+
 		// Process the callbacks requested after all type declarations have been parsed.
 		if(!cursor->parseState->unresolvedErrors.size())
 		{

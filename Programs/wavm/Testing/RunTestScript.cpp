@@ -301,6 +301,9 @@ static Runtime::ExceptionType* getExpectedTrapType(WAST::ExpectedTrapType expect
 	case WAST::ExpectedTrapType::misalignedAtomicMemoryAccess:
 		return Runtime::ExceptionTypes::misalignedAtomicMemoryAccess;
 	case WAST::ExpectedTrapType::invalidArgument: return Runtime::ExceptionTypes::invalidArgument;
+	case WAST::ExpectedTrapType::uncaughtException:
+		return Runtime::ExceptionTypes::uncaughtException;
+	case WAST::ExpectedTrapType::invalidExnref: return Runtime::ExceptionTypes::invalidExnref;
 
 	case WAST::ExpectedTrapType::outOfBounds:
 	default: WAVM_UNREACHABLE();

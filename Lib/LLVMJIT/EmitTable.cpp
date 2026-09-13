@@ -24,13 +24,17 @@ using namespace WAVM::LLVMJIT;
 
 void EmitFunctionContext::ref_null(ReferenceTypeImm imm)
 {
-	push(llvm::Constant::getNullValue(llvmContext.externrefType));
+	// exnref is represented as an i64 (the address of the exception record); the other
+	// reference types are externref pointers.
+	push(imm.referenceType == ReferenceType::exnref
+			 ? llvm::Constant::getNullValue(llvmContext.i64Type)
+			 : llvm::Constant::getNullValue(llvmContext.externrefType));
 }
 
 void EmitFunctionContext::ref_is_null(NoImm)
 {
 	llvm::Value* reference = pop();
-	llvm::Value* null = llvm::Constant::getNullValue(llvmContext.externrefType);
+	llvm::Value* null = llvm::Constant::getNullValue(reference->getType());
 	llvm::Value* isNull = irBuilder.CreateICmpEQ(reference, null);
 	push(coerceBoolToI32(isNull));
 }

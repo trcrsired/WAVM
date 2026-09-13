@@ -94,8 +94,6 @@ void EmitFunctionContext::traceOperator(const std::string& operatorDescription)
 		case ControlContext::Type::ifThen: controlStackString += "I"; break;
 		case ControlContext::Type::ifElse: controlStackString += "E"; break;
 		case ControlContext::Type::loop: controlStackString += "L"; break;
-		case ControlContext::Type::try_: controlStackString += "T"; break;
-		case ControlContext::Type::catch_: controlStackString += "C"; break;
 		case ControlContext::Type::tryTable: controlStackString += "t"; break;
 		default: WAVM_UNREACHABLE();
 		};
@@ -273,21 +271,7 @@ struct UnreachableOpVisitor
 		if(!unreachableControlDepth) { context.end(imm); }
 		else { --unreachableControlDepth; }
 	}
-	void try_(ControlStructureImm imm) { ++unreachableControlDepth; }
 	void try_table(TryTableImm imm) { ++unreachableControlDepth; }
-	void catch_(ExceptionTypeImm imm)
-	{
-		if(!unreachableControlDepth) { context.catch_(imm); }
-	}
-	void catch_all(NoImm imm)
-	{
-		if(!unreachableControlDepth) { context.catch_all(imm); }
-	}
-	void delegate(BranchImm imm)
-	{
-		if(!unreachableControlDepth) { context.delegate(imm); }
-		else { --unreachableControlDepth; }
-	}
 
 private:
 	EmitFunctionContext& context;

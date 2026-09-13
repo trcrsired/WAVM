@@ -42,9 +42,7 @@ struct FunctionState
 			block,
 			ifThen,
 			ifElse,
-			loop,
-			try_,
-			catch_
+			loop
 		};
 
 		Type type;
@@ -144,13 +142,6 @@ struct FunctionState
 		}
 		else
 		{
-			if(controlContext.type == ControlContext::Type::try_
-			   || controlContext.type == ControlContext::Type::catch_)
-			{
-				// TODO: catch
-				WAVM_UNREACHABLE();
-			}
-
 			codeStream.end();
 			stack.resize(controlContext.outerStackSize);
 			for(ValueType result : controlContext.results) { stack.push_back(result); }
@@ -685,9 +676,8 @@ void FunctionState::generateFunction(RandomStream& random)
 					});
 				}
 
-				if(controlContext.type != ControlContext::Type::try_
-				   && (controlContext.type != ControlContext::Type::ifThen
-					   || controlContext.elseParams == controlContext.results))
+				if(controlContext.type != ControlContext::Type::ifThen
+				   || controlContext.elseParams == controlContext.results)
 				{
 					// End the current control structure.
 					validOpEmitters.push_back([this](RandomStream& random) {

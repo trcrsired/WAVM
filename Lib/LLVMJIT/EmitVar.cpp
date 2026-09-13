@@ -130,7 +130,7 @@ void EmitFunctionContext::global_get(GetOrSetVariableImm<true> imm)
 			break;
 		}
 		case InitializerExpression::Type::ref_null:
-			value = llvm::Constant::getNullValue(llvmContext.externrefType);
+			value = llvm::Constant::getNullValue(asLLVMType(llvmContext, globalType.valueType));
 			break;
 		case InitializerExpression::Type::ref_func: {
 			llvm::Value* referencedFunction = moduleContext.functions[globalDef.initializer.ref];

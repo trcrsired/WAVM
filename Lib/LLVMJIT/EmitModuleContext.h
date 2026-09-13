@@ -54,6 +54,9 @@ namespace WAVM { namespace LLVMJIT {
 
 		llvm::Function* wavmThrowWasmEhtagFunction = nullptr;
 		llvm::Function* wavmRethrowWasmEhtagFunction = nullptr;
+		llvm::Function* wavmThrowRefFunction = nullptr;
+		llvm::Function* wavmEhCatchEnteredFunction = nullptr;
+		llvm::Function* wavmEhTableCaughtFunction = nullptr;
 #if defined(_MSC_VER)
 		llvm::Function* wavmRethrowCurrentFunction = nullptr;
 #endif

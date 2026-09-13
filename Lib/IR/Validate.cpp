@@ -371,8 +371,6 @@ struct FunctionValidationContext
 			case ControlContext::Type::ifThen: controlStackString += "T"; break;
 			case ControlContext::Type::ifElse: controlStackString += "E"; break;
 			case ControlContext::Type::loop: controlStackString += "L"; break;
-			case ControlContext::Type::try_: controlStackString += "R"; break;
-			case ControlContext::Type::catch_: controlStackString += "C"; break;
 			case ControlContext::Type::tryTable: controlStackString += "T"; break;
 			default: WAVM_UNREACHABLE();
 			};
@@ -442,11 +440,6 @@ struct FunctionValidationContext
 	{
 		WAVM_ASSERT(!controlStack.empty());
 
-		if(controlStack.back().type == ControlContext::Type::try_)
-		{
-			throw ValidationException("end may not occur in try context");
-		}
-
 		TypeTuple results = controlStack.back().results;
 		if(controlStack.back().type == ControlContext::Type::ifThen
 		   && results != controlStack.back().elseParams)
@@ -460,62 +453,6 @@ struct FunctionValidationContext
 		controlStack.pop_back();
 		if(!controlStack.empty()) { pushOperandTuple(results); }
 	}
-	void try_(ControlStructureImm imm)
-	{
-		const FunctionType type = validateBlockType(module_, imm.type);
-#if 0
-		VALIDATE_FEATURE("try", exceptionHandling);
-#endif
-		popAndValidateTypeTuple("try arguments", type.params());
-		pushControlStack(ControlContext::Type::try_, type.results(), type.results());
-		pushOperandTuple(type.params());
-	}
-	void validateCatch()
-	{
-		WAVM_ASSERT(!controlStack.empty());
-
-		popAndValidateTypeTuple("try result", controlStack.back().results);
-		validateStackEmptyAtEndOfControlStructure();
-
-		if(controlStack.back().type == ControlContext::Type::try_
-		   || controlStack.back().type == ControlContext::Type::catch_)
-		{
-			controlStack.back().type = ControlContext::Type::catch_;
-			controlStack.back().isReachable = true;
-		}
-		else { throw ValidationException("catch only allowed in try/catch context"); }
-	}
-	void catch_(ExceptionTypeImm imm)
-	{
-#if 0
-		VALIDATE_FEATURE("catch", exceptionHandling);
-#endif
-		VALIDATE_INDEX(imm.exceptionTypeIndex, module_.tagSegments.size());
-		validateCatch();
-		const MemoryType& memoryType = module_.memories.getType(0);
-		ValueType stype = ValueType::i32;
-		if(memoryType.indexType == IndexType::i64) { stype = ValueType::i64; }
-		pushOperand(stype);
-	}
-	void delegate(BranchImm imm)
-	{
-		WAVM_ASSERT(!controlStack.empty());
-
-		if(controlStack.back().type != ControlContext::Type::try_)
-		{
-			throw ValidationException("delegate must occur in try context");
-		}
-		controlStack.pop_back();
-	}
-
-	void catch_all(NoImm)
-	{
-#if 0
-		VALIDATE_FEATURE("catch_all", exceptionHandling);
-#endif
-		validateCatch();
-	}
-
 	void try_table(TryTableImm imm)
 	{
 		VALIDATE_FEATURE("try_table", exceptionHandling);
@@ -692,22 +629,12 @@ struct FunctionValidationContext
 	{
 		VALIDATE_INDEX(imm.exceptionTypeIndex, module_.tagSegments.size());
 		auto& tagseg{module_.tagSegments[imm.exceptionTypeIndex]};
-		if(tagseg.attribute != 0) { std::abort(); }
+		VALIDATE_UNLESS("throw tag has a nonzero attribute: ", tagseg.attribute != 0);
+		VALIDATE_UNLESS("throw requires a memory: ", module_.memories.size() == 0);
 		const MemoryType& memoryType = module_.memories.getType(0);
 		ValueType stype = ValueType::i32;
 		if(memoryType.indexType == IndexType::i64) { stype = ValueType::i64; }
 		popAndValidateOperand("throw exception tag", stype);
-		enterUnreachable();
-	}
-
-	void rethrow(RethrowImm imm)
-	{
-#if 0
-		VALIDATE_FEATURE("rethrow", exceptionHandling);
-#endif
-		VALIDATE_UNLESS(
-			"rethrow must target a catch: ",
-			getBranchTargetByDepth(imm.catchDepth).type != ControlContext::Type::catch_);
 		enterUnreachable();
 	}
 
@@ -906,8 +833,6 @@ private:
 			ifThen,
 			ifElse,
 			loop,
-			try_,
-			catch_,
 			tryTable,
 		};
 

@@ -267,7 +267,7 @@ void IR::getDisassemblyNames(const Module& module_, DisassemblyNames& outNames)
 	outNames.elemSegments.insert(outNames.elemSegments.end(), module_.elemSegments.size(), "");
 	outNames.dataSegments.insert(outNames.dataSegments.end(), module_.dataSegments.size(), "");
 	outNames.exceptionTypes.insert(outNames.exceptionTypes.end(),
-								   module_.exceptionTypes.size() + module_.tagSegments.size(),
+								   module_.exceptionTypes.size(),
 								   "");
 
 	// Deserialize the name section, if it is present.

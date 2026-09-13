@@ -38,6 +38,9 @@ namespace LLVMRuntimeSymbols {
 
 	extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t, ::std::uint_least64_t);
 	extern "C" void wavm_throw_ref(::std::uint_least64_t);
+	extern "C" void wavm_rethrow_record(void*);
+	extern "C" void wavm_eh_catch_entered(void*);
+	extern "C" void wavm_eh_table_caught(void*);
 #if defined(_MSC_VER)
 	extern "C" void wavm_rethrow_current();
 #endif
@@ -72,9 +75,13 @@ namespace LLVMRuntimeSymbols {
 		{"memset", (void*)&memset},
 #if !defined(_MSC_VER)
 		{"_Unwind_Resume", (void*)&_Unwind_Resume},
+		{"_Unwind_RaiseException", (void*)&_Unwind_RaiseException},
 #endif
 		{"wavm_throw_wasm_ehtag", (void*)&wavm_throw_wasm_ehtag},
 		{"wavm_throw_ref", (void*)&wavm_throw_ref},
+		{"wavm_rethrow_record", (void*)&wavm_rethrow_record},
+		{"wavm_eh_catch_entered", (void*)&wavm_eh_catch_entered},
+		{"wavm_eh_table_caught", (void*)&wavm_eh_table_caught},
 #if defined(_MSC_VER)
 		{"wavm_rethrow_current", (void*)&wavm_rethrow_current},
 #endif

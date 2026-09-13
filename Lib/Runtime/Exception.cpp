@@ -181,7 +181,7 @@ Exception* Runtime::createException(ExceptionType* type,
 	const bool isUserException = type->compartment != nullptr;
 	Exception* exception = new(malloc(Exception::calcNumBytes(paramsize)))
 		Exception(type->id, type, isUserException, std::move(callStack));
-	if(!paramsize && arguments != nullptr)
+	if(paramsize && arguments != nullptr)
 	{
 		memcpy(exception->arguments, arguments, sizeof(IR::UntaggedValue) * paramsize);
 	}
@@ -357,10 +357,7 @@ void Runtime::catchRuntimeExceptions(const std::function<void()>& thunk,
 	{
 		unwindSignalsAsExceptions(thunk);
 	}
-	catch(Exception* exception)
-	{
-		catchThunk(exception);
-	}
+	catch(Exception* exception) { catchThunk(exception); }
 }
 
 void Runtime::unwindSignalsAsExceptions(const std::function<void()>& thunk)

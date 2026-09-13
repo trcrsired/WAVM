@@ -2,8 +2,6 @@
 #include <unwind.h>
 #include <cstdint>
 #include <cstdlib>
-#include <memory>
-#include <unordered_map>
 #include <vector>
 #include "EmitFunctionContext.h"
 #include "EmitModuleContext.h"
@@ -13,8 +11,10 @@
 #include "WAVM/IR/Types.h"
 #include "WAVM/IR/Value.h"
 #include "WAVM/Inline/Assert.h"
+#include "WAVM/Inline/Errors.h"
 #include "WAVM/Inline/BasicTypes.h"
 #include "WAVM/Platform/Signal.h"
+#include "WAVM/Runtime/Runtime.h"
 #include "WAVM/RuntimeABI/RuntimeABI.h"
 
 PUSH_DISABLE_WARNINGS_FOR_LLVM_HEADERS
@@ -82,58 +82,270 @@ namespace {
 		__builtin_offsetof(wavm_eh_tag_unwind_eh, userdata)};
 #endif
 
-	// Maps a wasm exception's payload value (the address of the exception object in wasm memory,
-	// which is what an exnref refers to) to the host exception object that was raised for it. This
-	// is used by throw_ref to re-raise a caught exception.
-	thread_local std::unordered_map<::std::uint_least64_t, void*> exnrefToUnwindExceptionMap;
-
+	// The host exception record type used on each platform.
 #if defined(_MSC_VER)
-	// Stores the host exception record structs allocated for each thrown exception. They must stay
-	// alive for as long as the exception may be caught/rethrown, so they are never freed.
-	thread_local std::vector<std::unique_ptr<wavm_eh_record>> exceptionPool;
+	typedef wavm_eh_record WavmEhRecord;
 #else
-	// Stores the host _Unwind_Exception structs allocated for each thrown exception. They must stay
-	// alive for as long as the exception may be caught/rethrown, so they are never freed.
-	thread_local std::vector<std::unique_ptr<wavm_eh_tag_unwind_eh>> exceptionPool;
+	typedef wavm_eh_tag_unwind_eh WavmEhRecord;
 #endif
 
+	// One entry per exception record that may still be named by a live exnref value, registered
+	// when a try_table catch_ref/catch_all_ref clause accepts the exception. `bound` is an address
+	// in the stack frame that registered the entry: on downward-growing stacks, entries pushed by
+	// calls deeper than the current one, or by code in the current frame that has since finished,
+	// have a bound at or below the current bound and are stale.
+	struct CaughtExceptionEntry
+	{
+		Uptr bound;
+		WavmEhRecord* record;
+	};
+
+	// All tracking of owned exception records. The destructor frees every remaining record at
+	// thread exit: records may appear in more than one list (a held record can be in flight),
+	// so they are deduplicated before freeing.
+	struct EhTrackingState
+	{
+		std::vector<CaughtExceptionEntry> caughtExceptions;
+
+		// Records currently inside a raise call: marked before
+		// _Unwind_RaiseException/_CxxThrowException and unmarked when a handler claims the record
+		// (wavm_eh_catch_entered/wavm_eh_table_caught) or the raise returns uncaught.
+		std::vector<WavmEhRecord*> inFlightRecords;
+
+		// Records whose catch-scope entries went stale. They are kept alive, up to
+		// maxDeadRecords, so an exnref that outlived its catch scope can still be rethrown by
+		// throw_ref (legal per the spec, though clang only emits exnrefs scoped to their
+		// handler). Once evicted, a throw_ref naming them fails closed.
+		std::vector<WavmEhRecord*> deadRecords;
+
+		~EhTrackingState()
+		{
+			std::vector<WavmEhRecord*> records;
+			for(const CaughtExceptionEntry& entry : caughtExceptions)
+			{
+				if(!ehVectorContains(records, entry.record)) { records.push_back(entry.record); }
+			}
+			for(WavmEhRecord* record : deadRecords)
+			{
+				if(!ehVectorContains(records, record)) { records.push_back(record); }
+			}
+			for(WavmEhRecord* record : inFlightRecords)
+			{
+				if(!ehVectorContains(records, record)) { records.push_back(record); }
+			}
+			for(WavmEhRecord* record : records) { delete record; }
+		}
+
+		static bool ehVectorContains(const std::vector<WavmEhRecord*>& vec,
+									 const WavmEhRecord* record)
+		{
+			for(const WavmEhRecord* element : vec)
+			{
+				if(element == record) { return true; }
+			}
+			return false;
+		}
+	};
+	thread_local EhTrackingState ehTracking;
+
+	inline constexpr Uptr maxDeadRecords{32};
+
+	static bool ehVectorContains(const std::vector<WavmEhRecord*>& vec, const WavmEhRecord* record)
+	{
+		for(const WavmEhRecord* element : vec)
+		{
+			if(element == record) { return true; }
+		}
+		return false;
+	}
+
+	// Removes the first occurrence of `record` from `vec`, returning whether it was present.
+	static bool ehVectorErase(std::vector<WavmEhRecord*>& vec, const WavmEhRecord* record)
+	{
+		for(auto it = vec.begin(); it != vec.end(); ++it)
+		{
+			if(*it == record)
+			{
+				vec.erase(it);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static bool ehRecordIsHeld(const WavmEhRecord* record)
+	{
+		for(const CaughtExceptionEntry& entry : ehTracking.caughtExceptions)
+		{
+			if(entry.record == record) { return true; }
+		}
+		return false;
+	}
+
+	// Frees a record once nothing can reference it: not held by a catch scope and not in flight.
+	static void ehReleaseRecord(WavmEhRecord* record)
+	{
+		if(!record) { return; }
+		if(ehRecordIsHeld(record) || ehVectorContains(ehTracking.inFlightRecords, record)) { return; }
+		ehVectorErase(ehTracking.deadRecords, record);
+		delete record;
+	}
+
+	// Moves a record to the dead list, freeing the oldest dead record nothing references if the
+	// list overflows.
+	static void ehDeadlistRecord(WavmEhRecord* record)
+	{
+		if(!record || ehVectorContains(ehTracking.deadRecords, record)) { return; }
+		ehTracking.deadRecords.push_back(record);
+		while(ehTracking.deadRecords.size() > maxDeadRecords)
+		{
+			auto it = ehTracking.deadRecords.begin();
+			for(; it != ehTracking.deadRecords.end(); ++it)
+			{
+				if(!ehRecordIsHeld(*it) && !ehVectorContains(ehTracking.inFlightRecords, *it)) { break; }
+			}
+			if(it == ehTracking.deadRecords.end()) { break; }
+			delete *it;
+			ehTracking.deadRecords.erase(it);
+		}
+	}
+
+	// Frees all records except `except`, which is already deleted by the caller (entries still
+	// naming it are dropped without a second delete). Only called when an exception propagated
+	// past all wasm frames, so every catch scope that held a record is dead. In-flight records
+	// are not freed: they are owned by an active raise call that will clean them up itself.
+	static void ehFreeAllCaught(const WavmEhRecord* except)
+	{
+		for(CaughtExceptionEntry& entry : ehTracking.caughtExceptions)
+		{
+			if(entry.record != except) { delete entry.record; }
+		}
+		ehTracking.caughtExceptions.clear();
+		for(WavmEhRecord* record : ehTracking.deadRecords)
+		{
+			if(record != except) { delete record; }
+		}
+		ehTracking.deadRecords.clear();
+		ehTracking.inFlightRecords.clear();
+	}
 }
+
+#if !defined(_MSC_VER)
+// Raises a wasm exception record via _Unwind_RaiseException. Does not return: a raise that finds
+// no wasm or host handler returns, and is converted to a WAVM uncaughtException runtime error.
+static void ehRaiseWasmRecord(wavm_eh_tag_unwind_eh* exception)
+{
+	if(!ehVectorContains(ehTracking.inFlightRecords, exception)) { ehTracking.inFlightRecords.push_back(exception); }
+	_Unwind_Reason_Code reason = _Unwind_RaiseException(&exception->itaniumeh);
+	// The exception propagated past all wasm frames, so all records held by catch scopes are
+	// dead too.
+	(void)reason;
+	const ::std::uint_least64_t tag = exception->ehtag;
+	const ::std::uint_least64_t userdata = exception->userdata;
+	ehVectorErase(ehTracking.inFlightRecords, exception);
+	delete exception;
+	ehFreeAllCaught(exception);
+	Runtime::throwException(Runtime::ExceptionTypes::uncaughtException,
+							{IR::UntaggedValue(U64(tag)), IR::UntaggedValue(U64(userdata))});
+}
+#endif
 
 extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t tag, ::std::uint_least64_t value)
 {
 #if defined(_MSC_VER)
-	auto exception = std::make_unique<wavm_eh_record>();
+	auto* exception = new wavm_eh_record();
 	exception->magic = exceptionclass;
 	exception->ehtag = tag;
 	exception->userdata = value;
-	exnrefToUnwindExceptionMap[value] = exception.get();
-	exceptionPool.push_back(std::move(exception));
-	_CxxThrowException(exceptionPool.back().get(), &wavmThrowInfo);
+	_CxxThrowException(exception, &wavmThrowInfo);
 #else
-	auto exception = std::make_unique<wavm_eh_tag_unwind_eh>();
+	auto* exception = new wavm_eh_tag_unwind_eh();
 	exception->itaniumeh.exception_class = exceptionclass;
 	exception->ehtag = tag;
 	exception->userdata = value;
-	exnrefToUnwindExceptionMap[value] = __builtin_addressof(exception->itaniumeh);
-	_Unwind_Exception* exceptionObject = __builtin_addressof(exception->itaniumeh);
-	exceptionPool.push_back(std::move(exception));
-	_Unwind_RaiseException(exceptionObject);
+	ehRaiseWasmRecord(exception);
 #endif
 }
 
+// Re-raises the exception record that just landed on a catch dispatch but matched no clause.
+// The record is still marked in flight (no clause claimed it), so this is a plain re-raise.
+extern "C" void wavm_rethrow_record(void* recordPtr)
+{
+#if defined(_MSC_VER)
+	auto* exception = reinterpret_cast<wavm_eh_record*>(recordPtr);
+	if(!exception || exception->magic != exceptionclass) { std::abort(); }
+	_CxxThrowException(exception, &wavmThrowInfo);
+#else
+	auto* exception = reinterpret_cast<wavm_eh_tag_unwind_eh*>(recordPtr);
+	if(!exception || exception->itaniumeh.exception_class != exceptionclass) { std::abort(); }
+	ehRaiseWasmRecord(exception);
+#endif
+}
+
+// Called when a try_table catch_ref/catch_all_ref clause accepts an exception: the exnref value
+// the clause pushed names this record, so it is registered as held by a catch scope. Before
+// pushing the new entry, entries pushed by frames that have returned or by code in this frame
+// that has finished are removed (on a downward-growing stack their bound is at or below this
+// call's bound). Their records go to the dead list rather than being freed, so an exnref that
+// outlived its scope can still rethrow them.
+extern "C" void wavm_eh_catch_entered(void* recordPtr)
+{
+	auto* record = reinterpret_cast<WavmEhRecord*>(recordPtr);
+	char boundMarker;
+	const Uptr bound = Uptr(&boundMarker);
+
+	// The exception has landed: it is no longer in flight, and if it was dead-listed while an
+	// exnref still named it, it is live again.
+	ehVectorErase(ehTracking.inFlightRecords, record);
+	ehVectorErase(ehTracking.deadRecords, record);
+
+	for(auto it = ehTracking.caughtExceptions.begin(); it != ehTracking.caughtExceptions.end();)
+	{
+		if(it->bound <= bound && !ehVectorContains(ehTracking.inFlightRecords, it->record))
+		{
+			WavmEhRecord* stale = it->record;
+			it = ehTracking.caughtExceptions.erase(it);
+			if(stale != record) { ehDeadlistRecord(stale); }
+		}
+		else { ++it; }
+	}
+	ehTracking.caughtExceptions.push_back({bound, record});
+}
+
+// Called when a try_table catch/catch_all clause accepts an exception: the clause produces no
+// exnref, so the record is freed unless a live catch scope still holds it.
+extern "C" void wavm_eh_table_caught(void* recordPtr)
+{
+	auto* record = reinterpret_cast<WavmEhRecord*>(recordPtr);
+	ehVectorErase(ehTracking.inFlightRecords, record);
+	ehReleaseRecord(record);
+}
+
+// Implements the throw_ref instruction. The exnref operand is the address of the exception
+// record produced by the catch_ref/catch_all_ref clause that caught it. The reference is only
+// valid while it names a record WAVM still owns: held by a live catch scope, kept on the dead
+// list, or in flight. Anything else — null, a reference to a freed record, or a forged value —
+// fails closed with a runtime error instead of dereferencing it.
 extern "C" void wavm_throw_ref(::std::uint_least64_t exnref)
 {
-	auto mapIt = exnrefToUnwindExceptionMap.find(exnref);
-	if(mapIt != exnrefToUnwindExceptionMap.end())
-	{
 #if defined(_MSC_VER)
-		_CxxThrowException(mapIt->second, &wavmThrowInfo);
-#else
-		_Unwind_RaiseException(static_cast<_Unwind_Exception*>(mapIt->second));
-#endif
+	auto* exception = reinterpret_cast<wavm_eh_record*>(Uptr(exnref));
+	if(!exception || exception->magic != exceptionclass)
+	{
+		Runtime::throwException(Runtime::ExceptionTypes::invalidExnref, {});
 	}
-	// If the exnref doesn't map to a live exception, abort.
-	std::abort();
+	_CxxThrowException(exception, &wavmThrowInfo);
+#else
+	auto* exception = reinterpret_cast<wavm_eh_tag_unwind_eh*>(Uptr(exnref));
+	bool valid = false;
+	if(exception)
+	{
+		valid = ehVectorContains(ehTracking.inFlightRecords, exception) || ehRecordIsHeld(exception)
+				|| ehVectorErase(ehTracking.deadRecords, exception);
+	}
+	if(!valid) { Runtime::throwException(Runtime::ExceptionTypes::invalidExnref, {}); }
+	ehRaiseWasmRecord(exception);
+#endif
 }
 
 // Rethrows the exception currently being handled. Only used on MSVC, from the no-match path of a
@@ -166,14 +378,60 @@ static llvm::Function* getWavmRethrowWasmEhtagFunction(EmitModuleContext& module
 		LLVMContext& llvmContext = moduleContext.llvmContext;
 		moduleContext.wavmRethrowWasmEhtagFunction = llvm::Function::Create(
 			llvm::FunctionType::get(
-				llvm::Type::getVoidTy(llvmContext), {llvmContext.i64Type}, false),
+				llvm::Type::getVoidTy(llvmContext), {llvmContext.i8PtrType}, false),
 			llvm::GlobalValue::LinkageTypes::ExternalLinkage,
-			"wavm_throw_ref",
+			"wavm_rethrow_record",
 			moduleContext.llvmModule);
 		moduleContext.wavmRethrowWasmEhtagFunction->addFnAttr(
 			::llvm::Attribute::AttrKind::NoReturn);
 	}
 	return moduleContext.wavmRethrowWasmEhtagFunction;
+}
+
+static llvm::Function* getWavmEhCatchEnteredFunction(EmitModuleContext& moduleContext)
+{
+	if(!moduleContext.wavmEhCatchEnteredFunction)
+	{
+		LLVMContext& llvmContext = moduleContext.llvmContext;
+		moduleContext.wavmEhCatchEnteredFunction = llvm::Function::Create(
+			llvm::FunctionType::get(
+				llvm::Type::getVoidTy(llvmContext), {llvmContext.i8PtrType}, false),
+			llvm::GlobalValue::LinkageTypes::ExternalLinkage,
+			"wavm_eh_catch_entered",
+			moduleContext.llvmModule);
+	}
+	return moduleContext.wavmEhCatchEnteredFunction;
+}
+
+static llvm::Function* getWavmThrowRefFunction(EmitModuleContext& moduleContext)
+{
+	if(!moduleContext.wavmThrowRefFunction)
+	{
+		LLVMContext& llvmContext = moduleContext.llvmContext;
+		moduleContext.wavmThrowRefFunction = llvm::Function::Create(
+			llvm::FunctionType::get(
+				llvm::Type::getVoidTy(llvmContext), {llvmContext.i64Type}, false),
+			llvm::GlobalValue::LinkageTypes::ExternalLinkage,
+			"wavm_throw_ref",
+			moduleContext.llvmModule);
+		moduleContext.wavmThrowRefFunction->addFnAttr(::llvm::Attribute::AttrKind::NoReturn);
+	}
+	return moduleContext.wavmThrowRefFunction;
+}
+
+static llvm::Function* getWavmEhTableCaughtFunction(EmitModuleContext& moduleContext)
+{
+	if(!moduleContext.wavmEhTableCaughtFunction)
+	{
+		LLVMContext& llvmContext = moduleContext.llvmContext;
+		moduleContext.wavmEhTableCaughtFunction = llvm::Function::Create(
+			llvm::FunctionType::get(
+				llvm::Type::getVoidTy(llvmContext), {llvmContext.i8PtrType}, false),
+			llvm::GlobalValue::LinkageTypes::ExternalLinkage,
+			"wavm_eh_table_caught",
+			moduleContext.llvmModule);
+	}
+	return moduleContext.wavmEhTableCaughtFunction;
 }
 
 #if defined(_MSC_VER)
@@ -238,29 +496,49 @@ void EmitFunctionContext::emitRaiseFunctionCall(llvm::Function* raiseFunction,
 	}
 }
 
-void EmitFunctionContext::endTryWithoutCatch()
+#if !defined(_MSC_VER)
+void EmitFunctionContext::emitUnhandledExceptionDispatch(llvm::LandingPadInst* landingPadInst)
 {
-	WAVM_ASSERT(!tryStack.empty());
-	tryStack.pop_back();
-	endTryCatch();
+	// An exception that reached the end of the catch clause dispatch matched no clause. This is
+	// not emitted as an LLVM 'resume' because DwarfEHPrepare prunes resumes that are not
+	// reachable from a cleanup landingpad, which would fold away the tag checks above. It is
+	// also not a _Unwind_Resume for wasm exceptions, because that would continue the current
+	// unwind past this frame and skip an enclosing handler in the same function. Instead, wasm
+	// exceptions are re-raised fresh via wavm_rethrow_record, which starts a new unwind whose
+	// search can find an enclosing handler for this callsite, and reports
+	// wavm.uncaughtException if none handle it. Foreign host exceptions (e.g. WAVM
+	// runtime exceptions) are re-raised with _Unwind_RaiseException so that they
+	// propagate unchanged to the host handler.
+	auto unwindehptr = irBuilder.CreateExtractValue(landingPadInst, {0});
+	auto magic = ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, llvmContext.i64Type, unwindehptr);
+	auto isUserExceptionType = irBuilder.CreateICmpEQ(
+		magic, ::llvm::ConstantInt::get(llvmContext.i64Type, exceptionclass));
+
+	auto wasmRethrowBlock
+		= llvm::BasicBlock::Create(llvmContext, "unhandledRethrow", function);
+	auto foreignResumeBlock
+		= llvm::BasicBlock::Create(llvmContext, "unhandledResume", function);
+	irBuilder.CreateCondBr(isUserExceptionType, wasmRethrowBlock, foreignResumeBlock);
+
+	irBuilder.SetInsertPoint(wasmRethrowBlock);
+	auto rethrowFunc = getWavmRethrowWasmEhtagFunction(moduleContext);
+	emitRaiseFunctionCall(rethrowFunc, {unwindehptr});
+
+	irBuilder.SetInsertPoint(foreignResumeBlock);
+	// A foreign exception is re-raised fresh with _Unwind_RaiseException. It cannot be
+	// continued with _Unwind_Resume: the resumed phase 2 walk would reach this frame again
+	// with the same SP that phase 1 recorded, re-selecting this landing pad forever. An LLVM
+	// 'resume' instruction cannot be used either: DwarfEHPrepare prunes resumes that are not
+	// reachable from a cleanup-only landingpad, and this landingpad must have a catch clause
+	// for the phase 1 search to stop at this frame. A fresh raise evaluates this frame at the
+	// raise callsite, which has no landing pad, so the exception propagates to the host.
+	auto unwindRaiseFunc = moduleContext.llvmModule->getOrInsertFunction(
+		"_Unwind_RaiseException",
+		llvm::FunctionType::get(llvmContext.i32Type, {llvmContext.i8PtrType}, false));
+	irBuilder.CreateCall(unwindRaiseFunc, {unwindehptr});
+	irBuilder.CreateUnreachable();
 }
-
-void EmitFunctionContext::endTryCatch()
-{
-	WAVM_ASSERT(!catchStack.empty());
-	CatchContext& catchContext = catchStack.back();
-
-	// If an end instruction terminates a sequence of catch clauses, terminate the chain of
-	// handler type ID tests by rethrowing the exception if its type ID didn't match any of the
-	// handlers.
-	llvm::BasicBlock* savedInsertionPoint = irBuilder.GetInsertBlock();
-	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
-
-	irBuilder.CreateResume(catchContext.landingPadInst);
-
-	irBuilder.SetInsertPoint(savedInsertionPoint);
-	catchStack.pop_back();
-}
+#endif
 
 llvm::BasicBlock* EmitContext::getInnermostUnwindToBlock()
 {
@@ -273,56 +551,6 @@ llvm::BasicBlock* EmitContext::getInnermostUnwindToBlock()
 	{
 		return nullptr;
 	}
-}
-
-static inline void generate_catch_common(EmitFunctionContext& emitFunctionContext)
-{
-	using TryContext = typename EmitFunctionContext::TryContext;
-	using CatchContext = typename EmitFunctionContext::CatchContext;
-	auto& llvmContext{emitFunctionContext.llvmContext};
-	auto& irBuilder{emitFunctionContext.irBuilder};
-	auto& function{emitFunctionContext.function};
-	auto& tryStack{emitFunctionContext.tryStack};
-	auto& catchStack{emitFunctionContext.catchStack};
-
-	// Create a BasicBlock with a LandingPad instruction to use as the unwind target.
-	auto landingPadBlock = llvm::BasicBlock::Create(llvmContext, "landingPad", function);
-	irBuilder.SetInsertPoint(landingPadBlock);
-	auto landingPadInst = irBuilder.CreateLandingPad(
-		llvm::StructType::get(llvmContext, {llvmContext.i8PtrType, llvmContext.i32Type}), 1);
-
-	tryStack.push_back(TryContext{landingPadBlock});
-	catchStack.push_back(CatchContext{nullptr, landingPadInst, nullptr, landingPadBlock, nullptr});
-}
-
-void EmitFunctionContext::try_(ControlStructureImm imm)
-{
-	{
-		::llvm::IRBuilderBase::InsertPointGuard guard(irBuilder);
-		generate_catch_common(*this);
-	}
-
-	// Create an end try+phi for the try result.
-	FunctionType blockType = resolveBlockType(irModule, imm.type);
-	auto endBlock = llvm::BasicBlock::Create(llvmContext, "tryEnd", function);
-	auto endPHIs = createPHIs(endBlock, blockType.results());
-
-	// Pop the try arguments.
-	llvm::Value** tryArgs = (llvm::Value**)alloca(sizeof(llvm::Value*) * blockType.params().size());
-	popMultiple(tryArgs, blockType.params().size());
-
-	// Push a control context that ends at the end block/phi.
-	pushControlStack(ControlContext::Type::try_, blockType.results(), endBlock, endPHIs);
-
-	// Remember the landingpad on the control context, so that the 'rethrow' instruction can find
-	// the landingpad of the catch at the requested depth.
-	controlStack.back().landingPadInst = catchStack.back().landingPadInst;
-
-	// Push a branch target for the end block/phi.
-	pushBranchTarget(blockType.results(), endBlock, endPHIs);
-
-	// Repush the try arguments.
-	pushMultiple(tryArgs, blockType.params().size());
 }
 
 void EmitFunctionContext::try_table(TryTableImm imm)
@@ -386,6 +614,7 @@ void EmitFunctionContext::try_table(TryTableImm imm)
 		irBuilder.SetInsertPoint(landingPadBlock);
 		auto landingPadInst = irBuilder.CreateLandingPad(
 			llvm::StructType::get(llvmContext, {llvmContext.i8PtrType, llvmContext.i32Type}), 1);
+		landingPadInst->setCleanup(true);
 		landingPadInst->addClause(::llvm::ConstantPointerNull::get(irBuilder.getPtrTy()));
 
 		tryStack.push_back(TryContext{landingPadBlock});
@@ -465,11 +694,14 @@ void EmitFunctionContext::endTryTable()
 				irBuilder.CreateGEP(llvmContext.i8Type,
 									unwindehptr,
 									{::llvm::ConstantInt::get(llvmContext.i64Type, EhTagOffset)}));
+			// The exception's tag identity is the runtime id of the ExceptionType object
+			// created for the tag at instantiation, so tags with the same signature are
+			// distinguished and imported tags match the tag they are bound to.
 			auto isehtagId = irBuilder.CreateICmpEQ(
 				ehtagId,
-				::llvm::ConstantInt::get(
-					llvmContext.i64Type,
-					irModule.tagSegments[catchClause.exceptionTypeIndex].tagindex));
+				irBuilder.CreateZExtOrTrunc(
+					moduleContext.exceptionTypeIds[catchClause.exceptionTypeIndex],
+					llvmContext.i64Type));
 			irBuilder.CreateCondBr(isehtagId, matchBlocks[clauseIndex], nextBlock);
 		}
 		else
@@ -500,14 +732,29 @@ void EmitFunctionContext::endTryTable()
 								{::llvm::ConstantInt::get(llvmContext.i64Type, UserDataOffset)}));
 		for(Uptr argIndex = 0; argIndex < target.params.size(); ++argIndex)
 		{
+			// For the exnref parameter produced by catch_ref/catch_all_ref, the exnref value is
+			// the address of the exception record itself. Other parameters carry the exception's
+			// payload.
 			llvm::Value* payload
-				= coerceI64ToValueType(irBuilder, llvmContext, userData, target.params[argIndex]);
+				= target.params[argIndex] == IR::ValueType::exnref
+					  ? irBuilder.CreatePtrToInt(unwindehptr, llvmContext.i64Type)
+					  : coerceI64ToValueType(
+							irBuilder, llvmContext, userData, target.params[argIndex]);
 			target.phis[argIndex]->addIncoming(coerceToCanonicalType(payload),
 											   irBuilder.GetInsertBlock());
 		}
 #if defined(_MSC_VER)
 		irBuilder.CreateCatchRet(tryTableContext.catchPadInst, target.block);
 #else
+		// A catch_ref/catch_all_ref clause keeps the record referenceable through the exnref it
+		// pushed; a plain catch/catch_all clause releases it unless a live catch scope still
+		// holds it.
+		const bool clauseProducesExnref = catchClause.kind == IR::CatchClauseKind::catch_ref
+										  || catchClause.kind == IR::CatchClauseKind::catch_all_ref;
+		irBuilder.CreateCall(clauseProducesExnref
+								 ? getWavmEhCatchEnteredFunction(moduleContext)
+								 : getWavmEhTableCaughtFunction(moduleContext),
+							 {unwindehptr});
 		irBuilder.CreateBr(target.block);
 #endif
 	}
@@ -523,7 +770,7 @@ void EmitFunctionContext::endTryTable()
 	irBuilder.CreateCall(rethrowFn->getFunctionType(), rethrowFn, {}, {funcletBundle});
 	irBuilder.CreateUnreachable();
 #else
-	irBuilder.CreateResume(tryTableContext.landingPadInst);
+	emitUnhandledExceptionDispatch(tryTableContext.landingPadInst);
 #endif
 
 	irBuilder.SetInsertPoint(savedInsertionPoint);
@@ -533,168 +780,29 @@ void EmitFunctionContext::endTryTable()
 #endif
 	tryTableStack.pop_back();
 }
-#if 1
-[[maybe_unused]]
-static inline void foodebugging(EmitFunctionContext& functionContext, ::llvm::Value* memaddress)
-{
-	functionContext.emitRuntimeIntrinsic(
-		"wavmdebuggingprint",
-		FunctionType(
-			TypeTuple{ValueType::i64}, TypeTuple{ValueType::i64}, IR::CallingConvention::intrinsic),
-		{memaddress});
-}
-#endif
-void EmitFunctionContext::catch_(ExceptionTypeImm imm)
-{
-	WAVM_ASSERT(!controlStack.empty());
-	WAVM_ASSERT(!catchStack.empty());
-	ControlContext& controlContext = controlStack.back();
-	CatchContext& catchContext = catchStack.back();
-	WAVM_ASSERT(controlContext.type == ControlContext::Type::try_
-				|| controlContext.type == ControlContext::Type::catch_);
-	if(controlContext.type == ControlContext::Type::try_)
-	{
-		WAVM_ASSERT(!tryStack.empty());
-		tryStack.pop_back();
-	}
-
-	branchToEndOfControlContext();
-
-	// Look up the exception type instance to be caught
-	WAVM_ASSERT(imm.exceptionTypeIndex < irModule.tagSegments.size());
-
-	auto& tagseg{irModule.tagSegments[imm.exceptionTypeIndex]};
-
-	catchContext.landingPadInst->addClause(::llvm::ConstantPointerNull::get(irBuilder.getPtrTy()));
-	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
-	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catchtag", function);
-	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "unhandledtag", function);
-	auto unwindehptr = irBuilder.CreateExtractValue(catchContext.landingPadInst, {0});
-	auto magic = ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, llvmContext.i64Type, unwindehptr);
-	auto isUserExceptionType = irBuilder.CreateICmpEQ(
-		magic, ::llvm::ConstantInt::get(llvmContext.i64Type, exceptionclass));
-
-	auto catchchecktagBlock = llvm::BasicBlock::Create(llvmContext, "catchchecktag", function);
-	irBuilder.CreateCondBr(isUserExceptionType, catchchecktagBlock, unhandledBlock);
-	irBuilder.SetInsertPoint(catchchecktagBlock);
-
-	auto ehtagId = ::WAVM::LLVMJIT::wavmCreateLoad(
-		irBuilder,
-		llvmContext.i64Type,
-		irBuilder.CreateGEP(llvmContext.i8Type,
-							unwindehptr,
-							{::llvm::ConstantInt::get(llvmContext.i64Type, EhTagOffset)}));
-	auto isehtagId = irBuilder.CreateICmpEQ(
-		ehtagId, ::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex));
-
-	irBuilder.CreateCondBr(isehtagId, catchBlock, unhandledBlock);
-	catchContext.nextHandlerBlock = unhandledBlock;
-	irBuilder.SetInsertPoint(catchBlock);
-
-	auto argument = ::WAVM::LLVMJIT::wavmCreateLoad(
-		irBuilder,
-		llvmContext.i64Type,
-		irBuilder.CreateGEP(llvmContext.i8Type,
-							unwindehptr,
-							{::llvm::ConstantInt::get(llvmContext.i64Type, UserDataOffset)}));
-	push(argument);
-
-	// Change the top of the control stack to a catch clause.
-	controlContext.type = ControlContext::Type::catch_;
-	controlContext.isReachable = true;
-}
-
-void EmitFunctionContext::catch_all(NoImm)
-{
-	WAVM_ASSERT(!controlStack.empty());
-	WAVM_ASSERT(!catchStack.empty());
-	ControlContext& controlContext = controlStack.back();
-	CatchContext& catchContext = catchStack.back();
-	WAVM_ASSERT(controlContext.type == ControlContext::Type::try_
-				|| controlContext.type == ControlContext::Type::catch_);
-	if(controlContext.type == ControlContext::Type::try_)
-	{
-		WAVM_ASSERT(!tryStack.empty());
-		tryStack.pop_back();
-	}
-
-	branchToEndOfControlContext();
-	catchContext.landingPadInst->addClause(::llvm::ConstantPointerNull::get(irBuilder.getPtrTy()));
-	irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
-	auto catchBlock = llvm::BasicBlock::Create(llvmContext, "catchall", function);
-	auto unhandledBlock = llvm::BasicBlock::Create(llvmContext, "unhandledall", function);
-
-	auto unwindehptr = irBuilder.CreateExtractValue(catchContext.landingPadInst, {0});
-	auto magic = ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, llvmContext.i64Type, unwindehptr);
-	auto isUserExceptionType = irBuilder.CreateICmpEQ(
-		magic, ::llvm::ConstantInt::get(llvmContext.i64Type, exceptionclass));
-	irBuilder.CreateCondBr(isUserExceptionType, catchBlock, unhandledBlock);
-	catchContext.nextHandlerBlock = unhandledBlock;
-	irBuilder.SetInsertPoint(catchBlock);
-
-	// Change the top of the control stack to a catch clause.
-	controlContext.type = ControlContext::Type::catch_;
-	controlContext.isReachable = true;
-}
-
 void EmitFunctionContext::throw_(ExceptionTypeImm imm)
 {
 	auto ehptr = pop();
-	auto& tagseg{irModule.tagSegments[imm.exceptionTypeIndex]};
 
 	auto ehtagfunc = getWavmThrowWasmEhtagFunction(moduleContext);
 	ehptr = irBuilder.CreateZExt(ehptr, llvmContext.i64Type);
-	emitRaiseFunctionCall(ehtagfunc,
-						  {::llvm::ConstantInt::get(llvmContext.i64Type, tagseg.tagindex), ehptr});
+	// The tag identity passed to the runtime is the id of the ExceptionType object
+	// instantiated for the tag: it is unique per tag and shared across modules through
+	// imports.
+	emitRaiseFunctionCall(
+		ehtagfunc,
+		{irBuilder.CreateZExtOrTrunc(moduleContext.exceptionTypeIds[imm.exceptionTypeIndex],
+									 llvmContext.i64Type),
+		 ehptr});
 	enterUnreachable();
 }
 
 void EmitFunctionContext::throw_ref(NoImm)
 {
+	// throw_ref re-raises the exception named by the exnref operand, invoked to the innermost
+	// enclosing landingpad so that it propagates through enclosing try_table blocks just like a
+	// wasm throw.
 	auto exnref = pop();
-
-	auto rethrowFunc = getWavmRethrowWasmEhtagFunction(moduleContext);
-	emitRaiseFunctionCall(rethrowFunc, {exnref});
+	emitRaiseFunctionCall(getWavmThrowRefFunction(moduleContext), {exnref});
 	enterUnreachable();
-}
-
-void EmitFunctionContext::rethrow(RethrowImm imm)
-{
-	// 'rethrow $depth' rethrows the exception caught by the catch clause at the given label depth,
-	// which is validated to be a catch handler. The rethrow is emitted as a fresh throw of that
-	// exception's tag and payload, invoked to the innermost enclosing landingpad, so that it
-	// propagates through the enclosing try blocks just like the wasm rethrow instruction.
-	WAVM_ASSERT(imm.catchDepth < controlStack.size());
-	ControlContext& catchContext = controlStack[controlStack.size() - imm.catchDepth - 1];
-	WAVM_ASSERT(catchContext.type == ControlContext::Type::catch_);
-	WAVM_ASSERT(catchContext.landingPadInst);
-
-	auto unwindehptr = irBuilder.CreateExtractValue(catchContext.landingPadInst, {0});
-	auto ehtagId = ::WAVM::LLVMJIT::wavmCreateLoad(
-		irBuilder,
-		llvmContext.i64Type,
-		irBuilder.CreateGEP(llvmContext.i8Type,
-							unwindehptr,
-							{::llvm::ConstantInt::get(llvmContext.i64Type, EhTagOffset)}));
-	auto userData = ::WAVM::LLVMJIT::wavmCreateLoad(
-		irBuilder,
-		llvmContext.i64Type,
-		irBuilder.CreateGEP(llvmContext.i8Type,
-							unwindehptr,
-							{::llvm::ConstantInt::get(llvmContext.i64Type, UserDataOffset)}));
-
-	auto ehtagfunc = getWavmThrowWasmEhtagFunction(moduleContext);
-	emitRaiseFunctionCall(ehtagfunc, {ehtagId, userData});
-	enterUnreachable();
-}
-
-void EmitFunctionContext::delegate(BranchImm)
-{
-	CatchContext& catchContext = catchStack.back();
-	{
-		::llvm::IRBuilderBase::InsertPointGuard guard(irBuilder);
-		irBuilder.SetInsertPoint(catchContext.nextHandlerBlock);
-		catchContext.landingPadInst->setCleanup(true);
-	}
-	this->end(NoImm{});
 }

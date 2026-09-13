@@ -73,7 +73,9 @@ namespace WAVM { namespace WAST {
 		uninitializedTableElement,
 		outOfMemory,
 		misalignedAtomicMemoryAccess,
-		invalidArgument
+		invalidArgument,
+		uncaughtException,
+		invalidExnref
 	};
 
 	struct Action

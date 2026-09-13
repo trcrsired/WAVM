@@ -47,8 +47,6 @@ namespace WAVM { namespace LLVMJIT {
 				ifThen,
 				ifElse,
 				loop,
-				try_,
-				catch_,
 				tryTable
 			};
 
@@ -61,9 +59,6 @@ namespace WAVM { namespace LLVMJIT {
 			Uptr outerStackSize;
 			Uptr outerBranchTargetStackSize;
 			bool isReachable;
-
-			// For a try/catch context, the landingpad that catches exceptions thrown in its body.
-			llvm::LandingPadInst* landingPadInst = nullptr;
 		};
 
 		struct BranchTarget
@@ -303,22 +298,6 @@ namespace WAVM { namespace LLVMJIT {
 
 		void trapIfMisalignedAtomic(llvm::Value* address, U32 naturalAlignmentLog2);
 
-		struct CatchContext
-		{
-			// Only used for Windows SEH.
-			llvm::CatchSwitchInst* catchSwitchInst;
-
-			// Only used for non-Windows exceptions.
-			llvm::LandingPadInst* landingPadInst;
-
-			// Used for all platforms.
-			llvm::Value* exceptionPointer;
-			llvm::BasicBlock* nextHandlerBlock;
-			llvm::Value* exceptionTypeId;
-		};
-
-		std::vector<CatchContext> catchStack;
-
 		// A try_table context: the landingpad that catches exceptions thrown in the try_table body,
 		// and the catch clauses to dispatch to when an exception is caught.
 		struct TryTableContext
@@ -340,14 +319,17 @@ namespace WAVM { namespace LLVMJIT {
 		// catch handler's dispatch with the correct funclet token.
 		std::vector<llvm::Value*> funcletPadStack;
 
-		void endTryWithoutCatch();
-		void endTryCatch();
 		void endTryTable();
 
 		// Emits a call to a noreturn exception-raising function as an invoke to the innermost
 		// enclosing EH pad, if any.
 		void emitRaiseFunctionCall(llvm::Function* raiseFunction,
 								   llvm::ArrayRef<llvm::Value*> args);
+
+		// Emits the tail of a catch dispatch chain for an exception that matched no clause:
+		// wasm exceptions are rethrown to enclosing handlers via wavm_rethrow_record and
+		// foreign host exceptions are re-raised fresh via _Unwind_RaiseException.
+		void emitUnhandledExceptionDispatch(llvm::LandingPadInst* landingPadInst);
 
 #define VISIT_OPCODE(encoding, name, nameString, Imm, ...) void name(IR::Imm imm);
 		WAVM_ENUM_OPERATORS(VISIT_OPCODE)

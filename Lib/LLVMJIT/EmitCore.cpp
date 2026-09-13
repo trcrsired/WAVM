@@ -145,9 +145,7 @@ void EmitFunctionContext::end(NoImm)
 	WAVM_ASSERT(!controlStack.empty());
 	ControlContext& currentContext = controlStack.back();
 
-	if(currentContext.type == ControlContext::Type::try_) { endTryWithoutCatch(); }
-	else if(currentContext.type == ControlContext::Type::catch_) { endTryCatch(); }
-	else if(currentContext.type == ControlContext::Type::tryTable) { endTryTable(); }
+	if(currentContext.type == ControlContext::Type::tryTable) { endTryTable(); }
 
 	branchToEndOfControlContext();
 

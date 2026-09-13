@@ -11,10 +11,6 @@
 	visitOp(0x0004, if_                , "if"                               , ControlStructureImm       , POLYMORPHIC               , mvp                    )   \
 	visitOp(0x0005, else_              , "else"                             , NoImm                     , POLYMORPHIC               , mvp                    )   \
 	visitOp(0x000b, end                , "end"                              , NoImm                     , POLYMORPHIC               , mvp                    )   \
-	visitOp(0x0006, try_               , "try"                              , ControlStructureImm       , POLYMORPHIC               , exceptionHandling      )   \
-	visitOp(0x0007, catch_             , "catch"                            , ExceptionTypeImm          , POLYMORPHIC               , exceptionHandling      )   \
-	visitOp(0x0018, delegate           , "delegate"                         , BranchImm                 , POLYMORPHIC               , exceptionHandling      )   \
-	visitOp(0x0019, catch_all          , "catch_all"                        , NoImm                     , POLYMORPHIC               , exceptionHandling      )   \
 	visitOp(0x001f, try_table          , "try_table"                        , TryTableImm               , POLYMORPHIC               , exceptionHandling      )
 
 #define WAVM_ENUM_PARAMETRIC_OPERATORS(visitOp)                                                                                                                  \
@@ -41,7 +37,6 @@
 	visitOp(0xfc11, table_fill         , "table.fill"                       , TableImm                  , POLYMORPHIC               , referenceTypes         )   \
 /* Exceptions                                                                                                                                                 */ \
 	visitOp(0x0008, throw_             , "throw"                            , ExceptionTypeImm          , POLYMORPHIC               , exceptionHandling      )   \
-	visitOp(0x0009, rethrow            , "rethrow"                          , RethrowImm                , POLYMORPHIC               , exceptionHandling      )   \
 	visitOp(0x000a, throw_ref           , "throw_ref"                        , NoImm                     , POLYMORPHIC               , exceptionHandling      )   \
 /* References                                                                                                                                                 */ \
 	visitOp(0x00d0, ref_null           , "ref.null"                         , ReferenceTypeImm          , POLYMORPHIC               , referenceTypes         )   \

@@ -140,10 +140,6 @@ namespace WAVM { namespace IR {
 	{
 		Uptr exceptionTypeIndex;
 	};
-	struct RethrowImm
-	{
-		Uptr catchDepth;
-	};
 
 	struct TryTableImm
 	{

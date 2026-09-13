@@ -261,11 +261,6 @@ namespace WAVM {
 			if(a.exceptionTypeIndex != b.exceptionTypeIndex) { failVerification(); }
 		}
 
-		void verifyMatches(RethrowImm a, RethrowImm b)
-		{
-			if(a.catchDepth != b.catchDepth) { failVerification(); }
-		}
-
 		void verifyMatches(DataSegmentAndMemImm a, DataSegmentAndMemImm b)
 		{
 			if(a.dataSegmentIndex != b.dataSegmentIndex) { failVerification(); }

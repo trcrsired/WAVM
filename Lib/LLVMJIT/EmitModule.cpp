@@ -131,8 +131,12 @@ void LLVMJIT::emitModule(const IR::Module& irModule,
 	Timing::Timer emitTimer;
 	EmitModuleContext moduleContext(irModule, llvmContext, &outLLVMModule, targetMachine);
 
-	// Set the module data layout for the target machine.
+	// Set the module data layout and target triple for the target machine. The triple is
+	// required for correct libcall lowering during codegen (e.g. the '_Unwind_Resume'
+	// libcall emitted by DwarfEHPrepare for 'resume' instructions is only available when
+	// the triple has a default exception handling model).
 	outLLVMModule.setDataLayout(targetMachine->createDataLayout());
+	outLLVMModule.setTargetTriple(targetMachine->getTargetTriple());
 
 	// Create an external reference to the appropriate exception personality function.
 	auto personalityFunction = llvm::Function::Create(

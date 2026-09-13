@@ -594,14 +594,6 @@ static void parseImm(CursorState* cursor, ExceptionTypeImm& outImm)
 										cursor->moduleState->module_.exceptionTypes.size(),
 										"exception type");
 }
-static void parseImm(CursorState* cursor, RethrowImm& outImm)
-{
-	if(!tryParseAndResolveBranchTargetRef(cursor, outImm.catchDepth))
-	{
-		parseErrorf(cursor->parseState, cursor->nextToken, "expected try label or index");
-		throw RecoverParseException();
-	}
-}
 
 static void parseImm(CursorState* cursor, DataSegmentAndMemImm& outImm)
 {
@@ -870,49 +862,6 @@ static WAVM_FORCENOINLINE void parseIfExpr(CursorState* cursor, Uptr depth)
 	cursor->functionState->validatingCodeStream.end();
 }
 
-static WAVM_FORCENOINLINE void parseTryInstr(CursorState* cursor, Uptr depth)
-{
-	Name branchTargetName;
-	ControlStructureImm imm;
-	parseControlImm(cursor, branchTargetName, imm);
-
-	ScopedBranchTarget branchTarget(cursor->functionState, branchTargetName);
-	cursor->functionState->validatingCodeStream.try_(imm);
-
-	// Parse the try clause.
-	parseInstrSequence(cursor, depth);
-
-	// Parse catch clauses.
-	while(cursor->nextToken->type != t_end)
-	{
-		if(cursor->nextToken->type == t_catch_)
-		{
-			++cursor->nextToken;
-			ExceptionTypeImm exceptionTypeImm;
-			parseImm(cursor, exceptionTypeImm);
-			cursor->functionState->validatingCodeStream.catch_(exceptionTypeImm);
-			parseInstrSequence(cursor, depth);
-		}
-		else if(cursor->nextToken->type == t_catch_all)
-		{
-			++cursor->nextToken;
-			cursor->functionState->validatingCodeStream.catch_all();
-			parseInstrSequence(cursor, depth);
-		}
-		else
-		{
-			parseErrorf(cursor->parseState,
-						cursor->nextToken,
-						"expected 'catch', 'catch_all', or 'end' following 'try'");
-			throw RecoverParseException();
-		}
-	};
-
-	require(cursor, t_end);
-	parseAndValidateRedundantBranchTargetName(cursor, branchTargetName, "try", "end");
-	cursor->functionState->validatingCodeStream.end();
-}
-
 static WAVM_FORCENOINLINE void parseTryTableInstr(CursorState* cursor, Uptr depth)
 {
 	Name branchTargetName;
@@ -1075,12 +1024,6 @@ static void parseInstrSequence(CursorState* cursor, Uptr depth)
 				checkRecursionDepth(cursor, depth + 1);
 				++cursor->nextToken;
 				parseIfInstr(cursor, depth + 1);
-				break;
-			}
-			case t_try_: {
-				checkRecursionDepth(cursor, depth + 1);
-				++cursor->nextToken;
-				parseTryInstr(cursor, depth + 1);
 				break;
 			}
 			case t_try_table: {

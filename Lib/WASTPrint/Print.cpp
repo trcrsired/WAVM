@@ -544,14 +544,6 @@ struct FunctionPrintContext
 		string += "\nthrow " + moduleContext.names.exceptionTypes[imm.exceptionTypeIndex];
 	}
 
-	void rethrow(RethrowImm imm)
-	{
-		WAVM_ASSERT(controlStack[controlStack.size() - 1 - imm.catchDepth].type
-					== ControlContext::Type::catch_);
-
-		string += "\nrethrow " + getBranchTargetId(imm.catchDepth);
-	}
-
 	void throw_ref(NoImm) { string += "\nthrow_ref"; }
 
 	void ref_null(ReferenceTypeImm imm)
@@ -743,14 +735,6 @@ struct FunctionPrintContext
 		string += " " + moduleContext.names.elemSegments[imm.elemSegmentIndex];
 	}
 
-	void try_(ControlStructureImm imm)
-	{
-		string += "\ntry";
-		std::string labelId = printControlLabel("try");
-		pushControlStack(ControlContext::Type::try_, labelId);
-		printControlSignature(imm.type);
-	}
-
 	void try_table(TryTableImm imm)
 	{
 		string += "\ntry_table";
@@ -777,28 +761,7 @@ struct FunctionPrintContext
 			string += " " + getBranchTargetId(catchClause.labelDepth + 1) + ")";
 		}
 	}
-	void catch_(ExceptionTypeImm imm)
-	{
-		string += DEDENT_STRING;
-		controlStack.back().type = ControlContext::Type::catch_;
-		string += "\ncatch ";
-		string += moduleContext.names.exceptionTypes[imm.exceptionTypeIndex];
-		string += INDENT_STRING;
-	}
-	void delegate(BranchImm imm)
-	{
-		string += DEDENT_STRING;
-		controlStack.back().type = ControlContext::Type::delegate;
-		string += "\ndelegate ";
-		// string += moduleContext.names.exceptionTypes[imm.exceptionTypeIndex];
-		string += INDENT_STRING;
-	}
-	void catch_all(NoImm)
-	{
-		string += DEDENT_STRING;
-		controlStack.back().type = ControlContext::Type::catch_;
-		string += "\ncatch_all" INDENT_STRING;
-	}
+
 
 #define PRINT_OP(opcode, name, nameString, Imm, printOperands, requiredFeature)                    \
 	void name(Imm imm)                                                                             \
@@ -821,9 +784,6 @@ private:
 			ifThen,
 			ifElse,
 			loop,
-			try_,
-			catch_,
-			delegate,
 			tryTable
 		};
 		Type type;

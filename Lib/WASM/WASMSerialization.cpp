@@ -896,12 +896,6 @@ void serialize(Stream& stream,
 }
 
 template<typename Stream>
-void serialize(Stream& stream, RethrowImm& imm, const FunctionDef&, const ModuleSerializationState&)
-{
-	serializeVarUInt32(stream, imm.catchDepth);
-}
-
-template<typename Stream>
 void serialize(Stream& stream,
 			   DataSegmentAndMemImm& imm,
 			   const FunctionDef&,
@@ -1349,6 +1343,9 @@ template<typename Stream> void serializeImportSection(Stream& moduleStream, Modu
 						{module_.types[tagTypeIndex].params(),
 						 std::move(moduleName),
 						 std::move(exportName)});
+					// Imported tags occupy the same index space as tag section entries, so
+					// they are recorded in tagSegments ahead of the defined tags.
+					module_.tagSegments.push_back({attribute, tagTypeIndex});
 					break;
 				}
 
@@ -1599,13 +1596,30 @@ template<typename Stream> void serializeTagSection(Stream& moduleStream, Module&
 {
 	serializeSection(moduleStream, SectionID::tag, [&module_](Stream& sectionStream) {
 		auto& tagSegments = module_.tagSegments;
-		Uptr numTagSegments = tagSegments.size();
+		// tagSegments includes imported tags, which are serialized in the import section: the tag
+		// section itself only contains the defined tags that follow them.
+		const Uptr numImportedTags = Stream::isInput ? tagSegments.size()
+													 : module_.exceptionTypes.imports.size();
+		Uptr numTagSegments = tagSegments.size() - numImportedTags;
 		serializeVarUInt32(sectionStream, numTagSegments);
-		if(Stream::isInput) { tagSegments.resize(numTagSegments); }
-		for(auto& ele : tagSegments)
+		if(Stream::isInput) { tagSegments.resize(numImportedTags + numTagSegments); }
+		for(Uptr tagIndex = numImportedTags; tagIndex < tagSegments.size(); ++tagIndex)
 		{
+			auto& ele = tagSegments[tagIndex];
 			serializeNativeValue(sectionStream, ele.attribute);
 			serializeVarUInt32(sectionStream, ele.tagindex);
+			if(Stream::isInput)
+			{
+				// Defined tags occupy the same index space as imported tags in
+				// exceptionTypes, so that runtime ExceptionType objects are created for
+				// them at instantiation and can serve as tag identities.
+				if(ele.tagindex >= module_.types.size())
+				{
+					throw FatalSerializationException("invalid tag type index");
+				}
+				module_.exceptionTypes.defs.push_back(
+					{ExceptionType{module_.types[ele.tagindex].params()}});
+			}
 		}
 	});
 }

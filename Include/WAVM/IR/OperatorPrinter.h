@@ -147,7 +147,6 @@ namespace WAVM { namespace IR {
 			};
 		}
 		std::string describeImm(ExceptionTypeImm) { return ""; }
-		std::string describeImm(RethrowImm) { return ""; }
 
 		std::string describeImm(DataSegmentAndMemImm imm)
 		{
