@@ -10,6 +10,7 @@
 PUSH_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 #include <llvm/ADT/StringRef.h>
 #include <llvm/ADT/iterator_range.h>
+#include <llvm/BinaryFormat/COFF.h>
 #include <llvm/DebugInfo/DIContext.h>
 #include <llvm/ExecutionEngine/JITSymbol.h>
 #include <llvm/Object/ObjectFile.h>
@@ -115,10 +116,17 @@ static void applyImageRelativeRelocations(const llvm::LoadedObjectInfo& loadedOb
 										  Uptr sehTrampolineAddress)
 {
 	U8* sectionData = reinterpret_cast<U8*>(Uptr(loadedObject.getSectionLoadAddress(section)));
+	// The image-base-relative 32-bit relocation used by the pdata/xdata sections depends on the
+	// target architecture: IMAGE_REL_AMD64_ADDR32NB on x86_64, IMAGE_REL_ARM64_ADDR32NB on
+	// AArch64.
+#if defined(__aarch64__) || defined(_M_ARM64)
+	static constexpr U16 addr32NbRelocType = llvm::COFF::IMAGE_REL_ARM64_ADDR32NB;
+#else
+	static constexpr U16 addr32NbRelocType = llvm::COFF::IMAGE_REL_AMD64_ADDR32NB;
+#endif
 	for(auto relocIt : section.relocations())
 	{
-		// Only handle type 3 (IMAGE_REL_AMD64_ADDR32NB).
-		if(relocIt.getType() == 3)
+		if(relocIt.getType() == addr32NbRelocType)
 		{
 			const auto symbol = relocIt.getSymbol();
 

@@ -504,13 +504,29 @@ Module::Module(const std::vector<U8>& objectBytes,
 		WAVM_ERROR_UNLESS(sehHandlerSymbol);
 		const U64 sehHandlerAddress = U64(sehHandlerSymbol.getAddress());
 
-		// Create a trampoline within the image's 2GB address space that jumps to
-		// __CxxFrameHandler3. jmp [rip+0] <64-bit address>
+		// Create a trampoline within the image's address space that jumps to the SEH handler
+		// (e.g. __gxx_personality_seh0 or __CxxFrameHandler3), which may be located more than 4GB
+		// away from the JIT image and so cannot be referenced by an image-relative 32-bit
+		// address in the unwind info.
 		U8* trampolineBytes = memoryManager->allocateCodeSection(16, 16, 0, "seh_trampoline");
+#if defined(__aarch64__) || defined(_M_ARM64)
+		// ldr x16, [pc, #8]; br x16; <64-bit address>
+		trampolineBytes[0] = 0x50;
+		trampolineBytes[1] = 0x00;
+		trampolineBytes[2] = 0x00;
+		trampolineBytes[3] = 0x58;
+		trampolineBytes[4] = 0x00;
+		trampolineBytes[5] = 0x02;
+		trampolineBytes[6] = 0x1f;
+		trampolineBytes[7] = 0xd6;
+		memcpy(trampolineBytes + 8, &sehHandlerAddress, sizeof(U64));
+#else
+		// jmp [rip+0] <64-bit address>
 		trampolineBytes[0] = 0xff;
 		trampolineBytes[1] = 0x25;
 		memset(trampolineBytes + 2, 0, 4);
 		memcpy(trampolineBytes + 6, &sehHandlerAddress, sizeof(U64));
+#endif
 
 		for(auto& ele : pdatainfos)
 		{

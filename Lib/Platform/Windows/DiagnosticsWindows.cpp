@@ -186,6 +186,39 @@ CallStack Platform::unwindStack(const CONTEXT& immutableContext, Uptr numOmitted
 							 nullptr);
 		}
 	}
+#elif WAVM_ENABLE_UNWIND && (defined(_M_ARM64) || defined(__aarch64__))
+	for(Uptr frameIndex = 0; !callStack.frames.isFull() && context.Pc; ++frameIndex)
+	{
+		if(frameIndex >= numOmittedFramesFromTop)
+		{
+			callStack.frames.push_back(
+				CallStack::Frame{frameIndex == 0 ? context.Pc : (context.Pc - 4)});
+		}
+
+		// Look up the SEH unwind information for this function.
+		U64 imageBase;
+		auto runtimeFunction = RtlLookupFunctionEntry(context.Pc, &imageBase, nullptr);
+		if(!runtimeFunction)
+		{
+			// Leaf functions that don't save the link register may not have unwind
+			// information.
+			context.Pc = context.Lr;
+		}
+		else
+		{
+			// Use the SEH information to unwind to the next stack frame.
+			void* handlerData;
+			U64 establisherFrame;
+			RtlVirtualUnwind(UNW_FLAG_NHANDLER,
+							 imageBase,
+							 context.Pc,
+							 runtimeFunction,
+							 &context,
+							 &handlerData,
+							 &establisherFrame,
+							 nullptr);
+		}
+	}
 #endif
 
 	return callStack;
