@@ -283,12 +283,11 @@ struct POSIXSocketVFD : VFD
 		outVFD = nullptr;
 		if(outPeerAddress) { memset(outPeerAddress, 0, sizeof(*outPeerAddress)); }
 
-		I32 acceptFlags = SOCK_CLOEXEC;
-		if(acceptedFlags.nonBlocking) { acceptFlags |= SOCK_NONBLOCK; }
-
 		struct sockaddr_storage peerAddr;
 		socklen_t peerAddrLen = sizeof(peerAddr);
 #ifdef SOCK_NONBLOCK
+		I32 acceptFlags = SOCK_CLOEXEC;
+		if(acceptedFlags.nonBlocking) { acceptFlags |= SOCK_NONBLOCK; }
 		const I32 connectionFD
 			= accept4(fd, (struct sockaddr*)&peerAddr, &peerAddrLen, acceptFlags);
 #else
