@@ -32,7 +32,8 @@ namespace WAVM { namespace Platform {
 		WAVM_API bool isExclusivelyLockedByCurrentThread();
 #endif
 
-		// Scoped lock: automatically unlocks when destructed.
+		// Scoped lock: automatically unlocks when destructed. Non-copyable; moving
+		// transfers ownership of the held lock.
 		struct Lock
 		{
 			Lock() : mutex(nullptr) {}
@@ -40,6 +41,21 @@ namespace WAVM { namespace Platform {
 			: mutex(&inMutex), shareability(inShareability)
 			{
 				mutex->lock(shareability);
+			}
+			Lock(const Lock&) = delete;
+			Lock& operator=(const Lock&) = delete;
+			Lock(Lock&& inLock) noexcept
+			: mutex(inLock.mutex), shareability(inLock.shareability)
+			{
+				inLock.mutex = nullptr;
+			}
+			Lock& operator=(Lock&& inLock) noexcept
+			{
+				unlock();
+				mutex = inLock.mutex;
+				shareability = inLock.shareability;
+				inLock.mutex = nullptr;
+				return *this;
 			}
 			~Lock() { unlock(); }
 
@@ -54,19 +70,23 @@ namespace WAVM { namespace Platform {
 
 		private:
 			RWMutex* mutex;
-			LockShareability shareability;
+			LockShareability shareability{shareable};
 		};
 
 		struct ExclusiveLock : Lock
 		{
 			ExclusiveLock() = default;
 			ExclusiveLock(RWMutex& inMutex) : Lock(inMutex, exclusive) {}
+			ExclusiveLock(ExclusiveLock&&) noexcept = default;
+			ExclusiveLock& operator=(ExclusiveLock&&) noexcept = default;
 		};
 
 		struct ShareableLock : Lock
 		{
 			ShareableLock() = default;
 			ShareableLock(RWMutex& inMutex) : Lock(inMutex, shareable) {}
+			ShareableLock(ShareableLock&&) noexcept = default;
+			ShareableLock& operator=(ShareableLock&&) noexcept = default;
 		};
 
 	private:

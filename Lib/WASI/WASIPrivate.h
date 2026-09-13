@@ -95,6 +95,11 @@ namespace WAVM { namespace WASI {
 		{
 		}
 
+		FDE(const FDE&) = delete;
+		FDE& operator=(const FDE&) = delete;
+		FDE(FDE&&) = delete;
+		FDE& operator=(FDE&&) = delete;
+
 		~FDE();
 
 		VFS::Result close();
