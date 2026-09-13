@@ -13,7 +13,7 @@
 using namespace WAVM;
 using namespace WAVM::Platform;
 
-Platform::RWMutex::RWMutex()
+Platform::RWMutex::RWMutex() noexcept
 {
 	static_assert(sizeof(LockData) == sizeof(SRWLOCK), "");
 	static_assert(alignof(LockData) >= alignof(SRWLOCK), "");
@@ -28,7 +28,7 @@ Platform::RWMutex::~RWMutex()
 	}
 }
 
-void Platform::RWMutex::lock(LockShareability shareability)
+void Platform::RWMutex::lock(LockShareability shareability) noexcept
 {
 	if(shareability == LockShareability::exclusive)
 	{
@@ -40,7 +40,7 @@ void Platform::RWMutex::lock(LockShareability shareability)
 	else { AcquireSRWLockShared((SRWLOCK*)&lockData); }
 }
 
-void Platform::RWMutex::unlock(LockShareability shareability)
+void Platform::RWMutex::unlock(LockShareability shareability) noexcept
 {
 	if(shareability == LockShareability::exclusive)
 	{

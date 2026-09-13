@@ -7,7 +7,7 @@
 using namespace WAVM;
 using namespace WAVM::Platform;
 
-Platform::RWMutex::RWMutex()
+Platform::RWMutex::RWMutex() noexcept
 {
 	static_assert(sizeof(LockData) >= sizeof(pthread_rwlock_t), "");
 	static_assert(alignof(LockData) >= alignof(pthread_rwlock_t), "");
@@ -25,7 +25,7 @@ Platform::RWMutex::~RWMutex()
 	WAVM_ERROR_UNLESS(!pthread_rwlock_destroy((pthread_rwlock_t*)&lockData));
 }
 
-void Platform::RWMutex::lock(LockShareability shareability)
+void Platform::RWMutex::lock(LockShareability shareability) noexcept
 {
 	if(shareability == LockShareability::exclusive)
 	{
@@ -38,7 +38,7 @@ void Platform::RWMutex::lock(LockShareability shareability)
 	else { WAVM_ERROR_UNLESS(!pthread_rwlock_rdlock((pthread_rwlock_t*)&lockData)); }
 }
 
-void Platform::RWMutex::unlock(LockShareability shareability)
+void Platform::RWMutex::unlock(LockShareability shareability) noexcept
 {
 	if(shareability == LockShareability::exclusive)
 	{

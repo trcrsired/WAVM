@@ -16,7 +16,7 @@ namespace WAVM { namespace Platform {
 			shareable = 1,
 		};
 
-		WAVM_API RWMutex();
+		WAVM_API RWMutex() noexcept;
 		WAVM_API ~RWMutex();
 
 		// Don't allow copying or moving a RWMutex.
@@ -25,14 +25,15 @@ namespace WAVM { namespace Platform {
 		void operator=(const RWMutex&) = delete;
 		void operator=(RWMutex&&) = delete;
 
-		WAVM_API void lock(LockShareability shareability);
-		WAVM_API void unlock(LockShareability shareability);
+		WAVM_API void lock(LockShareability shareability) noexcept;
+		WAVM_API void unlock(LockShareability shareability) noexcept;
 
 #if WAVM_ENABLE_ASSERTS
 		WAVM_API bool isExclusivelyLockedByCurrentThread();
 #endif
 
-		// Scoped lock: automatically unlocks when destructed.
+		// Scoped lock: automatically unlocks when destructed. Non-copyable; moving
+		// transfers ownership of the held lock.
 		struct Lock
 		{
 			Lock() : mutex(nullptr) {}
@@ -41,9 +42,24 @@ namespace WAVM { namespace Platform {
 			{
 				mutex->lock(shareability);
 			}
+			Lock(const Lock&) = delete;
+			Lock& operator=(const Lock&) = delete;
+			Lock(Lock&& inLock) noexcept
+			: mutex(inLock.mutex), shareability(inLock.shareability)
+			{
+				inLock.mutex = nullptr;
+			}
+			Lock& operator=(Lock&& inLock) noexcept
+			{
+				unlock();
+				mutex = inLock.mutex;
+				shareability = inLock.shareability;
+				inLock.mutex = nullptr;
+				return *this;
+			}
 			~Lock() { unlock(); }
 
-			void unlock()
+			void unlock() noexcept
 			{
 				if(mutex)
 				{
@@ -54,19 +70,23 @@ namespace WAVM { namespace Platform {
 
 		private:
 			RWMutex* mutex;
-			LockShareability shareability;
+			LockShareability shareability{shareable};
 		};
 
 		struct ExclusiveLock : Lock
 		{
 			ExclusiveLock() = default;
 			ExclusiveLock(RWMutex& inMutex) : Lock(inMutex, exclusive) {}
+			ExclusiveLock(ExclusiveLock&&) noexcept = default;
+			ExclusiveLock& operator=(ExclusiveLock&&) noexcept = default;
 		};
 
 		struct ShareableLock : Lock
 		{
 			ShareableLock() = default;
 			ShareableLock(RWMutex& inMutex) : Lock(inMutex, shareable) {}
+			ShareableLock(ShareableLock&&) noexcept = default;
+			ShareableLock& operator=(ShareableLock&&) noexcept = default;
 		};
 
 	private:

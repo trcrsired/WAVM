@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include "WAVM/Inline/BasicTypes.h"
 #include "WAVM/Inline/Time.h"
@@ -239,6 +240,12 @@ namespace WAVM { namespace VFS {
 
 	struct DirEntStream
 	{
+		DirEntStream() = default;
+		DirEntStream(const DirEntStream&) = delete;
+		DirEntStream& operator=(const DirEntStream&) = delete;
+		DirEntStream(DirEntStream&&) = delete;
+		DirEntStream& operator=(DirEntStream&&) = delete;
+
 		virtual ~DirEntStream() {}
 
 		virtual void close() = 0;
@@ -252,6 +259,12 @@ namespace WAVM { namespace VFS {
 
 	struct VFD
 	{
+		VFD() = default;
+		VFD(const VFD&) = delete;
+		VFD& operator=(const VFD&) = delete;
+		VFD(VFD&&) = delete;
+		VFD& operator=(VFD&&) = delete;
+
 		// Closes the FD. Deletes the VFD regardless of whether an error code is returned.
 		virtual Result close() = 0;
 
@@ -366,6 +379,16 @@ namespace WAVM { namespace VFS {
 	protected:
 		virtual ~VFD() {}
 	};
+
+	// Owning smart pointer for VFDs that calls close() on destruction unless released.
+	struct VFDCloseDeleter
+	{
+		void operator()(VFD* vfd) const
+		{
+			if(vfd) { vfd->close(); }
+		}
+	};
+	typedef std::unique_ptr<VFD, VFDCloseDeleter> VFDPtr;
 
 	struct FileSystem
 	{

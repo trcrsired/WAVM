@@ -317,7 +317,9 @@ struct POSIXSocketVFD : VFD
 				= asSocketAddress((struct sockaddr*)&peerAddr, peerAddrLen);
 		}
 
-		outVFD = new POSIXSocketVFD(connectionFD, FileType::streamSocket, SocketStatus::opened);
+		std::unique_ptr<POSIXSocketVFD> acceptedVFD = std::make_unique<POSIXSocketVFD>(
+			connectionFD, FileType::streamSocket, SocketStatus::opened);
+		outVFD = acceptedVFD.release();
 		return Result::success;
 	}
 
@@ -757,7 +759,8 @@ Result Platform::createSocket(SocketAddress::Family family, SocketType type, VFD
 	}
 #endif
 
-	outVFD = new POSIXSocketVFD(fd, fileType);
+	std::unique_ptr<POSIXSocketVFD> socketVFD = std::make_unique<POSIXSocketVFD>(fd, fileType);
+	outVFD = socketVFD.release();
 	return Result::success;
 }
 
@@ -793,17 +796,11 @@ Result Platform::createSocketPair(SocketType type, VFD*& outVFD0, VFD*& outVFD1)
 	fcntl(fds[1], F_SETFD, FD_CLOEXEC);
 #endif
 
-	// POSIXSocketVFD has no destructor that closes the fd, so close() must be called to
-	// release it; hold the first VFD in a unique_ptr until both allocations succeed.
-	std::unique_ptr<POSIXSocketVFD> vfd0(
-		new POSIXSocketVFD(fds[0], fileType, SocketStatus::opened));
-	try { outVFD1 = new POSIXSocketVFD(fds[1], fileType, SocketStatus::opened); }
-	catch(...)
-	{
-		vfd0.release()->close();
-		throw;
-	}
+	// Hold each VFD in a VFDPtr so a failure closes both the VFD and its host fd.
+	VFDPtr vfd0(new POSIXSocketVFD(fds[0], fileType, SocketStatus::opened));
+	VFDPtr vfd1(new POSIXSocketVFD(fds[1], fileType, SocketStatus::opened));
 	outVFD0 = vfd0.release();
+	outVFD1 = vfd1.release();
 	return Result::success;
 }
 
