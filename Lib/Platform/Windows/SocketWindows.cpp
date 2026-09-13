@@ -15,14 +15,19 @@ Result Platform::createSocket(SocketAddress::Family family, SocketType type, VFD
 	return Result::notSupported;
 }
 
-Result Platform::createListenSocket(const std::string& address, VFD*& outVFD, U32 backlog)
+Result Platform::createSocketPair(SocketType type, VFD*& outVFD0, VFD*& outVFD1)
 {
-	outVFD = nullptr;
+	outVFD0 = nullptr;
+	outVFD1 = nullptr;
 	return Result::notSupported;
 }
 
-Result Platform::createConnectedSocket(const std::string& address, VFD*& outVFD)
+Result Platform::resolveAddress(const std::string& hostName,
+								U16 port,
+								bool allowIPv4,
+								bool allowIPv6,
+								VFS::SocketAddress* outAddresses,
+								Uptr* inOutNumAddresses)
 {
-	outVFD = nullptr;
 	return Result::notSupported;
 }

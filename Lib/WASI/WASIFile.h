@@ -1340,10 +1340,11 @@ WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
 }
 
 // Socket operations. These implement both the WASI preview1 socket functions
-// (sock_accept/sock_recv/sock_send/sock_shutdown) and WAVM's non-standard extension
-// (sock_open/sock_bind/sock_listen/sock_connect/sock_getlocaladdr/sock_getpeeraddr/
-// sock_send_to/sock_recv_from/sock_setsockopt/sock_getsockopt). All of them are gated
-// on the process's networkEnabled permission.
+// (sock_accept/sock_recv/sock_send/sock_shutdown) and the WASIX socket extension ABI
+// (sock_status/sock_addr_local/sock_addr_peer/sock_open/sock_pair/sock_bind/
+// sock_listen/sock_accept_v2/sock_connect/sock_recv_from/sock_send_to/sock_send_file/
+// sock_set/get_opt_flag/time/size, the multicast join/leave calls, and resolve). All of
+// them are gated on the process's networkEnabled permission.
 
 // Marshals a WASI iovec array into a vector of IOReadBuffers. Returns EFAULT if the iovec
 // array or the buffers it references are out of bounds.
@@ -1414,42 +1415,33 @@ static __wasi_errno_t marshalWriteIOVs(Process* process,
 	return result;
 }
 
-// Reads a POSIX-layout struct sockaddr_in or sockaddr_in6 from the module's memory.
-// sa_family uses wasi-libc's AF_* values (1=IPv4, 2=IPv6).
-static __wasi_errno_t readSocketAddress(Process* process,
-									  WASIAddressIPtr address,
-									  WASIAddressIPtr numAddressBytes,
-									  VFS::SocketAddress& outAddress)
+// Reads a WASIX __wasi_addr_port_t (110 bytes) from the module's memory. Ports are stored
+// in host byte order; IP addresses in network order.
+static __wasi_errno_t readAddrPort(Process* process,
+								 WASIAddressIPtr address,
+								 VFS::SocketAddress& outAddress)
 {
 	__wasi_errno_t result = __WASI_ESUCCESS;
 	Runtime::catchRuntimeExceptions(
 		[&] {
-			const U8* bytes = memoryArrayPtr<U8>(process->memory, address, numAddressBytes);
-			if(numAddressBytes < 2) { result = __WASI_EINVAL; return; }
-
-			const U16 family = U16(bytes[0]) | (U16(bytes[1]) << 8);
-			switch(family)
+			const U8* bytes = memoryArrayPtr<U8>(process->memory, address, 110);
+			const U8 tag = bytes[0];
+			outAddress.port = U16(bytes[2]) | (U16(bytes[3]) << 8);
+			switch(tag)
 			{
-			case __WASI_SOCK_AF_INET:
-			{
-				if(numAddressBytes < 16) { result = __WASI_EINVAL; return; }
+			case __WASI_ADDRESS_FAMILY_INET4:
 				outAddress.family = VFS::SocketAddress::Family::ipv4;
-				outAddress.port = U16(U16(bytes[2]) << 8 | U16(bytes[3]));
 				outAddress.scopeId = 0;
+				memset(outAddress.ipBytes, 0, sizeof(outAddress.ipBytes));
 				memcpy(outAddress.ipBytes, bytes + 4, 4);
 				break;
-			}
-			case __WASI_SOCK_AF_INET6:
-			{
-				if(numAddressBytes < 28) { result = __WASI_EINVAL; return; }
+			case __WASI_ADDRESS_FAMILY_INET6:
 				outAddress.family = VFS::SocketAddress::Family::ipv6;
-				outAddress.port = U16(U16(bytes[2]) << 8 | U16(bytes[3]));
-				// sin6_flowinfo at offset 4 is ignored.
-				memcpy(outAddress.ipBytes, bytes + 8, 16);
-				outAddress.scopeId = U32(bytes[24]) | (U32(bytes[25]) << 8)
-									 | (U32(bytes[26]) << 16) | (U32(bytes[27]) << 24);
+				memcpy(outAddress.ipBytes, bytes + 4, 16);
+				// flowinfo at bytes 20-23 is ignored; scope_id is split into two u16s.
+				outAddress.scopeId = (U32(U16(bytes[24]) | (U16(bytes[25]) << 8)) << 16)
+									 | U32(U16(bytes[26]) | (U16(bytes[27]) << 8));
 				break;
-			}
 			default: result = __WASI_EAFNOSUPPORT; return;
 			};
 		},
@@ -1463,47 +1455,38 @@ static __wasi_errno_t readSocketAddress(Process* process,
 	return result;
 }
 
-// Writes a SocketAddress to the module's memory as a POSIX-layout struct sockaddr_in or
-// sockaddr_in6. inOutNumAddressBytesAddress points to the capacity on input and is set to
-// the number of bytes written.
-static __wasi_errno_t writeSocketAddress(Process* process,
-									   const VFS::SocketAddress& address,
-									   WASIAddressIPtr addressPtr,
-									   WASIAddressIPtr numAddressBytesCapacity)
+// Writes a SocketAddress to the module's memory as a WASIX __wasi_addr_port_t (110 bytes).
+static __wasi_errno_t writeAddrPort(Process* process,
+									const VFS::SocketAddress& address,
+									WASIAddressIPtr addressPtr)
 {
-	U8 bytes[28];
+	U8 bytes[110];
 	memset(bytes, 0, sizeof(bytes));
-	Uptr numAddressBytes;
 	if(address.family == VFS::SocketAddress::Family::ipv4)
 	{
-		numAddressBytes = 16;
-		bytes[0] = U8(__WASI_SOCK_AF_INET);
-		bytes[1] = 0;
-		bytes[2] = U8(address.port >> 8);
-		bytes[3] = U8(address.port);
+		bytes[0] = __WASI_ADDRESS_FAMILY_INET4;
+		bytes[2] = U8(address.port);
+		bytes[3] = U8(address.port >> 8);
 		memcpy(bytes + 4, address.ipBytes, 4);
 	}
 	else
 	{
-		numAddressBytes = 28;
-		bytes[0] = U8(__WASI_SOCK_AF_INET6);
-		bytes[1] = 0;
-		bytes[2] = U8(address.port >> 8);
-		bytes[3] = U8(address.port);
-		memcpy(bytes + 8, address.ipBytes, 16);
-		bytes[24] = U8(address.scopeId);
-		bytes[25] = U8(address.scopeId >> 8);
-		bytes[26] = U8(address.scopeId >> 16);
-		bytes[27] = U8(address.scopeId >> 24);
+		bytes[0] = __WASI_ADDRESS_FAMILY_INET6;
+		bytes[2] = U8(address.port);
+		bytes[3] = U8(address.port >> 8);
+		memcpy(bytes + 4, address.ipBytes, 16);
+		// flowinfo is always 0; scope_id is split into two little-endian u16s.
+		bytes[24] = U8(address.scopeId >> 16);
+		bytes[25] = U8(address.scopeId >> 24);
+		bytes[26] = U8(address.scopeId);
+		bytes[27] = U8(address.scopeId >> 8);
 	}
 
 	__wasi_errno_t result = __WASI_ESUCCESS;
 	Runtime::catchRuntimeExceptions(
 		[&] {
-			U8* dest = memoryArrayPtr<U8>(
-				process->memory, addressPtr, numAddressBytesCapacity);
-			memcpy(dest, bytes, numAddressBytes <= numAddressBytesCapacity ? numAddressBytes
-																		 : Uptr(numAddressBytesCapacity));
+			U8* dest = memoryArrayPtr<U8>(process->memory, addressPtr, sizeof(bytes));
+			memcpy(dest, bytes, sizeof(bytes));
 		},
 		[&](Exception* exception) {
 			WAVM_ERROR_UNLESS(getExceptionType(exception)
@@ -1561,12 +1544,12 @@ static __wasi_errno_t sockRecvImpl(Process* process,
 								 WASIAddressIPtr riDataAddress,
 								 WASIAddressIPtr numRIData,
 								 __wasi_riflags_t riFlags,
-								 WASIAddressIPtr sourceAddress,
-								 WASIAddressIPtr sourceNumBytesAddress,
 								 WASIAddressIPtr outDataLenAddress,
-								 WASIAddressIPtr outFlagsAddress)
+								 WASIAddressIPtr outFlagsAddress,
+								 WASIAddressIPtr outAddrPortAddress)
 {
-	if(riFlags & ~(__WASI_SOCK_RECV_PEEK | __WASI_SOCK_RECV_WAITALL))
+	if(riFlags & ~(__WASI_SOCK_RECV_PEEK | __WASI_SOCK_RECV_WAITALL
+				   | __WASI_RIFLAGS_RECV_DONT_WAIT))
 	{
 		return __WASI_EINVAL;
 	}
@@ -1586,25 +1569,22 @@ static __wasi_errno_t sockRecvImpl(Process* process,
 	Uptr numBytesRead = 0;
 	bool dataTruncated = false;
 	VFS::SocketAddress sourceAddr;
+	memset(&sourceAddr, 0, sizeof(sourceAddr));
 	const VFS::Result recvResult = lockedFDE.fde->vfd->sockRecv(
 		buffers.data(),
 		buffers.size(),
 		(riFlags & __WASI_SOCK_RECV_PEEK) != 0,
 		(riFlags & __WASI_SOCK_RECV_WAITALL) != 0,
+		(riFlags & __WASI_RIFLAGS_RECV_DONT_WAIT) != 0,
 		&numBytesRead,
 		&dataTruncated,
-		sourceAddress ? &sourceAddr : nullptr);
+		outAddrPortAddress ? &sourceAddr : nullptr);
 	if(recvResult != VFS::Result::success) { return asWASIErrNo(recvResult); }
 
-	if(sourceAddress)
+	if(outAddrPortAddress)
 	{
-		WASIAddressIPtr numAddressBytes
-			= memoryRef<WASIAddressIPtr>(process->memory, sourceNumBytesAddress);
-		result = writeSocketAddress(process, sourceAddr, sourceAddress, numAddressBytes);
+		result = writeAddrPort(process, sourceAddr, outAddrPortAddress);
 		if(result != __WASI_ESUCCESS) { return result; }
-		memoryRef<WASIAddressIPtr>(process->memory, sourceNumBytesAddress)
-			= sourceAddr.family == VFS::SocketAddress::Family::ipv4 ? WASIAddressIPtr(16)
-																   : WASIAddressIPtr(28);
 	}
 
 	memoryRef<WASIAddressIPtr>(process->memory, outDataLenAddress)
@@ -1643,10 +1623,9 @@ WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
 										   riDataAddress,
 										   numRIData,
 										   riFlags,
-										   0,
-										   0,
 										   outDataLenAddress,
-										   outFlagsAddress));
+										   outFlagsAddress,
+										   0));
 }
 
 static __wasi_errno_t sockSendImpl(Process* process,
@@ -1654,11 +1633,10 @@ static __wasi_errno_t sockSendImpl(Process* process,
 								 WASIAddressIPtr siDataAddress,
 								 WASIAddressIPtr numSIData,
 								 __wasi_siflags_t siFlags,
-								 WASIAddressIPtr destAddress,
-								 WASIAddressIPtr numDestAddressBytes,
+								 WASIAddressIPtr destAddrPortAddress,
 								 WASIAddressIPtr outDataLenAddress)
 {
-	if(siFlags != 0) { return __WASI_EINVAL; }
+	if(siFlags & ~__WASI_SIFLAGS_SEND_DONT_WAIT) { return __WASI_EINVAL; }
 
 	LockedFDE lockedFDE = getLockedFDE(process, sock, __WASI_RIGHT_FD_WRITE, 0);
 	if(lockedFDE.error != __WASI_ESUCCESS) { return lockedFDE.error; }
@@ -1673,16 +1651,20 @@ static __wasi_errno_t sockSendImpl(Process* process,
 
 	VFS::SocketAddress destAddr;
 	const VFS::SocketAddress* destAddrPtr = nullptr;
-	if(destAddress)
+	if(destAddrPortAddress)
 	{
-		result = readSocketAddress(process, destAddress, numDestAddressBytes, destAddr);
+		result = readAddrPort(process, destAddrPortAddress, destAddr);
 		if(result != __WASI_ESUCCESS) { return result; }
 		destAddrPtr = &destAddr;
 	}
 
 	Uptr numBytesWritten = 0;
-	const VFS::Result sendResult
-		= lockedFDE.fde->vfd->sockSend(buffers.data(), buffers.size(), destAddrPtr, &numBytesWritten);
+	const VFS::Result sendResult = lockedFDE.fde->vfd->sockSend(
+		buffers.data(),
+		buffers.size(),
+		destAddrPtr,
+		(siFlags & __WASI_SIFLAGS_SEND_DONT_WAIT) != 0,
+		&numBytesWritten);
 	if(sendResult != VFS::Result::success) { return asWASIErrNo(sendResult); }
 
 	memoryRef<WASIAddressIPtr>(process->memory, outDataLenAddress)
@@ -1713,7 +1695,7 @@ WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
 	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
 
 	return TRACE_SYSCALL_RETURN(sockSendImpl(
-		process, sock, siDataAddress, numSIData, siFlags, 0, 0, outDataLenAddress));
+		process, sock, siDataAddress, numSIData, siFlags, 0, outDataLenAddress));
 }
 
 WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
@@ -1745,38 +1727,120 @@ WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
 	return TRACE_SYSCALL_RETURN(asWASIErrNo(result));
 }
 
+// WASIX socket extension intrinsics. Signatures and memory layouts match wasix-libc's
+// <wasi/api_wasix.h>: addresses are __wasi_addr_port_t (110 bytes), resolve results are
+// __wasi_addr_ip_t records (18 bytes), and option values are passed via the
+// flag/time/size syscall triple.
+
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"sock_status",
+									__wasi_errno_return_t,
+									wasi_sock_status,
+									__wasi_fd_t sock,
+									WASIAddressIPtr outStatusAddress)
+{
+	TRACE_SYSCALL_IPTR("sock_status", "(%u, " WASIADDRESSIPTR_FORMAT ")", sock, outStatusAddress);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+
+	LockedFDE lockedFDE = getLockedFDE(process, sock, 0, 0);
+	if(lockedFDE.error != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(lockedFDE.error); }
+	{
+		const __wasi_errno_t result = requireSocket(*lockedFDE.fde);
+		if(result != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(result); }
+	}
+
+	VFS::SocketStatus status = VFS::SocketStatus::failed;
+	const VFS::Result result = lockedFDE.fde->vfd->sockGetStatus(status);
+	if(result != VFS::Result::success) { return TRACE_SYSCALL_RETURN(asWASIErrNo(result)); }
+
+	memoryRef<U8>(process->memory, outStatusAddress) = U8(status);
+	return TRACE_SYSCALL_RETURN(__WASI_ESUCCESS, "(status=%u)", U32(status));
+}
+
+static __wasi_errno_t sockGetAddressImpl(Process* process,
+									   __wasi_fd_t sock,
+									   WASIAddressIPtr outAddrPortAddress,
+									   bool peer)
+{
+	LockedFDE lockedFDE = getLockedFDE(process, sock, 0, 0);
+	if(lockedFDE.error != __WASI_ESUCCESS) { return lockedFDE.error; }
+	{
+		const __wasi_errno_t result = requireSocket(*lockedFDE.fde);
+		if(result != __WASI_ESUCCESS) { return result; }
+	}
+
+	VFS::SocketAddress address;
+	memset(&address, 0, sizeof(address));
+	const VFS::Result result = peer ? lockedFDE.fde->vfd->sockGetPeerAddress(address)
+									: lockedFDE.fde->vfd->sockGetLocalAddress(address);
+	if(result != VFS::Result::success) { return asWASIErrNo(result); }
+
+	return writeAddrPort(process, address, outAddrPortAddress);
+}
+
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"sock_addr_local",
+									__wasi_errno_return_t,
+									wasi_sock_addr_local,
+									__wasi_fd_t sock,
+									WASIAddressIPtr outAddrPortAddress)
+{
+	TRACE_SYSCALL_IPTR("sock_addr_local",
+					   "(%u, " WASIADDRESSIPTR_FORMAT ")",
+					   sock,
+					   outAddrPortAddress);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+
+	return TRACE_SYSCALL_RETURN(
+		sockGetAddressImpl(process, sock, outAddrPortAddress, false));
+}
+
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"sock_addr_peer",
+									__wasi_errno_return_t,
+									wasi_sock_addr_peer,
+									__wasi_fd_t sock,
+									WASIAddressIPtr outAddrPortAddress)
+{
+	TRACE_SYSCALL_IPTR("sock_addr_peer",
+					   "(%u, " WASIADDRESSIPTR_FORMAT ")",
+					   sock,
+					   outAddrPortAddress);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+
+	return TRACE_SYSCALL_RETURN(sockGetAddressImpl(process, sock, outAddrPortAddress, true));
+}
+
 WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
 									"sock_open",
 									__wasi_errno_return_t,
 									wasi_sock_open,
-									U32 addressFamily,
-									U32 socketType,
+									U8 addressFamily,
+									U8 socketType,
+									U16 sockProto,
 									WASIAddressIPtr outFDAddress)
 {
 	TRACE_SYSCALL_IPTR("sock_open",
-					   "(%u, %u, " WASIADDRESSIPTR_FORMAT ")",
+					   "(%u, %u, %u, " WASIADDRESSIPTR_FORMAT ")",
 					   addressFamily,
 					   socketType,
+					   sockProto,
 					   outFDAddress);
 
 	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
 	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
 
 	VFS::SocketAddress::Family family;
-	switch(addressFamily)
-	{
-	case __WASI_SOCK_AF_INET: family = VFS::SocketAddress::Family::ipv4; break;
-	case __WASI_SOCK_AF_INET6: family = VFS::SocketAddress::Family::ipv6; break;
-	default: return TRACE_SYSCALL_RETURN(__WASI_EAFNOSUPPORT);
-	};
-
 	Platform::SocketType type;
-	switch(socketType)
-	{
-	case __WASI_SOCK_TYPE_STREAM: type = Platform::SocketType::stream; break;
-	case __WASI_SOCK_TYPE_DGRAM: type = Platform::SocketType::datagram; break;
-	default: return TRACE_SYSCALL_RETURN(__WASI_EPROTONOSUPPORT);
-	};
+	const __wasi_errno_t typeResult
+		= wasixSocketType(addressFamily, socketType, sockProto, family, type);
+	if(typeResult != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(typeResult); }
 
 	VFD* socketVFD = nullptr;
 	const VFS::Result result = Platform::createSocket(family, type, socketVFD);
@@ -1791,18 +1855,72 @@ WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
 }
 
 WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"sock_pair",
+									__wasi_errno_return_t,
+									wasi_sock_pair,
+									U8 addressFamily,
+									U8 socketType,
+									U16 sockProto,
+									WASIAddressIPtr outFD0Address,
+									WASIAddressIPtr outFD1Address)
+{
+	TRACE_SYSCALL_IPTR("sock_pair",
+					   "(%u, %u, %u, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT ")",
+					   addressFamily,
+					   socketType,
+					   sockProto,
+					   outFD0Address,
+					   outFD1Address);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+
+	VFS::SocketAddress::Family family;
+	Platform::SocketType type;
+	const __wasi_errno_t typeResult
+		= wasixSocketType(addressFamily, socketType, sockProto, family, type);
+	if(typeResult != __WASI_ESUCCESS && typeResult != __WASI_EAFNOSUPPORT)
+	{
+		return TRACE_SYSCALL_RETURN(typeResult);
+	}
+	if(typeResult == __WASI_EAFNOSUPPORT && addressFamily != __WASI_ADDRESS_FAMILY_UNIX)
+	{
+		return TRACE_SYSCALL_RETURN(typeResult);
+	}
+
+	VFD* vfd0 = nullptr;
+	VFD* vfd1 = nullptr;
+	const VFS::Result result = Platform::createSocketPair(type, vfd0, vfd1);
+	if(result != VFS::Result::success) { return TRACE_SYSCALL_RETURN(asWASIErrNo(result)); }
+
+	const __wasi_fd_t newFD0 = addVFD(process, vfd0, SOCKET_RIGHTS, "socket");
+	if(newFD0 == UINT32_MAX) { vfd1->close(); return TRACE_SYSCALL_RETURN(__WASI_EMFILE); }
+	const __wasi_fd_t newFD1 = addVFD(process, vfd1, SOCKET_RIGHTS, "socket");
+	if(newFD1 == UINT32_MAX)
+	{
+		// Roll back the first FD: remove it from the table and close it.
+		Platform::RWMutex::ExclusiveLock fdsLock(process->fdMapMutex);
+		std::shared_ptr<FDE>* fdePointer = process->fdMap.get(newFD0);
+		std::shared_ptr<FDE> fde = *fdePointer;
+		process->fdMap.removeOrFail(newFD0);
+		fdsLock.unlock();
+		fde->close();
+		return TRACE_SYSCALL_RETURN(__WASI_EMFILE);
+	}
+
+	memoryRef<__wasi_fd_t>(process->memory, outFD0Address) = newFD0;
+	memoryRef<__wasi_fd_t>(process->memory, outFD1Address) = newFD1;
+	return TRACE_SYSCALL_RETURN(__WASI_ESUCCESS, "(%u, %u)", newFD0, newFD1);
+}
+
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
 									"sock_bind",
 									__wasi_errno_return_t,
 									wasi_sock_bind,
 									__wasi_fd_t sock,
-									WASIAddressIPtr address,
-									WASIAddressIPtr numAddressBytes)
+									WASIAddressIPtr addrPortAddress)
 {
-	TRACE_SYSCALL_IPTR("sock_bind",
-					   "(%u, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT ")",
-					   sock,
-					   address,
-					   numAddressBytes);
+	TRACE_SYSCALL_IPTR("sock_bind", "(%u, " WASIADDRESSIPTR_FORMAT ")", sock, addrPortAddress);
 
 	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
 	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
@@ -1815,8 +1933,7 @@ WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
 	}
 
 	VFS::SocketAddress bindAddress;
-	const __wasi_errno_t readResult
-		= readSocketAddress(process, address, numAddressBytes, bindAddress);
+	const __wasi_errno_t readResult = readAddrPort(process, addrPortAddress, bindAddress);
 	if(readResult != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(readResult); }
 
 	const VFS::Result result = lockedFDE.fde->vfd->sockBind(bindAddress);
@@ -1828,9 +1945,12 @@ WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
 									__wasi_errno_return_t,
 									wasi_sock_listen,
 									__wasi_fd_t sock,
-									U32 backlog)
+									WASIAddressIPtr backlog)
 {
-	TRACE_SYSCALL_IPTR("sock_listen", "(%u, %u)", sock, backlog);
+	TRACE_SYSCALL_IPTR("sock_listen",
+					   "(%u, " WASIADDRESSIPTR_FORMAT ")",
+					   sock,
+					   backlog);
 
 	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
 	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
@@ -1848,18 +1968,64 @@ WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
 }
 
 WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"sock_accept_v2",
+									__wasi_errno_return_t,
+									wasi_sock_accept_v2,
+									__wasi_fd_t sock,
+									__wasi_fdflags_t fdFlags,
+									WASIAddressIPtr outFDAddress,
+									WASIAddressIPtr outAddrPortAddress)
+{
+	TRACE_SYSCALL_IPTR("sock_accept_v2",
+					   "(%u, 0x%04x, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT ")",
+					   sock,
+					   fdFlags,
+					   outFDAddress,
+					   outAddrPortAddress);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+
+	if(fdFlags & ~__WASI_FDFLAG_NONBLOCK) { return TRACE_SYSCALL_RETURN(__WASI_EINVAL); }
+
+	LockedFDE lockedFDE = getLockedFDE(process, sock, __WASI_RIGHT_SOCK_ACCEPT, 0);
+	if(lockedFDE.error != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(lockedFDE.error); }
+	{
+		const __wasi_errno_t result = requireSocket(*lockedFDE.fde);
+		if(result != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(result); }
+	}
+
+	VFDFlags acceptedFlags;
+	acceptedFlags.nonBlocking = (fdFlags & __WASI_FDFLAG_NONBLOCK) != 0;
+
+	VFS::SocketAddress peerAddress;
+	VFD* acceptedVFD = nullptr;
+	const VFS::Result result
+		= lockedFDE.fde->vfd->sockAccept(acceptedVFD, acceptedFlags, &peerAddress);
+	if(result != VFS::Result::success) { return TRACE_SYSCALL_RETURN(asWASIErrNo(result)); }
+	WAVM_ASSERT(acceptedVFD);
+
+	const __wasi_fd_t newFD = addVFD(process, acceptedVFD, SOCKET_RIGHTS, "socket");
+	if(newFD == UINT32_MAX) { return TRACE_SYSCALL_RETURN(__WASI_EMFILE); }
+
+	memoryRef<__wasi_fd_t>(process->memory, outFDAddress) = newFD;
+	const __wasi_errno_t writeResult
+		= writeAddrPort(process, peerAddress, outAddrPortAddress);
+	if(writeResult != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(writeResult); }
+	return TRACE_SYSCALL_RETURN(__WASI_ESUCCESS, "(%u)", newFD);
+}
+
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
 									"sock_connect",
 									__wasi_errno_return_t,
 									wasi_sock_connect,
 									__wasi_fd_t sock,
-									WASIAddressIPtr address,
-									WASIAddressIPtr numAddressBytes)
+									WASIAddressIPtr addrPortAddress)
 {
 	TRACE_SYSCALL_IPTR("sock_connect",
-					   "(%u, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT ")",
+					   "(%u, " WASIADDRESSIPTR_FORMAT ")",
 					   sock,
-					   address,
-					   numAddressBytes);
+					   addrPortAddress);
 
 	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
 	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
@@ -1872,122 +2038,11 @@ WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
 	}
 
 	VFS::SocketAddress remoteAddress;
-	const __wasi_errno_t readResult
-		= readSocketAddress(process, address, numAddressBytes, remoteAddress);
+	const __wasi_errno_t readResult = readAddrPort(process, addrPortAddress, remoteAddress);
 	if(readResult != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(readResult); }
 
 	const VFS::Result result = lockedFDE.fde->vfd->sockConnect(remoteAddress);
 	return TRACE_SYSCALL_RETURN(asWASIErrNo(result));
-}
-
-static __wasi_errno_t sockGetAddressImpl(Process* process,
-									   __wasi_fd_t sock,
-									   WASIAddressIPtr outAddress,
-									   WASIAddressIPtr inOutNumAddressBytesAddress,
-									   bool peer)
-{
-	LockedFDE lockedFDE = getLockedFDE(process, sock, 0, 0);
-	if(lockedFDE.error != __WASI_ESUCCESS) { return lockedFDE.error; }
-	{
-		const __wasi_errno_t result = requireSocket(*lockedFDE.fde);
-		if(result != __WASI_ESUCCESS) { return result; }
-	}
-
-	const WASIAddressIPtr numAddressBytesCapacity
-		= memoryRef<WASIAddressIPtr>(process->memory, inOutNumAddressBytesAddress);
-
-	VFS::SocketAddress address;
-	const VFS::Result result = peer ? lockedFDE.fde->vfd->sockGetPeerAddress(address)
-									: lockedFDE.fde->vfd->sockGetLocalAddress(address);
-	if(result != VFS::Result::success) { return asWASIErrNo(result); }
-
-	const __wasi_errno_t writeResult
-		= writeSocketAddress(process, address, outAddress, numAddressBytesCapacity);
-	if(writeResult != __WASI_ESUCCESS) { return writeResult; }
-
-	memoryRef<WASIAddressIPtr>(process->memory, inOutNumAddressBytesAddress)
-		= address.family == VFS::SocketAddress::Family::ipv4 ? WASIAddressIPtr(16)
-															 : WASIAddressIPtr(28);
-	return __WASI_ESUCCESS;
-}
-
-WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
-									"sock_getlocaladdr",
-									__wasi_errno_return_t,
-									wasi_sock_getlocaladdr,
-									__wasi_fd_t sock,
-									WASIAddressIPtr outAddress,
-									WASIAddressIPtr inOutNumAddressBytesAddress)
-{
-	TRACE_SYSCALL_IPTR("sock_getlocaladdr",
-					   "(%u, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT ")",
-					   sock,
-					   outAddress,
-					   inOutNumAddressBytesAddress);
-
-	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
-	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
-
-	return TRACE_SYSCALL_RETURN(sockGetAddressImpl(
-		process, sock, outAddress, inOutNumAddressBytesAddress, false));
-}
-
-WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
-									"sock_getpeeraddr",
-									__wasi_errno_return_t,
-									wasi_sock_getpeeraddr,
-									__wasi_fd_t sock,
-									WASIAddressIPtr outAddress,
-									WASIAddressIPtr inOutNumAddressBytesAddress)
-{
-	TRACE_SYSCALL_IPTR("sock_getpeeraddr",
-					   "(%u, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT ")",
-					   sock,
-					   outAddress,
-					   inOutNumAddressBytesAddress);
-
-	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
-	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
-
-	return TRACE_SYSCALL_RETURN(sockGetAddressImpl(
-		process, sock, outAddress, inOutNumAddressBytesAddress, true));
-}
-
-WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
-									"sock_send_to",
-									__wasi_errno_return_t,
-									wasi_sock_send_to,
-									__wasi_fd_t sock,
-									WASIAddressIPtr siDataAddress,
-									WASIAddressIPtr numSIData,
-									__wasi_siflags_t siFlags,
-									WASIAddressIPtr destAddress,
-									WASIAddressIPtr numDestAddressBytes,
-									WASIAddressIPtr outDataLenAddress)
-{
-	TRACE_SYSCALL_IPTR("sock_send_to",
-					   "(%u, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT
-					   ", 0x%04x, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT
-					   ", " WASIADDRESSIPTR_FORMAT ")",
-					   sock,
-					   siDataAddress,
-					   numSIData,
-					   siFlags,
-					   destAddress,
-					   numDestAddressBytes,
-					   outDataLenAddress);
-
-	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
-	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
-
-	return TRACE_SYSCALL_RETURN(sockSendImpl(process,
-										   sock,
-										   siDataAddress,
-										   numSIData,
-										   siFlags,
-										   destAddress,
-										   numDestAddressBytes,
-										   outDataLenAddress));
 }
 
 WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
@@ -1998,65 +2053,167 @@ WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
 									WASIAddressIPtr riDataAddress,
 									WASIAddressIPtr numRIData,
 									__wasi_riflags_t riFlags,
-									WASIAddressIPtr sourceAddress,
-									WASIAddressIPtr sourceNumBytesAddress,
 									WASIAddressIPtr outDataLenAddress,
-									WASIAddressIPtr outFlagsAddress)
+									WASIAddressIPtr outFlagsAddress,
+									WASIAddressIPtr outAddrPortAddress)
 {
 	TRACE_SYSCALL_IPTR("sock_recv_from",
 					   "(%u, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT
 					   ", 0x%04x, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT
-					   ", " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT ")",
+					   ", " WASIADDRESSIPTR_FORMAT ")",
 					   sock,
 					   riDataAddress,
 					   numRIData,
 					   riFlags,
-					   sourceAddress,
-					   sourceNumBytesAddress,
 					   outDataLenAddress,
-					   outFlagsAddress);
+					   outFlagsAddress,
+					   outAddrPortAddress);
 
 	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
 	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
-
-	if(sourceAddress && !sourceNumBytesAddress)
-	{
-		return TRACE_SYSCALL_RETURN(__WASI_EINVAL);
-	}
 
 	return TRACE_SYSCALL_RETURN(sockRecvImpl(process,
 										   sock,
 										   riDataAddress,
 										   numRIData,
 										   riFlags,
-										   sourceAddress,
-										   sourceNumBytesAddress,
 										   outDataLenAddress,
-										   outFlagsAddress));
+										   outFlagsAddress,
+										   outAddrPortAddress));
 }
 
 WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
-									"sock_setsockopt",
+									"sock_send_to",
 									__wasi_errno_return_t,
-									wasi_sock_setsockopt,
+									wasi_sock_send_to,
 									__wasi_fd_t sock,
-									U32 level,
-									U32 option,
-									WASIAddressIPtr optValAddress,
-									WASIAddressIPtr optLen)
+									WASIAddressIPtr siDataAddress,
+									WASIAddressIPtr numSIData,
+									__wasi_siflags_t siFlags,
+									WASIAddressIPtr destAddrPortAddress,
+									WASIAddressIPtr outDataLenAddress)
 {
-	TRACE_SYSCALL_IPTR("sock_setsockopt",
-					   "(%u, %u, %u, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT ")",
+	TRACE_SYSCALL_IPTR("sock_send_to",
+					   "(%u, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT
+					   ", 0x%04x, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT ")",
 					   sock,
-					   level,
-					   option,
-					   optValAddress,
-					   optLen);
+					   siDataAddress,
+					   numSIData,
+					   siFlags,
+					   destAddrPortAddress,
+					   outDataLenAddress);
 
 	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
 	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
 
-	if(optLen < 4) { return TRACE_SYSCALL_RETURN(__WASI_EINVAL); }
+	return TRACE_SYSCALL_RETURN(sockSendImpl(process,
+										   sock,
+										   siDataAddress,
+										   numSIData,
+										   siFlags,
+										   destAddrPortAddress,
+										   outDataLenAddress));
+}
+
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"sock_send_file",
+									__wasi_errno_return_t,
+									wasi_sock_send_file,
+									__wasi_fd_t outSock,
+									__wasi_fd_t inFD,
+									U64 offset,
+									U64 count,
+									WASIAddressIPtr outSentAddress)
+{
+	TRACE_SYSCALL_IPTR("sock_send_file",
+					   "(%u, %u, %llu, %llu, " WASIADDRESSIPTR_FORMAT ")",
+					   outSock,
+					   inFD,
+					   offset,
+					   count,
+					   outSentAddress);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+
+	LockedFDE outFDE = getLockedFDE(process, outSock, __WASI_RIGHT_FD_WRITE, 0);
+	if(outFDE.error != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(outFDE.error); }
+	{
+		const __wasi_errno_t result = requireSocket(*outFDE.fde);
+		if(result != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(result); }
+	}
+
+	LockedFDE inFDE = getLockedFDE(process, inFD, __WASI_RIGHT_FD_READ, 0);
+	if(inFDE.error != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(inFDE.error); }
+
+	// Pump the input through a bounce buffer.
+	U8 buffer[65536];
+	U64 numSent = 0;
+	while(numSent < count)
+	{
+		const Uptr chunkBytes
+			= count - numSent < U64(sizeof(buffer)) ? Uptr(count - numSent) : sizeof(buffer);
+
+		IOReadBuffer readBuffer;
+		readBuffer.data = buffer;
+		readBuffer.numBytes = chunkBytes;
+		Uptr numRead = 0;
+		const U64 readOffset = offset + numSent;
+		const VFS::Result readResult
+			= inFDE.fde->vfd->readv(&readBuffer, 1, &numRead, &readOffset);
+		if(readResult != VFS::Result::success)
+		{
+			return TRACE_SYSCALL_RETURN(asWASIErrNo(readResult));
+		}
+		if(numRead == 0) { break; }
+
+		Uptr numWritten = 0;
+		while(numWritten < numRead)
+		{
+			IOWriteBuffer writeBuffer;
+			writeBuffer.data = buffer + numWritten;
+			writeBuffer.numBytes = numRead - numWritten;
+			Uptr wrote = 0;
+			const VFS::Result sendResult
+				= outFDE.fde->vfd->sockSend(&writeBuffer, 1, nullptr, false, &wrote);
+			if(sendResult != VFS::Result::success)
+			{
+				return TRACE_SYSCALL_RETURN(asWASIErrNo(sendResult));
+			}
+			if(wrote == 0) { break; }
+			numWritten += wrote;
+		}
+		numSent += numWritten;
+		if(numWritten < numRead) { break; }
+	}
+
+	memoryRef<U64>(process->memory, outSentAddress) = numSent;
+	return TRACE_SYSCALL_RETURN(__WASI_ESUCCESS, "(%llu sent)", numSent);
+}
+
+// Reads the FD + option for the sock_*_opt_* syscalls, translating the WASIX option tag to
+// a VFS::SocketOption (the tag values coincide with the VFS enum values). On failure the
+// returned LockedFDE carries the errno. Defined in WASIFile.cpp since it has no
+// WASIAddressIPtr parameters.
+
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"sock_set_opt_flag",
+									__wasi_errno_return_t,
+									wasi_sock_set_opt_flag,
+									__wasi_fd_t sock,
+									U8 option,
+									U8 flag)
+{
+	TRACE_SYSCALL_IPTR("sock_set_opt_flag", "(%u, %u, %u)", sock, option, flag);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+
+	if(option > __WASI_SOCK_OPTION_PROTO
+	   || classifySockOption(option) != WASIXSockOptKind::flag)
+	{
+		return TRACE_SYSCALL_RETURN(__WASI_ENOPROTOOPT);
+	}
 
 	LockedFDE lockedFDE = getLockedFDE(process, sock, 0, 0);
 	if(lockedFDE.error != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(lockedFDE.error); }
@@ -2065,16 +2222,359 @@ WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
 		if(result != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(result); }
 	}
 
-	VFS::SocketOptionLevel vfsLevel;
-	VFS::SocketOption vfsOption;
-	const __wasi_errno_t translateResult
-		= translateSocketOption(level, option, vfsLevel, vfsOption);
-	if(translateResult != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(translateResult); }
+	return TRACE_SYSCALL_RETURN(asWASIErrNo(lockedFDE.fde->vfd->sockSetOpt(
+		VFS::SocketOption(option), flag != 0 ? 1 : 0)));
+}
 
-	__wasi_errno_t result = __WASI_ESUCCESS;
-	U32 value = 0;
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"sock_get_opt_flag",
+									__wasi_errno_return_t,
+									wasi_sock_get_opt_flag,
+									__wasi_fd_t sock,
+									U8 option,
+									WASIAddressIPtr outFlagAddress)
+{
+	TRACE_SYSCALL_IPTR("sock_get_opt_flag",
+					   "(%u, %u, " WASIADDRESSIPTR_FORMAT ")",
+					   sock,
+					   option,
+					   outFlagAddress);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+
+	VFS::SocketOption vfsOption;
+	LockedFDE lockedFDE = getSockOptFDE(
+		process, sock, option, WASIXSockOptKind::flag, vfsOption);
+	if(lockedFDE.error != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(lockedFDE.error); }
+
+	U64 value = 0;
+	const VFS::Result result = lockedFDE.fde->vfd->sockGetOpt(vfsOption, value);
+	if(result != VFS::Result::success) { return TRACE_SYSCALL_RETURN(asWASIErrNo(result)); }
+
+	memoryRef<U8>(process->memory, outFlagAddress) = U8(value);
+	return TRACE_SYSCALL_RETURN(__WASI_ESUCCESS, "(%u)", U32(value));
+}
+
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"sock_set_opt_time",
+									__wasi_errno_return_t,
+									wasi_sock_set_opt_time,
+									__wasi_fd_t sock,
+									U8 option,
+									WASIAddressIPtr timeoutAddress)
+{
+	TRACE_SYSCALL_IPTR("sock_set_opt_time",
+					   "(%u, %u, " WASIADDRESSIPTR_FORMAT ")",
+					   sock,
+					   option,
+					   timeoutAddress);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+
+	if(option > __WASI_SOCK_OPTION_PROTO
+	   || classifySockOption(option) != WASIXSockOptKind::time)
+	{
+		return TRACE_SYSCALL_RETURN(__WASI_ENOPROTOOPT);
+	}
+
+	LockedFDE lockedFDE = getLockedFDE(process, sock, 0, 0);
+	if(lockedFDE.error != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(lockedFDE.error); }
+	{
+		const __wasi_errno_t result = requireSocket(*lockedFDE.fde);
+		if(result != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(result); }
+	}
+
+	// __wasi_option_timestamp_t: {u8 tag; u8 pad[7]; u64 some}.
+	__wasi_errno_t readResult = __WASI_ESUCCESS;
+	U64 value = 0;
 	Runtime::catchRuntimeExceptions(
-		[&] { value = memoryRef<U32>(process->memory, optValAddress); },
+		[&] {
+			const U8 tag = memoryRef<U8>(process->memory, timeoutAddress);
+			if(tag == __WASI_OPTION_SOME)
+			{
+				value = memoryRef<U64>(process->memory, timeoutAddress + 8);
+			}
+		},
+		[&](Exception* exception) {
+			WAVM_ERROR_UNLESS(getExceptionType(exception)
+							  == ExceptionTypes::outOfBoundsMemoryAccess);
+			destroyException(exception);
+			readResult = __WASI_EFAULT;
+		});
+	if(readResult != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(readResult); }
+
+	return TRACE_SYSCALL_RETURN(asWASIErrNo(
+		lockedFDE.fde->vfd->sockSetOpt(VFS::SocketOption(option), value)));
+}
+
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"sock_get_opt_time",
+									__wasi_errno_return_t,
+									wasi_sock_get_opt_time,
+									__wasi_fd_t sock,
+									U8 option,
+									WASIAddressIPtr outTimeoutAddress)
+{
+	TRACE_SYSCALL_IPTR("sock_get_opt_time",
+					   "(%u, %u, " WASIADDRESSIPTR_FORMAT ")",
+					   sock,
+					   option,
+					   outTimeoutAddress);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+
+	VFS::SocketOption vfsOption;
+	LockedFDE lockedFDE = getSockOptFDE(
+		process, sock, option, WASIXSockOptKind::time, vfsOption);
+	if(lockedFDE.error != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(lockedFDE.error); }
+
+	U64 value = 0;
+	const VFS::Result result = lockedFDE.fde->vfd->sockGetOpt(vfsOption, value);
+	if(result != VFS::Result::success) { return TRACE_SYSCALL_RETURN(asWASIErrNo(result)); }
+
+	memoryRef<U8>(process->memory, outTimeoutAddress)
+		= value ? __WASI_OPTION_SOME : __WASI_OPTION_NONE;
+	memoryRef<U64>(process->memory, outTimeoutAddress + 8) = value;
+	return TRACE_SYSCALL_RETURN(__WASI_ESUCCESS, "(%llu ns)", value);
+}
+
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"sock_set_opt_size",
+									__wasi_errno_return_t,
+									wasi_sock_set_opt_size,
+									__wasi_fd_t sock,
+									U8 option,
+									U64 size)
+{
+	TRACE_SYSCALL_IPTR("sock_set_opt_size", "(%u, %u, %llu)", sock, option, size);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+
+	if(option > __WASI_SOCK_OPTION_PROTO
+	   || classifySockOption(option) != WASIXSockOptKind::size)
+	{
+		return TRACE_SYSCALL_RETURN(__WASI_ENOPROTOOPT);
+	}
+
+	LockedFDE lockedFDE = getLockedFDE(process, sock, 0, 0);
+	if(lockedFDE.error != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(lockedFDE.error); }
+	{
+		const __wasi_errno_t result = requireSocket(*lockedFDE.fde);
+		if(result != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(result); }
+	}
+
+	return TRACE_SYSCALL_RETURN(asWASIErrNo(
+		lockedFDE.fde->vfd->sockSetOpt(VFS::SocketOption(option), size)));
+}
+
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"sock_get_opt_size",
+									__wasi_errno_return_t,
+									wasi_sock_get_opt_size,
+									__wasi_fd_t sock,
+									U8 option,
+									WASIAddressIPtr outSizeAddress)
+{
+	TRACE_SYSCALL_IPTR("sock_get_opt_size",
+					   "(%u, %u, " WASIADDRESSIPTR_FORMAT ")",
+					   sock,
+					   option,
+					   outSizeAddress);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+
+	VFS::SocketOption vfsOption;
+	LockedFDE lockedFDE = getSockOptFDE(
+		process, sock, option, WASIXSockOptKind::size, vfsOption);
+	if(lockedFDE.error != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(lockedFDE.error); }
+
+	U64 value = 0;
+	const VFS::Result result = lockedFDE.fde->vfd->sockGetOpt(vfsOption, value);
+	if(result != VFS::Result::success) { return TRACE_SYSCALL_RETURN(asWASIErrNo(result)); }
+
+	if(vfsOption == VFS::SocketOption::type)
+	{
+		// Translate the VFS FileType value to a WASIX __wasi_sock_type_t value.
+		value = FileType(value) == FileType::streamSocket ? __WASI_SOCK_TYPE_SOCKET_STREAM
+				: FileType(value) == FileType::datagramSocket ? __WASI_SOCK_TYPE_SOCKET_DGRAM
+															 : __WASI_SOCK_TYPE_SOCKET_UNUSED;
+	}
+
+	memoryRef<U64>(process->memory, outSizeAddress) = value;
+	return TRACE_SYSCALL_RETURN(__WASI_ESUCCESS, "(%llu)", value);
+}
+
+static __wasi_errno_t sockMulticastImpl(Process* process,
+									  __wasi_fd_t sock,
+									  WASIAddressIPtr groupAddress,
+									  WASIAddressIPtr interfaceAddress,
+									  U32 interfaceIndex,
+									  bool ipv6,
+									  bool join)
+{
+	LockedFDE lockedFDE = getLockedFDE(process, sock, 0, 0);
+	if(lockedFDE.error != __WASI_ESUCCESS) { return lockedFDE.error; }
+	{
+		const __wasi_errno_t result = requireSocket(*lockedFDE.fde);
+		if(result != __WASI_ESUCCESS) { return result; }
+	}
+
+	U8 group[16];
+	U8 interfaceAddr[4];
+	__wasi_errno_t result = __WASI_ESUCCESS;
+	Runtime::catchRuntimeExceptions(
+		[&] {
+			memcpy(group,
+				   memoryArrayPtr<const U8>(process->memory, groupAddress, ipv6 ? 16 : 4),
+				   ipv6 ? 16 : 4);
+			if(interfaceAddress)
+			{
+				memcpy(interfaceAddr,
+					   memoryArrayPtr<const U8>(process->memory, interfaceAddress, 4),
+					   4);
+			}
+			else { memset(interfaceAddr, 0, 4); }
+		},
+		[&](Exception* exception) {
+			WAVM_ERROR_UNLESS(getExceptionType(exception)
+							  == ExceptionTypes::outOfBoundsMemoryAccess);
+			destroyException(exception);
+			result = __WASI_EFAULT;
+		});
+	if(result != __WASI_ESUCCESS) { return result; }
+
+	const VFS::Result mcastResult
+		= ipv6 ? (join ? lockedFDE.fde->vfd->sockJoinMulticastV6(group, interfaceIndex)
+					   : lockedFDE.fde->vfd->sockLeaveMulticastV6(group, interfaceIndex))
+			   : (join ? lockedFDE.fde->vfd->sockJoinMulticastV4(group, interfaceAddr)
+					   : lockedFDE.fde->vfd->sockLeaveMulticastV4(group, interfaceAddr));
+	return asWASIErrNo(mcastResult);
+}
+
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"sock_join_multicast_v4",
+									__wasi_errno_return_t,
+									wasi_sock_join_multicast_v4,
+									__wasi_fd_t sock,
+									WASIAddressIPtr groupAddress,
+									WASIAddressIPtr interfaceAddress)
+{
+	TRACE_SYSCALL_IPTR("sock_join_multicast_v4",
+					   "(%u, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT ")",
+					   sock,
+					   groupAddress,
+					   interfaceAddress);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+	return TRACE_SYSCALL_RETURN(
+		sockMulticastImpl(process, sock, groupAddress, interfaceAddress, 0, false, true));
+}
+
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"sock_leave_multicast_v4",
+									__wasi_errno_return_t,
+									wasi_sock_leave_multicast_v4,
+									__wasi_fd_t sock,
+									WASIAddressIPtr groupAddress,
+									WASIAddressIPtr interfaceAddress)
+{
+	TRACE_SYSCALL_IPTR("sock_leave_multicast_v4",
+					   "(%u, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT ")",
+					   sock,
+					   groupAddress,
+					   interfaceAddress);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+	return TRACE_SYSCALL_RETURN(
+		sockMulticastImpl(process, sock, groupAddress, interfaceAddress, 0, false, false));
+}
+
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"sock_join_multicast_v6",
+									__wasi_errno_return_t,
+									wasi_sock_join_multicast_v6,
+									__wasi_fd_t sock,
+									WASIAddressIPtr groupAddress,
+									U32 interfaceIndex)
+{
+	TRACE_SYSCALL_IPTR("sock_join_multicast_v6",
+					   "(%u, " WASIADDRESSIPTR_FORMAT ", %u)",
+					   sock,
+					   groupAddress,
+					   interfaceIndex);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+	return TRACE_SYSCALL_RETURN(
+		sockMulticastImpl(process, sock, groupAddress, 0, interfaceIndex, true, true));
+}
+
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"sock_leave_multicast_v6",
+									__wasi_errno_return_t,
+									wasi_sock_leave_multicast_v6,
+									__wasi_fd_t sock,
+									WASIAddressIPtr groupAddress,
+									U32 interfaceIndex)
+{
+	TRACE_SYSCALL_IPTR("sock_leave_multicast_v6",
+					   "(%u, " WASIADDRESSIPTR_FORMAT ", %u)",
+					   sock,
+					   groupAddress,
+					   interfaceIndex);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+	return TRACE_SYSCALL_RETURN(
+		sockMulticastImpl(process, sock, groupAddress, 0, interfaceIndex, true, false));
+}
+
+// Resolves a host name via the host's resolver. The output is an array of 18-byte
+// __wasi_addr_ip_t records: {u8 tag; u8 pad; u8 ip[4 or 16]} with the union at offset 2.
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"resolve",
+									__wasi_errno_return_t,
+									wasi_resolve,
+									WASIAddressIPtr hostNameAddress,
+									U16 port,
+									WASIAddressIPtr outAddressesAddress,
+									WASIAddressIPtr numAddressesCapacity,
+									WASIAddressIPtr outNumAddressesAddress)
+{
+	TRACE_SYSCALL_IPTR("resolve",
+					   "(" WASIADDRESSIPTR_FORMAT ", %u, " WASIADDRESSIPTR_FORMAT
+					   ", " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT ")",
+					   hostNameAddress,
+					   port,
+					   outAddressesAddress,
+					   numAddressesCapacity,
+					   outNumAddressesAddress);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+	if(!hostNameAddress || numAddressesCapacity == 0)
+	{
+		return TRACE_SYSCALL_RETURN(__WASI_EINVAL);
+	}
+
+	// Read the NUL-terminated host name out of the sandbox, bounding the scan.
+	__wasi_errno_t result = __WASI_ESUCCESS;
+	std::string hostName;
+	Runtime::catchRuntimeExceptions(
+		[&] {
+			const char* hostChars = memoryArrayPtr<const char>(
+				process->memory, hostNameAddress, 256);
+			Uptr nameLen = 0;
+			while(nameLen < 256 && hostChars[nameLen]) { ++nameLen; }
+			hostName.assign(hostChars, nameLen);
+		},
 		[&](Exception* exception) {
 			WAVM_ERROR_UNLESS(getExceptionType(exception)
 							  == ExceptionTypes::outOfBoundsMemoryAccess);
@@ -2083,53 +2583,47 @@ WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
 		});
 	if(result != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(result); }
 
-	return TRACE_SYSCALL_RETURN(
-		asWASIErrNo(lockedFDE.fde->vfd->sockSetOpt(vfsLevel, vfsOption, value)));
-}
-
-WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
-									"sock_getsockopt",
-									__wasi_errno_return_t,
-									wasi_sock_getsockopt,
-									__wasi_fd_t sock,
-									U32 level,
-									U32 option,
-									WASIAddressIPtr optValAddress,
-									WASIAddressIPtr inOutOptLenAddress)
-{
-	TRACE_SYSCALL_IPTR("sock_getsockopt",
-					   "(%u, %u, %u, " WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT ")",
-					   sock,
-					   level,
-					   option,
-					   optValAddress,
-					   inOutOptLenAddress);
-
-	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
-	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
-
-	const WASIAddressIPtr optLenCapacity
-		= memoryRef<WASIAddressIPtr>(process->memory, inOutOptLenAddress);
-	if(optLenCapacity < 4) { return TRACE_SYSCALL_RETURN(__WASI_EINVAL); }
-
-	LockedFDE lockedFDE = getLockedFDE(process, sock, 0, 0);
-	if(lockedFDE.error != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(lockedFDE.error); }
+	const Uptr capacity
+		= numAddressesCapacity < WASIAddressIPtr(64) ? Uptr(numAddressesCapacity) : 64;
+	SocketAddress resolvedAddresses[64];
+	Uptr numAddresses = capacity;
+	const VFS::Result resolveResult = Platform::resolveAddress(
+		hostName, port, true, true, resolvedAddresses, &numAddresses);
+	if(resolveResult != VFS::Result::success)
 	{
-		const __wasi_errno_t result = requireSocket(*lockedFDE.fde);
-		if(result != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(result); }
+		return TRACE_SYSCALL_RETURN(asWASIErrNo(resolveResult));
 	}
 
-	VFS::SocketOptionLevel vfsLevel;
-	VFS::SocketOption vfsOption;
-	const __wasi_errno_t translateResult
-		= translateSocketOption(level, option, vfsLevel, vfsOption);
-	if(translateResult != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(translateResult); }
+	// Serialize each result as an 18-byte __wasi_addr_ip_t record.
+	Runtime::catchRuntimeExceptions(
+		[&] {
+			U8* dest = memoryArrayPtr<U8>(
+				process->memory, outAddressesAddress, numAddresses * Uptr(18));
+			for(Uptr index = 0; index < numAddresses; ++index)
+			{
+				U8* record = dest + index * Uptr(18);
+				memset(record, 0, 18);
+				if(resolvedAddresses[index].family == SocketAddress::Family::ipv4)
+				{
+					record[0] = __WASI_ADDRESS_FAMILY_INET4;
+					memcpy(record + 2, resolvedAddresses[index].ipBytes, 4);
+				}
+				else
+				{
+					record[0] = __WASI_ADDRESS_FAMILY_INET6;
+					memcpy(record + 2, resolvedAddresses[index].ipBytes, 16);
+				}
+			}
+		},
+		[&](Exception* exception) {
+			WAVM_ERROR_UNLESS(getExceptionType(exception)
+							  == ExceptionTypes::outOfBoundsMemoryAccess);
+			destroyException(exception);
+			result = __WASI_EFAULT;
+		});
+	if(result != __WASI_ESUCCESS) { return TRACE_SYSCALL_RETURN(result); }
 
-	U32 value = 0;
-	const VFS::Result result = lockedFDE.fde->vfd->sockGetOpt(vfsLevel, vfsOption, value);
-	if(result != VFS::Result::success) { return TRACE_SYSCALL_RETURN(asWASIErrNo(result)); }
-
-	memoryRef<U32>(process->memory, optValAddress) = value;
-	memoryRef<WASIAddressIPtr>(process->memory, inOutOptLenAddress) = WASIAddressIPtr(4);
-	return TRACE_SYSCALL_RETURN(__WASI_ESUCCESS);
+	memoryRef<WASIAddressIPtr>(process->memory, outNumAddressesAddress)
+		= WASIAddressIPtr(numAddresses);
+	return TRACE_SYSCALL_RETURN(__WASI_ESUCCESS, "(%u addresses)", U32(numAddresses));
 }

@@ -18,14 +18,16 @@ namespace WAVM { namespace Platform {
 									  SocketType type,
 									  VFS::VFD*& outVFD);
 
-	// Creates a TCP socket bound to and listening on an address, and returns a VFD for it.
-	// The address may be "[host:]port", "[ipv6host]:port", or a bare "port" (listens on the
-	// wildcard address). Host may be a name or a numeric address.
-	WAVM_API VFS::Result createListenSocket(const std::string& address,
-											VFS::VFD*& outVFD,
-											U32 backlog = 128);
+	// Creates a pair of unnamed connected sockets of the given type.
+	WAVM_API VFS::Result createSocketPair(SocketType type, VFS::VFD*& outVFD0, VFS::VFD*& outVFD1);
 
-	// Creates a TCP socket connected to the given "host:port" or "[ipv6host]:port" address,
-	// and returns a VFD for it.
-	WAVM_API VFS::Result createConnectedSocket(const std::string& address, VFS::VFD*& outVFD);
+	// Resolves a host name to IP socket addresses using the host's name resolution. Writes
+	// up to *inOutNumAddresses addresses to outAddresses and sets *inOutNumAddresses to the
+	// number written. The returned addresses have the given port (host byte order).
+	WAVM_API VFS::Result resolveAddress(const std::string& hostName,
+										U16 port,
+										bool allowIPv4,
+										bool allowIPv6,
+										VFS::SocketAddress* outAddresses,
+										Uptr* inOutNumAddresses);
 }}

@@ -68,6 +68,7 @@ static __wasi_errno_t asWASIErrNo(VFS::Result result)
 	case Result::addressNotAvailable: return __WASI_EADDRNOTAVAIL;
 	case Result::hostUnreachable: return __WASI_EHOSTUNREACH;
 	case Result::networkUnreachable: return __WASI_ENETUNREACH;
+	case Result::nameLookupFailed: return __WASI_ENXIO;
 
 	default: WAVM_UNREACHABLE();
 	};
@@ -282,44 +283,127 @@ static __wasi_errno_t requireSocket(const FDE& fde)
 	return __WASI_ESUCCESS;
 }
 
-// Translates a (level, option) pair using wasi-libc's SOL_*/SO_*/TCP_*/IPV6_* constants to a
-// VFS socket option. Returns ENOPROTOOPT for unmapped options.
-static __wasi_errno_t translateSocketOption(U32 level,
-											U32 option,
-											VFS::SocketOptionLevel& outLevel,
-											VFS::SocketOption& outOption)
+// The kind of value a WASIX __wasi_sock_option_t carries, which determines which of the
+// sock_*_opt_flag/time/size syscalls may access it.
+enum class WASIXSockOptKind
 {
-	switch(level)
+	invalid,
+	flag,
+	time,
+	size,
+	readOnlyFlag,
+	readOnlySize
+};
+
+static WASIXSockOptKind classifySockOption(U8 option)
+{
+	switch(option)
 	{
-	case __WASI_SOCK_SOL_SOCKET:
-		outLevel = VFS::SocketOptionLevel::socket;
-		switch(option)
-		{
-		case __WASI_SOCK_SO_REUSEADDR: outOption = VFS::SocketOption::reuseAddress; return __WASI_ESUCCESS;
-		case __WASI_SOCK_SO_TYPE: outOption = VFS::SocketOption::type; return __WASI_ESUCCESS;
-		case __WASI_SOCK_SO_ERROR: outOption = VFS::SocketOption::error; return __WASI_ESUCCESS;
-		case __WASI_SOCK_SO_BROADCAST: outOption = VFS::SocketOption::broadcast; return __WASI_ESUCCESS;
-		case __WASI_SOCK_SO_SNDBUF: outOption = VFS::SocketOption::sendBufferSize; return __WASI_ESUCCESS;
-		case __WASI_SOCK_SO_RCVBUF: outOption = VFS::SocketOption::recvBufferSize; return __WASI_ESUCCESS;
-		case __WASI_SOCK_SO_KEEPALIVE: outOption = VFS::SocketOption::keepAlive; return __WASI_ESUCCESS;
-		default: return __WASI_ENOPROTOOPT;
-		}
-	case __WASI_SOCK_SOL_TCP:
-		outLevel = VFS::SocketOptionLevel::tcp;
-		switch(option)
-		{
-		case __WASI_SOCK_TCP_NODELAY: outOption = VFS::SocketOption::noDelay; return __WASI_ESUCCESS;
-		default: return __WASI_ENOPROTOOPT;
-		}
-	case __WASI_SOCK_SOL_IPV6:
-		outLevel = VFS::SocketOptionLevel::ipv6;
-		switch(option)
-		{
-		case __WASI_SOCK_IPV6_V6ONLY: outOption = VFS::SocketOption::v6Only; return __WASI_ESUCCESS;
-		default: return __WASI_ENOPROTOOPT;
-		}
-	default: return __WASI_ENOPROTOOPT;
+	case __WASI_SOCK_OPTION_NOOP:
+	case __WASI_SOCK_OPTION_REUSE_PORT:
+	case __WASI_SOCK_OPTION_REUSE_ADDR:
+	case __WASI_SOCK_OPTION_NO_DELAY:
+	case __WASI_SOCK_OPTION_DONT_ROUTE:
+	case __WASI_SOCK_OPTION_ONLY_V6:
+	case __WASI_SOCK_OPTION_BROADCAST:
+	case __WASI_SOCK_OPTION_MULTICAST_LOOP_V4:
+	case __WASI_SOCK_OPTION_MULTICAST_LOOP_V6:
+	case __WASI_SOCK_OPTION_PROMISCUOUS:
+	case __WASI_SOCK_OPTION_KEEP_ALIVE:
+	case __WASI_SOCK_OPTION_OOB_INLINE: return WASIXSockOptKind::flag;
+
+	case __WASI_SOCK_OPTION_LINGER:
+	case __WASI_SOCK_OPTION_RECV_TIMEOUT:
+	case __WASI_SOCK_OPTION_SEND_TIMEOUT:
+	case __WASI_SOCK_OPTION_CONNECT_TIMEOUT:
+	case __WASI_SOCK_OPTION_ACCEPT_TIMEOUT: return WASIXSockOptKind::time;
+
+	case __WASI_SOCK_OPTION_RECV_BUF_SIZE:
+	case __WASI_SOCK_OPTION_SEND_BUF_SIZE:
+	case __WASI_SOCK_OPTION_RECV_LOWAT:
+	case __WASI_SOCK_OPTION_SEND_LOWAT:
+	case __WASI_SOCK_OPTION_TTL:
+	case __WASI_SOCK_OPTION_MULTICAST_TTL_V4: return WASIXSockOptKind::size;
+
+	case __WASI_SOCK_OPTION_LISTENING:
+	case __WASI_SOCK_OPTION_LAST_ERROR: return WASIXSockOptKind::readOnlyFlag;
+
+	case __WASI_SOCK_OPTION_TYPE:
+	case __WASI_SOCK_OPTION_PROTO: return WASIXSockOptKind::readOnlySize;
+
+	default: return WASIXSockOptKind::invalid;
+	}
+}
+
+// Translates a WASIX (af, socktype, proto) triple to VFS socket parameters.
+static __wasi_errno_t wasixSocketType(U8 addressFamily,
+									  U8 socketType,
+									  U16 sockProto,
+									  VFS::SocketAddress::Family& outFamily,
+									  Platform::SocketType& outType)
+{
+	switch(socketType)
+	{
+	case __WASI_SOCK_TYPE_SOCKET_STREAM: outType = Platform::SocketType::stream; break;
+	case __WASI_SOCK_TYPE_SOCKET_DGRAM: outType = Platform::SocketType::datagram; break;
+	default: return __WASI_EPROTONOSUPPORT;
 	};
+
+	// The protocol is only a sanity check: IP leaves the choice to the socket type.
+	switch(sockProto)
+	{
+	case __WASI_SOCK_PROTO_IP: break;
+	case __WASI_SOCK_PROTO_TCP:
+		if(outType != Platform::SocketType::stream) { return __WASI_EPROTONOSUPPORT; }
+		break;
+	case __WASI_SOCK_PROTO_UDP:
+		if(outType != Platform::SocketType::datagram) { return __WASI_EPROTONOSUPPORT; }
+		break;
+	default: return __WASI_EPROTONOSUPPORT;
+	};
+
+	switch(addressFamily)
+	{
+	case __WASI_ADDRESS_FAMILY_UNSPEC:
+	case __WASI_ADDRESS_FAMILY_INET4: outFamily = VFS::SocketAddress::Family::ipv4; break;
+	case __WASI_ADDRESS_FAMILY_INET6: outFamily = VFS::SocketAddress::Family::ipv6; break;
+	default: return __WASI_EAFNOSUPPORT;
+	};
+
+	return __WASI_ESUCCESS;
+}
+
+// Reads the FD + option for the sock_*_opt_* syscalls, translating the WASIX option tag to
+// a VFS::SocketOption (the tag values coincide with the VFS enum values). On failure the
+// returned LockedFDE carries the errno.
+static LockedFDE getSockOptFDE(Process* process,
+							   __wasi_fd_t sock,
+							   U8 option,
+							   WASIXSockOptKind expectedKind,
+							   VFS::SocketOption& outOption)
+{
+	if(option > __WASI_SOCK_OPTION_PROTO) { return LockedFDE(__WASI_ENOPROTOOPT); }
+
+	const WASIXSockOptKind kind = classifySockOption(option);
+	if(kind != expectedKind)
+	{
+		// A read-only option of the right value kind is still gettable.
+		const bool readOnlyOK
+			= (expectedKind == WASIXSockOptKind::flag && kind == WASIXSockOptKind::readOnlyFlag)
+			  || (expectedKind == WASIXSockOptKind::size
+				  && kind == WASIXSockOptKind::readOnlySize);
+		if(!readOnlyOK) { return LockedFDE(__WASI_ENOPROTOOPT); }
+	}
+
+	LockedFDE lockedFDE = getLockedFDE(process, sock, 0, 0);
+	if(lockedFDE.error != __WASI_ESUCCESS) { return lockedFDE; }
+	{
+		const __wasi_errno_t result = requireSocket(*lockedFDE.fde);
+		if(result != __WASI_ESUCCESS) { return LockedFDE(result); }
+	}
+
+	outOption = VFS::SocketOption(option);
+	return lockedFDE;
 }
 
 #include "DefineIntrinsicsI32.h"

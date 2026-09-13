@@ -153,8 +153,13 @@ struct POSIXSocketVFD : VFD
 {
 	const I32 fd;
 	const FileType fileType;
+	SocketStatus status;
+	bool isListening;
 
-	POSIXSocketVFD(I32 inFD, FileType inFileType) : fd(inFD), fileType(inFileType)
+	POSIXSocketVFD(I32 inFD,
+				   FileType inFileType,
+				   SocketStatus inStatus = SocketStatus::opening)
+	: fd(inFD), fileType(inFileType), status(inStatus), isListening(false)
 	{
 		WAVM_ASSERT(fileType == FileType::streamSocket || fileType == FileType::datagramSocket);
 	}
@@ -162,6 +167,7 @@ struct POSIXSocketVFD : VFD
 	virtual Result close() override
 	{
 		if(::close(fd)) {}
+		status = SocketStatus::closed;
 		delete this;
 		return Result::success;
 	}
@@ -270,9 +276,12 @@ struct POSIXSocketVFD : VFD
 
 	virtual Result openDir(DirEntStream*& outStream) override { return Result::isNotDirectory; }
 
-	virtual Result sockAccept(VFD*& outVFD, const VFDFlags& acceptedFlags) override
+	virtual Result sockAccept(VFD*& outVFD,
+							  const VFDFlags& acceptedFlags,
+							  SocketAddress* outPeerAddress = nullptr) override
 	{
 		outVFD = nullptr;
+		if(outPeerAddress) { memset(outPeerAddress, 0, sizeof(*outPeerAddress)); }
 
 		I32 acceptFlags = SOCK_CLOEXEC;
 		if(acceptedFlags.nonBlocking) { acceptFlags |= SOCK_NONBLOCK; }
@@ -301,7 +310,14 @@ struct POSIXSocketVFD : VFD
 		}
 #endif
 
-		outVFD = new POSIXSocketVFD(connectionFD, FileType::streamSocket);
+		if(outPeerAddress
+		   && (peerAddr.ss_family == AF_INET || peerAddr.ss_family == AF_INET6))
+		{
+			*outPeerAddress
+				= asSocketAddress((struct sockaddr*)&peerAddr, peerAddrLen);
+		}
+
+		outVFD = new POSIXSocketVFD(connectionFD, FileType::streamSocket, SocketStatus::opened);
 		return Result::success;
 	}
 
@@ -309,6 +325,7 @@ struct POSIXSocketVFD : VFD
 							Uptr numBuffers,
 							bool peek,
 							bool waitAll,
+							bool dontWait,
 							Uptr* outNumBytesRead,
 							bool* outDataTruncated,
 							SocketAddress* outSourceAddress) override
@@ -335,6 +352,7 @@ struct POSIXSocketVFD : VFD
 		I32 recvFlags = MSG_NOSIGNAL;
 		if(peek) { recvFlags |= MSG_PEEK; }
 		if(waitAll) { recvFlags |= MSG_WAITALL; }
+		if(dontWait) { recvFlags |= MSG_DONTWAIT; }
 
 		const ssize_t result = recvmsg(fd, &message, recvFlags);
 		if(result == -1) { return asSocketVFSResult(errno); }
@@ -357,6 +375,7 @@ struct POSIXSocketVFD : VFD
 	virtual Result sockSend(const IOWriteBuffer* buffers,
 							Uptr numBuffers,
 							const SocketAddress* destAddress,
+							bool dontWait,
 							Uptr* outNumBytesWritten) override
 	{
 		if(outNumBytesWritten) { *outNumBytesWritten = 0; }
@@ -383,7 +402,8 @@ struct POSIXSocketVFD : VFD
 			message.msg_namelen = destAddrLen;
 		}
 
-		const ssize_t result = sendmsg(fd, &message, MSG_NOSIGNAL);
+		const ssize_t result
+			= sendmsg(fd, &message, MSG_NOSIGNAL | (dontWait ? MSG_DONTWAIT : 0));
 		if(result == -1) { return asSocketVFSResult(errno); }
 
 		if(outNumBytesWritten) { *outNumBytesWritten = Uptr(result); }
@@ -407,12 +427,16 @@ struct POSIXSocketVFD : VFD
 		{
 			return asSocketVFSResult(errno);
 		}
+		status = SocketStatus::opened;
 		return Result::success;
 	}
 
 	virtual Result sockListen(U32 backlog) override
 	{
-		return listen(fd, I32(backlog)) == 0 ? Result::success : asSocketVFSResult(errno);
+		if(listen(fd, I32(backlog)) != 0) { return asSocketVFSResult(errno); }
+		status = SocketStatus::opened;
+		isListening = true;
+		return Result::success;
 	}
 
 	virtual Result sockConnect(const SocketAddress& remoteAddress) override
@@ -426,8 +450,11 @@ struct POSIXSocketVFD : VFD
 
 		if(connect(fd, (struct sockaddr*)&connectAddr, connectAddrLen) != 0)
 		{
-			return asSocketVFSResult(errno);
+			const Result result = asSocketVFSResult(errno);
+			if(result != Result::ioPending) { status = SocketStatus::failed; }
+			return result;
 		}
+		status = SocketStatus::opened;
 		return Result::success;
 	}
 
@@ -463,95 +490,225 @@ struct POSIXSocketVFD : VFD
 		return Result::success;
 	}
 
-	virtual Result sockSetOpt(SocketOptionLevel level, SocketOption option, U32 value) override
+	virtual Result sockGetStatus(SocketStatus& outStatus) override
 	{
-		I32 hostLevel = 0;
-		I32 hostOption = 0;
-		if(!translateSocketOption(level, option, hostLevel, hostOption))
-		{
-			return Result::notSupported;
-		}
-		if(option == SocketOption::type || option == SocketOption::error)
-		{
-			return Result::notPermitted;
-		}
+		outStatus = status;
+		return Result::success;
+	}
 
-		const int hostValue = int(value);
-		return setsockopt(fd, hostLevel, hostOption, &hostValue, sizeof(hostValue)) == 0
+	virtual Result sockSetOpt(SocketOption option, U64 value) override
+	{
+		switch(option)
+		{
+		case SocketOption::noop: return Result::success;
+
+		// Get-only and unsupported options.
+		case SocketOption::listening:
+		case SocketOption::lastError:
+		case SocketOption::type:
+		case SocketOption::protocol:
+		case SocketOption::promiscuous:
+		case SocketOption::connectTimeout:
+		case SocketOption::acceptTimeout: return Result::notPermitted;
+
+		case SocketOption::linger:
+		{
+			struct linger hostLinger;
+			hostLinger.l_onoff = value != 0;
+			hostLinger.l_linger = int(value / 1000000000);
+			return setsockopt(fd, SOL_SOCKET, SO_LINGER, &hostLinger, sizeof(hostLinger)) == 0
+					   ? Result::success
+					   : asSocketVFSResult(errno);
+		}
+		case SocketOption::recvTimeout:
+		case SocketOption::sendTimeout:
+		{
+			const I32 hostOption
+				= option == SocketOption::recvTimeout ? SO_RCVTIMEO : SO_SNDTIMEO;
+			struct timeval tv;
+			tv.tv_sec = time_t(value / 1000000000);
+			tv.tv_usec = suseconds_t((value % 1000000000) / 1000);
+			return setsockopt(fd, SOL_SOCKET, hostOption, &tv, sizeof(tv)) == 0
+					   ? Result::success
+					   : asSocketVFSResult(errno);
+		}
+		default:
+		{
+			I32 hostLevel = 0;
+			I32 hostOption = 0;
+			if(!translateSocketOption(option, hostLevel, hostOption))
+			{
+				return Result::notSupported;
+			}
+			const int hostValue = int(value);
+			return setsockopt(fd, hostLevel, hostOption, &hostValue, sizeof(hostValue)) == 0
+					   ? Result::success
+					   : asSocketVFSResult(errno);
+		}
+		}
+	}
+
+	virtual Result sockGetOpt(SocketOption option, U64& outValue) override
+	{
+		outValue = 0;
+
+		switch(option)
+		{
+		case SocketOption::noop: return Result::success;
+		case SocketOption::listening:
+			outValue = isListening ? 1 : 0;
+			return Result::success;
+		case SocketOption::linger:
+		{
+			struct linger hostLinger;
+			socklen_t hostLingerLen = sizeof(hostLinger);
+			if(getsockopt(fd, SOL_SOCKET, SO_LINGER, &hostLinger, &hostLingerLen) != 0)
+			{
+				return asSocketVFSResult(errno);
+			}
+			outValue = hostLinger.l_onoff ? U64(hostLinger.l_linger) * 1000000000 : 0;
+			return Result::success;
+		}
+		case SocketOption::recvTimeout:
+		case SocketOption::sendTimeout:
+		{
+			const I32 hostOption
+				= option == SocketOption::recvTimeout ? SO_RCVTIMEO : SO_SNDTIMEO;
+			struct timeval tv;
+			socklen_t tvLen = sizeof(tv);
+			if(getsockopt(fd, SOL_SOCKET, hostOption, &tv, &tvLen) != 0)
+			{
+				return asSocketVFSResult(errno);
+			}
+			outValue = U64(tv.tv_sec) * 1000000000 + U64(tv.tv_usec) * 1000;
+			return Result::success;
+		}
+		default:
+		{
+			I32 hostLevel = 0;
+			I32 hostOption = 0;
+			if(!translateSocketOption(option, hostLevel, hostOption))
+			{
+				return Result::notSupported;
+			}
+
+			int hostValue = 0;
+			socklen_t hostValueLen = sizeof(hostValue);
+			if(getsockopt(fd, hostLevel, hostOption, &hostValue, &hostValueLen) != 0)
+			{
+				return asSocketVFSResult(errno);
+			}
+			if(option == SocketOption::type)
+			{
+				// Translate the host's SOCK_* value to the corresponding VFS::FileType value.
+				if(hostValue == SOCK_STREAM) { outValue = U64(FileType::streamSocket); }
+				else if(hostValue == SOCK_DGRAM) { outValue = U64(FileType::datagramSocket); }
+				else { outValue = U64(FileType::unknown); }
+				return Result::success;
+			}
+			outValue = U64(hostValue);
+			return Result::success;
+		}
+		}
+	}
+
+	virtual Result sockJoinMulticastV4(const U8* group, const U8* interfaceAddr) override
+	{
+		return setMulticastV4(IP_ADD_MEMBERSHIP, group, interfaceAddr);
+	}
+	virtual Result sockLeaveMulticastV4(const U8* group, const U8* interfaceAddr) override
+	{
+		return setMulticastV4(IP_DROP_MEMBERSHIP, group, interfaceAddr);
+	}
+	virtual Result sockJoinMulticastV6(const U8* group, U32 interfaceIndex) override
+	{
+		return setMulticastV6(IPV6_JOIN_GROUP, group, interfaceIndex);
+	}
+	virtual Result sockLeaveMulticastV6(const U8* group, U32 interfaceIndex) override
+	{
+		return setMulticastV6(IPV6_LEAVE_GROUP, group, interfaceIndex);
+	}
+
+private:
+	Result setMulticastV4(I32 hostOption, const U8* group, const U8* interfaceAddr)
+	{
+		struct ip_mreq mreq;
+		memset(&mreq, 0, sizeof(mreq));
+		memcpy(&mreq.imr_multiaddr, group, 4);
+		memcpy(&mreq.imr_interface, interfaceAddr, 4);
+		return setsockopt(fd, IPPROTO_IP, hostOption, &mreq, sizeof(mreq)) == 0
+				   ? Result::success
+				   : asSocketVFSResult(errno);
+	}
+	Result setMulticastV6(I32 hostOption, const U8* group, U32 interfaceIndex)
+	{
+		struct ipv6_mreq mreq;
+		memset(&mreq, 0, sizeof(mreq));
+		memcpy(&mreq.ipv6mr_multiaddr, group, 16);
+		mreq.ipv6mr_interface = interfaceIndex;
+		return setsockopt(fd, IPPROTO_IPV6, hostOption, &mreq, sizeof(mreq)) == 0
 				   ? Result::success
 				   : asSocketVFSResult(errno);
 	}
 
-	virtual Result sockGetOpt(SocketOptionLevel level, SocketOption option, U32& outValue) override
+	static bool translateSocketOption(SocketOption option, I32& outHostLevel, I32& outHostOption)
 	{
-		I32 hostLevel = 0;
-		I32 hostOption = 0;
-		if(!translateSocketOption(level, option, hostLevel, hostOption))
+		outHostLevel = SOL_SOCKET;
+		switch(option)
 		{
-			return Result::notSupported;
-		}
-
-		int hostValue = 0;
-		socklen_t hostValueLen = sizeof(hostValue);
-		if(getsockopt(fd, hostLevel, hostOption, &hostValue, &hostValueLen) != 0)
-		{
-			return asSocketVFSResult(errno);
-		}
-		if(option == SocketOption::type)
-		{
-			// Translate the host's SOCK_* value to the corresponding VFS::FileType value.
-			if(hostValue == SOCK_STREAM) { outValue = U32(FileType::streamSocket); }
-			else if(hostValue == SOCK_DGRAM) { outValue = U32(FileType::datagramSocket); }
-			else { outValue = U32(FileType::unknown); }
-			return Result::success;
-		}
-		outValue = U32(hostValue);
-		return Result::success;
-	}
-
-private:
-	static bool translateSocketOption(SocketOptionLevel level,
-									  SocketOption option,
-									  I32& outHostLevel,
-									  I32& outHostOption)
-	{
-		switch(level)
-		{
-		case SocketOptionLevel::socket:
-			outHostLevel = SOL_SOCKET;
-			switch(option)
-			{
-			case SocketOption::reuseAddress: outHostOption = SO_REUSEADDR; return true;
-#ifdef SO_BROADCAST
-			case SocketOption::broadcast: outHostOption = SO_BROADCAST; return true;
-#endif
-			case SocketOption::keepAlive: outHostOption = SO_KEEPALIVE; return true;
-			case SocketOption::type: outHostOption = SO_TYPE; return true;
-			case SocketOption::error: outHostOption = SO_ERROR; return true;
-			case SocketOption::sendBufferSize: outHostOption = SO_SNDBUF; return true;
-			case SocketOption::recvBufferSize: outHostOption = SO_RCVBUF; return true;
-			default: return false;
-			}
-		case SocketOptionLevel::tcp:
-			outHostLevel = IPPROTO_TCP;
-			switch(option)
-			{
-			case SocketOption::noDelay: outHostOption = TCP_NODELAY; return true;
-			default: return false;
-			}
-		case SocketOptionLevel::ipv6:
-			outHostLevel = IPPROTO_IPV6;
-			switch(option)
-			{
-			case SocketOption::v6Only:
-#ifdef IPV6_V6ONLY
-				outHostOption = IPV6_V6ONLY;
-				return true;
+		case SocketOption::reusePort:
+#ifdef SO_REUSEPORT
+			outHostOption = SO_REUSEPORT;
+			return true;
 #else
-				return false;
+			return false;
 #endif
-			default: return false;
-			}
+		case SocketOption::reuseAddress: outHostOption = SO_REUSEADDR; return true;
+		case SocketOption::noDelay:
+			outHostLevel = IPPROTO_TCP;
+			outHostOption = TCP_NODELAY;
+			return true;
+		case SocketOption::dontRoute: outHostOption = SO_DONTROUTE; return true;
+		case SocketOption::v6Only:
+#ifdef IPV6_V6ONLY
+			outHostLevel = IPPROTO_IPV6;
+			outHostOption = IPV6_V6ONLY;
+			return true;
+#else
+			return false;
+#endif
+		case SocketOption::broadcast: outHostOption = SO_BROADCAST; return true;
+		case SocketOption::multicastLoopV4:
+			outHostLevel = IPPROTO_IP;
+			outHostOption = IP_MULTICAST_LOOP;
+			return true;
+		case SocketOption::multicastLoopV6:
+			outHostLevel = IPPROTO_IPV6;
+			outHostOption = IPV6_MULTICAST_LOOP;
+			return true;
+		case SocketOption::keepAlive: outHostOption = SO_KEEPALIVE; return true;
+		case SocketOption::oobInline: outHostOption = SO_OOBINLINE; return true;
+		case SocketOption::recvBufferSize: outHostOption = SO_RCVBUF; return true;
+		case SocketOption::sendBufferSize: outHostOption = SO_SNDBUF; return true;
+		case SocketOption::recvLowat: outHostOption = SO_RCVLOWAT; return true;
+		case SocketOption::sendLowat: outHostOption = SO_SNDLOWAT; return true;
+		case SocketOption::ttl:
+			outHostLevel = IPPROTO_IP;
+			outHostOption = IP_TTL;
+			return true;
+		case SocketOption::multicastTTLV4:
+			outHostLevel = IPPROTO_IP;
+			outHostOption = IP_MULTICAST_TTL;
+			return true;
+		case SocketOption::lastError: outHostOption = SO_ERROR; return true;
+		case SocketOption::type: outHostOption = SO_TYPE; return true;
+		case SocketOption::protocol:
+#ifdef SO_PROTOCOL
+			outHostOption = SO_PROTOCOL;
+			return true;
+#else
+			return false;
+#endif
 		default: return false;
 		}
 	}
@@ -604,144 +761,107 @@ Result Platform::createSocket(SocketAddress::Family family, SocketType type, VFD
 	return Result::success;
 }
 
-// Parses "[host:]port", "[ipv6host]:port", or a bare "port" into host and service strings.
-// An empty host means the wildcard address.
-static bool parseSocketAddress(const std::string& address,
-							   std::string& outHost,
-							   std::string& outService)
+Result Platform::createSocketPair(SocketType type, VFD*& outVFD0, VFD*& outVFD1)
 {
-	std::string hostPort = address;
+	outVFD0 = nullptr;
+	outVFD1 = nullptr;
 
-	if(!hostPort.empty() && hostPort.front() == '[')
+	I32 hostType = 0;
+	FileType fileType = FileType::unknown;
+	switch(type)
 	{
-		// "[ipv6host]:port" or "[ipv6host]".
-		const Uptr closeBracket = hostPort.find(']');
-		if(closeBracket == std::string::npos) { return false; }
+	case SocketType::stream:
+		hostType = SOCK_STREAM;
+		fileType = FileType::streamSocket;
+		break;
+	case SocketType::datagram:
+		hostType = SOCK_DGRAM;
+		fileType = FileType::datagramSocket;
+		break;
+	default: return Result::notSupported;
+	};
 
-		outHost = hostPort.substr(1, closeBracket - 1);
-		if(closeBracket + 1 >= hostPort.size()) { return false; }
-		if(hostPort[closeBracket + 1] != ':') { return false; }
-		outService = hostPort.substr(closeBracket + 2);
-	}
-	else
+#ifdef SOCK_CLOEXEC
+	hostType |= SOCK_CLOEXEC;
+#endif
+
+	I32 fds[2];
+	if(socketpair(AF_UNIX, hostType, 0, fds) != 0) { return asSocketVFSResult(errno); }
+
+#ifndef SOCK_CLOEXEC
+	fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+	fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+#endif
+
+	// POSIXSocketVFD has no destructor that closes the fd, so close() must be called to
+	// release it; hold the first VFD in a unique_ptr until both allocations succeed.
+	std::unique_ptr<POSIXSocketVFD> vfd0(
+		new POSIXSocketVFD(fds[0], fileType, SocketStatus::opened));
+	try { outVFD1 = new POSIXSocketVFD(fds[1], fileType, SocketStatus::opened); }
+	catch(...)
 	{
-		const Uptr colon = hostPort.rfind(':');
-		if(colon == std::string::npos)
-		{
-			// Bare port.
-			outHost.clear();
-			outService = hostPort;
-		}
-		else
-		{
-			outHost = hostPort.substr(0, colon);
-			outService = hostPort.substr(colon + 1);
-		}
+		vfd0.release()->close();
+		throw;
 	}
-
-	return !outService.empty();
+	outVFD0 = vfd0.release();
+	return Result::success;
 }
 
-// Resolves a "[host:]port" address string to a list of SocketAddresses via getaddrinfo.
-static Result resolveSocketAddress(const std::string& address,
-								   bool passive,
-								   std::vector<SocketAddress>& outAddresses)
+Result Platform::resolveAddress(const std::string& hostName,
+								U16 port,
+								bool allowIPv4,
+								bool allowIPv6,
+								SocketAddress* outAddresses,
+								Uptr* inOutNumAddresses)
 {
-	std::string host;
-	std::string service;
-	if(!parseSocketAddress(address, host, service)) { return Result::notSupported; }
+	WAVM_ASSERT(outAddresses && inOutNumAddresses);
+	const Uptr capacity = *inOutNumAddresses;
 
 	struct addrinfo hints;
 	memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_UNSPEC;
+	hints.ai_family = allowIPv4 && allowIPv6 ? AF_UNSPEC : (allowIPv6 ? AF_INET6 : AF_INET);
+	// Any socktype produces duplicate entries for the same addresses, so pick stream.
 	hints.ai_socktype = SOCK_STREAM;
-	if(passive && host.empty()) { hints.ai_flags = AI_PASSIVE; }
+	hints.ai_flags = AI_NUMERICSERV;
+
+	char service[8];
+	snprintf(service, sizeof(service), "%u", U32(port));
 
 	struct addrinfo* addrInfoList = nullptr;
 	const I32 gaiResult
-		= getaddrinfo(host.empty() ? nullptr : host.c_str(), service.c_str(), &hints, &addrInfoList);
+		= getaddrinfo(hostName.c_str(), service, &hints, &addrInfoList);
 	if(gaiResult != 0 || !addrInfoList)
 	{
 		if(addrInfoList) { freeaddrinfo(addrInfoList); }
 		switch(gaiResult)
 		{
-		case EAI_NONAME: return Result::doesNotExist;
-		case EAI_AGAIN: return Result::interruptedBySignal;
+		case EAI_NONAME:
+#ifdef EAI_NODATA
+		case EAI_NODATA:
+#endif
+			return Result::nameLookupFailed;
+		case EAI_AGAIN: return Result::wouldBlock;
 		case EAI_MEMORY: return Result::outOfMemory;
-		case EAI_ADDRFAMILY:
-		case EAI_SOCKTYPE:
-		case EAI_SERVICE: return Result::notSupported;
+		case EAI_SYSTEM: return asSocketVFSResult(errno);
 		default: return Result::notSupported;
 		};
 	}
 
-	for(struct addrinfo* addrInfo = addrInfoList; addrInfo; addrInfo = addrInfo->ai_next)
+	Uptr numAddresses = 0;
+	for(struct addrinfo* addrInfo = addrInfoList;
+		addrInfo && numAddresses < capacity;
+		addrInfo = addrInfo->ai_next)
 	{
-		if(addrInfo->ai_family == AF_INET || addrInfo->ai_family == AF_INET6)
+		const bool isIPv4 = addrInfo->ai_family == AF_INET;
+		const bool isIPv6 = addrInfo->ai_family == AF_INET6;
+		if((isIPv4 && allowIPv4) || (isIPv6 && allowIPv6))
 		{
-			outAddresses.push_back(
-				asSocketAddress(addrInfo->ai_addr, socklen_t(addrInfo->ai_addrlen)));
+			outAddresses[numAddresses++]
+				= asSocketAddress(addrInfo->ai_addr, socklen_t(addrInfo->ai_addrlen));
 		}
 	}
 
 	freeaddrinfo(addrInfoList);
-	return outAddresses.empty() ? Result::doesNotExist : Result::success;
-}
-
-Result Platform::createListenSocket(const std::string& address, VFD*& outVFD, U32 backlog)
-{
-	outVFD = nullptr;
-
-	std::vector<SocketAddress> addresses;
-	Result result = resolveSocketAddress(address, true, addresses);
-	if(result != Result::success) { return result; }
-
-	for(const SocketAddress& bindAddress : addresses)
-	{
-		VFD* listenVFD = nullptr;
-		result = createSocket(bindAddress.family, SocketType::stream, listenVFD);
-		if(result != Result::success) { continue; }
-
-		// Set SO_REUSEADDR so a listener can rebind a port that has connections in TIME_WAIT.
-		listenVFD->sockSetOpt(SocketOptionLevel::socket, SocketOption::reuseAddress, 1);
-
-		result = listenVFD->sockBind(bindAddress);
-		if(result == Result::success) { result = listenVFD->sockListen(backlog); }
-		if(result == Result::success)
-		{
-			outVFD = listenVFD;
-			return Result::success;
-		}
-
-		listenVFD->close();
-	}
-
-	return result;
-}
-
-Result Platform::createConnectedSocket(const std::string& address, VFD*& outVFD)
-{
-	outVFD = nullptr;
-
-	std::vector<SocketAddress> addresses;
-	Result result = resolveSocketAddress(address, false, addresses);
-	if(result != Result::success) { return result; }
-
-	for(const SocketAddress& remoteAddress : addresses)
-	{
-		VFD* connectVFD = nullptr;
-		result = createSocket(remoteAddress.family, SocketType::stream, connectVFD);
-		if(result != Result::success) { continue; }
-
-		result = connectVFD->sockConnect(remoteAddress);
-		if(result == Result::success)
-		{
-			outVFD = connectVFD;
-			return Result::success;
-		}
-
-		connectVFD->close();
-	}
-
-	return result;
+	*inOutNumAddresses = numAddresses;
+	return numAddresses ? Result::success : Result::nameLookupFailed;
 }

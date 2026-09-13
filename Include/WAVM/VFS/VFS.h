@@ -113,26 +113,46 @@ namespace WAVM { namespace VFS {
 		U8 ipBytes[16]; // In network byte order; only the first 4 bytes are used for IPv4.
 	};
 
-	// A platform-neutral socket option identifier. WASI-level option numbers are translated to
-	// these by the WASI layer.
-	enum class SocketOptionLevel : U32
-	{
-		socket,
-		tcp,
-		ipv6
-	};
-
+	// A platform-neutral socket option identifier. WASI-level option tags are translated to
+	// these by the WASI layer. The numeric values match the WASIX __wasi_sock_option_t tags.
 	enum class SocketOption : U32
 	{
-		reuseAddress,
-		broadcast,
-		keepAlive,
-		type, // get-only; the value is a FileType (streamSocket/datagramSocket)
-		error, // get-only
-		sendBufferSize,
-		recvBufferSize,
-		noDelay,
-		v6Only
+		noop = 0,
+		reusePort = 1,
+		reuseAddress = 2,
+		noDelay = 3,
+		dontRoute = 4,
+		v6Only = 5,
+		broadcast = 6,
+		multicastLoopV4 = 7,
+		multicastLoopV6 = 8,
+		promiscuous = 9,
+		listening = 10, // get-only
+		lastError = 11, // get-only; the value is a WASI-compatible errno
+		keepAlive = 12,
+		linger = 13, // nanoseconds; 0 disables
+		oobInline = 14,
+		recvBufferSize = 15,
+		sendBufferSize = 16,
+		recvLowat = 17,
+		sendLowat = 18,
+		recvTimeout = 19,    // nanoseconds
+		sendTimeout = 20,    // nanoseconds
+		connectTimeout = 21, // nanoseconds
+		acceptTimeout = 22,  // nanoseconds
+		ttl = 23,
+		multicastTTLV4 = 24,
+		type = 25,    // get-only; the value is a FileType (streamSocket/datagramSocket)
+		protocol = 26 // get-only; the value is a protocol number (e.g. 6 for TCP)
+	};
+
+	// A socket's connection state; the numeric values match WASIX __wasi_sock_status_t.
+	enum class SocketStatus : U8
+	{
+		opening = 0,
+		opened = 1,
+		closed = 2,
+		failed = 3
 	};
 
 	struct IOReadBuffer
@@ -205,7 +225,8 @@ namespace WAVM { namespace VFS {
 		v(addressInUse, "Address is already in use") \
 		v(addressNotAvailable, "Address is not available") \
 		v(hostUnreachable, "Host is unreachable") \
-		v(networkUnreachable, "Network is unreachable")
+		v(networkUnreachable, "Network is unreachable") \
+		v(nameLookupFailed, "Name could not be resolved")
 
 	enum class Result : I32
 	{
@@ -265,27 +286,34 @@ namespace WAVM { namespace VFS {
 		// aren't sockets.
 
 		// Accepts a pending connection on a listening socket. On success, outVFD is set to a new
-		// VFD for the accepted connection with the given flags applied.
-		virtual Result sockAccept(VFD*& outVFD, const VFDFlags& acceptedFlags);
+		// VFD for the accepted connection with the given flags applied, and outPeerAddress (if
+		// non-null) is set to the peer's address.
+		virtual Result sockAccept(VFD*& outVFD,
+								  const VFDFlags& acceptedFlags,
+								  SocketAddress* outPeerAddress = nullptr);
 
 		// Receives data into the given buffers. If peek is true, the data isn't removed from
 		// the socket's receive queue. If waitAll is true, blocks until the buffers are full.
-		// outDataTruncated is set to true if the incoming message was larger than the buffers.
-		// If outSourceAddress is non-null, it is set to the address the message was received
-		// from (only meaningful for datagram sockets).
+		// If dontWait is true, returns wouldBlock instead of blocking. outDataTruncated is set
+		// to true if the incoming message was larger than the buffers. If outSourceAddress is
+		// non-null, it is set to the address the message was received from (only meaningful
+		// for datagram sockets).
 		virtual Result sockRecv(const IOReadBuffer* buffers,
 								Uptr numBuffers,
 								bool peek,
 								bool waitAll,
+								bool dontWait,
 								Uptr* outNumBytesRead,
 								bool* outDataTruncated,
 								SocketAddress* outSourceAddress);
 
 		// Sends the contents of the given buffers on a socket. If destAddress is non-null, the
-		// message is sent to that address (only meaningful for datagram sockets).
+		// message is sent to that address (only meaningful for datagram sockets). If dontWait
+		// is true, returns wouldBlock instead of blocking.
 		virtual Result sockSend(const IOWriteBuffer* buffers,
 								Uptr numBuffers,
 								const SocketAddress* destAddress,
+								bool dontWait,
 								Uptr* outNumBytesWritten);
 
 		// Shuts down the read and/or write halves of a socket connection.
@@ -304,9 +332,19 @@ namespace WAVM { namespace VFS {
 		virtual Result sockGetLocalAddress(SocketAddress& outAddress);
 		virtual Result sockGetPeerAddress(SocketAddress& outAddress);
 
-		// Gets or sets a socket option as a 32-bit integer value.
-		virtual Result sockSetOpt(SocketOptionLevel level, SocketOption option, U32 value);
-		virtual Result sockGetOpt(SocketOptionLevel level, SocketOption option, U32& outValue);
+		// Gets the socket's connection state.
+		virtual Result sockGetStatus(SocketStatus& outStatus);
+
+		// Gets or sets a socket option. Flag options use 0/1, size options a byte count, and
+		// time options nanoseconds.
+		virtual Result sockSetOpt(SocketOption option, U64 value);
+		virtual Result sockGetOpt(SocketOption option, U64& outValue);
+
+		// Joins or leaves an IP multicast group.
+		virtual Result sockJoinMulticastV4(const U8* group, const U8* interfaceAddr);
+		virtual Result sockLeaveMulticastV4(const U8* group, const U8* interfaceAddr);
+		virtual Result sockJoinMulticastV6(const U8* group, U32 interfaceIndex);
+		virtual Result sockLeaveMulticastV6(const U8* group, U32 interfaceIndex);
 
 		Result read(void* outData,
 					Uptr numBytes,

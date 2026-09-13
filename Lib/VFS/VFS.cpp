@@ -18,7 +18,9 @@ WAVM_ENUM_VFS_RESULTS(V)
 	};
 }
 
-Result VFD::sockAccept(VFD*& outVFD, const VFDFlags& acceptedFlags)
+Result VFD::sockAccept(VFD*& outVFD,
+					   const VFDFlags& acceptedFlags,
+					   SocketAddress* outPeerAddress)
 {
 	return Result::notSupported;
 }
@@ -27,6 +29,7 @@ Result VFD::sockRecv(const IOReadBuffer* buffers,
 					 Uptr numBuffers,
 					 bool peek,
 					 bool waitAll,
+					 bool dontWait,
 					 Uptr* outNumBytesRead,
 					 bool* outDataTruncated,
 					 SocketAddress* outSourceAddress)
@@ -37,6 +40,7 @@ Result VFD::sockRecv(const IOReadBuffer* buffers,
 Result VFD::sockSend(const IOWriteBuffer* buffers,
 					 Uptr numBuffers,
 					 const SocketAddress* destAddress,
+					 bool dontWait,
 					 Uptr* outNumBytesWritten)
 {
 	return Result::notSupported;
@@ -54,12 +58,28 @@ Result VFD::sockGetLocalAddress(SocketAddress& outAddress) { return Result::notS
 
 Result VFD::sockGetPeerAddress(SocketAddress& outAddress) { return Result::notSupported; }
 
-Result VFD::sockSetOpt(SocketOptionLevel level, SocketOption option, U32 value)
+Result VFD::sockGetStatus(SocketStatus& outStatus) { return Result::notSupported; }
+
+Result VFD::sockSetOpt(SocketOption option, U64 value) { return Result::notSupported; }
+
+Result VFD::sockGetOpt(SocketOption option, U64& outValue) { return Result::notSupported; }
+
+Result VFD::sockJoinMulticastV4(const U8* group, const U8* interfaceAddr)
 {
 	return Result::notSupported;
 }
 
-Result VFD::sockGetOpt(SocketOptionLevel level, SocketOption option, U32& outValue)
+Result VFD::sockLeaveMulticastV4(const U8* group, const U8* interfaceAddr)
+{
+	return Result::notSupported;
+}
+
+Result VFD::sockJoinMulticastV6(const U8* group, U32 interfaceIndex)
+{
+	return Result::notSupported;
+}
+
+Result VFD::sockLeaveMulticastV6(const U8* group, U32 interfaceIndex)
 {
 	return Result::notSupported;
 }
