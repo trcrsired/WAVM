@@ -145,6 +145,10 @@ struct GCState
 		case ObjectKind::table: {
 			Table* table = asTable(object);
 
+			// exnref elements are opaque exception handles owned by the JIT's exception
+			// tracking, not Objects.
+			if(table->elementType == IR::ReferenceType::exnref) { break; }
+
 			Platform::RWMutex::ShareableLock resizingLock(table->resizingMutex);
 			const Uptr numElements = getTableNumElements(table);
 			for(Uptr elementIndex = 0; elementIndex < numElements; ++elementIndex)
@@ -155,7 +159,10 @@ struct GCState
 		}
 		case ObjectKind::global: {
 			Global* global = asGlobal(object);
-			if(isReferenceType(global->type.valueType))
+			// exnref globals are opaque exception handles owned by the JIT's exception
+			// tracking, not Objects.
+			if(isReferenceType(global->type.valueType)
+			   && global->type.valueType != IR::ValueType::exnref)
 			{
 				if(global->type.isMutable)
 				{

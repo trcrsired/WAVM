@@ -2,6 +2,7 @@
 #include <unwind.h>
 #include <cstdint>
 #include <cstdlib>
+#include <deque>
 #include <vector>
 #include "EmitFunctionContext.h"
 #include "EmitModuleContext.h"
@@ -89,6 +90,11 @@ namespace {
 	typedef wavm_eh_tag_unwind_eh WavmEhRecord;
 #endif
 
+	// Index into EhTrackingState::recordPool identifying a record slot. Records are named by slot
+	// rather than pointer so that references are bounds-checked and paired with a generation.
+	typedef U32 EhSlot;
+	inline constexpr EhSlot invalidEhSlot{~EhSlot(0)};
+
 	// One entry per exception record that may still be named by a live exnref value, registered
 	// when a try_table catch_ref/catch_all_ref clause accepts the exception. `bound` is an address
 	// in the stack frame that registered the entry: on downward-growing stacks, entries pushed by
@@ -97,74 +103,58 @@ namespace {
 	struct CaughtExceptionEntry
 	{
 		Uptr bound;
-		WavmEhRecord* record;
+		EhSlot slot;
 	};
 
-	// All tracking of owned exception records. The destructor frees every remaining record at
-	// thread exit: records may appear in more than one list (a held record can be in flight),
-	// so they are deduplicated before freeing.
+	// All tracking of owned exception records. Records live in recordPool, a deque so that their
+	// addresses never move: a record in flight is referenced by the unwind machinery for the whole
+	// raise, and a held record may still be named by an exnref. Freed slots are recycled through
+	// freeSlots, so the pool only grows to the largest number of simultaneously live records and
+	// amortizes allocation over all of them.
 	struct EhTrackingState
 	{
+		std::deque<WavmEhRecord> recordPool;
+
+		// Generation per pool slot. An exnref encodes the slot and its generation, so bumping the
+		// generation on free invalidates exnrefs that outlived the record, including ones that
+		// would otherwise alias a record later allocated in the same slot.
+		std::vector<U32> slotGenerations;
+
+		// Pool slots that are free for reuse.
+		std::vector<EhSlot> freeSlots;
+
 		std::vector<CaughtExceptionEntry> caughtExceptions;
 
-		// Records currently inside a raise call: marked before
+		// Slots of records currently inside a raise call: marked before
 		// _Unwind_RaiseException/_CxxThrowException and unmarked when a handler claims the record
 		// (wavm_eh_catch_entered/wavm_eh_table_caught) or the raise returns uncaught.
-		std::vector<WavmEhRecord*> inFlightRecords;
+		std::vector<EhSlot> inFlightRecords;
 
-		// Records whose catch-scope entries went stale. They are kept alive, up to
+		// Slots of records whose catch-scope entries went stale. They are kept alive, up to
 		// maxDeadRecords, so an exnref that outlived its catch scope can still be rethrown by
 		// throw_ref (legal per the spec, though clang only emits exnrefs scoped to their
 		// handler). Once evicted, a throw_ref naming them fails closed.
-		std::vector<WavmEhRecord*> deadRecords;
-
-		~EhTrackingState()
-		{
-			std::vector<WavmEhRecord*> records;
-			for(const CaughtExceptionEntry& entry : caughtExceptions)
-			{
-				if(!ehVectorContains(records, entry.record)) { records.push_back(entry.record); }
-			}
-			for(WavmEhRecord* record : deadRecords)
-			{
-				if(!ehVectorContains(records, record)) { records.push_back(record); }
-			}
-			for(WavmEhRecord* record : inFlightRecords)
-			{
-				if(!ehVectorContains(records, record)) { records.push_back(record); }
-			}
-			for(WavmEhRecord* record : records) { delete record; }
-		}
-
-		static bool ehVectorContains(const std::vector<WavmEhRecord*>& vec,
-									 const WavmEhRecord* record)
-		{
-			for(const WavmEhRecord* element : vec)
-			{
-				if(element == record) { return true; }
-			}
-			return false;
-		}
+		std::vector<EhSlot> deadRecords;
 	};
 	thread_local EhTrackingState ehTracking;
 
 	inline constexpr Uptr maxDeadRecords{32};
 
-	static bool ehVectorContains(const std::vector<WavmEhRecord*>& vec, const WavmEhRecord* record)
+	static bool ehVectorContains(const std::vector<EhSlot>& vec, EhSlot slot)
 	{
-		for(const WavmEhRecord* element : vec)
+		for(EhSlot element : vec)
 		{
-			if(element == record) { return true; }
+			if(element == slot) { return true; }
 		}
 		return false;
 	}
 
-	// Removes the first occurrence of `record` from `vec`, returning whether it was present.
-	static bool ehVectorErase(std::vector<WavmEhRecord*>& vec, const WavmEhRecord* record)
+	// Removes the first occurrence of `slot` from `vec`, returning whether it was present.
+	static bool ehVectorErase(std::vector<EhSlot>& vec, EhSlot slot)
 	{
 		for(auto it = vec.begin(); it != vec.end(); ++it)
 		{
-			if(*it == record)
+			if(*it == slot)
 			{
 				vec.erase(it);
 				return true;
@@ -173,30 +163,89 @@ namespace {
 		return false;
 	}
 
-	static bool ehRecordIsHeld(const WavmEhRecord* record)
+	// Returns the pool slot holding `record`, or invalidEhSlot if the pointer does not name a
+	// pooled record.
+	static EhSlot ehSlotOfRecord(const WavmEhRecord* record)
+	{
+		for(Uptr slot = 0; slot < ehTracking.recordPool.size(); ++slot)
+		{
+			if(&ehTracking.recordPool[slot] == record) { return EhSlot(slot); }
+		}
+		return invalidEhSlot;
+	}
+
+	static WavmEhRecord* ehRecordAt(EhSlot slot) { return &ehTracking.recordPool[slot]; }
+
+	// Allocates a pool slot, reusing a freed one if available, and returns it.
+	static EhSlot ehAllocateRecord()
+	{
+		if(!ehTracking.freeSlots.empty())
+		{
+			const EhSlot slot = ehTracking.freeSlots.back();
+			ehTracking.freeSlots.pop_back();
+			return slot;
+		}
+		const EhSlot slot = EhSlot(ehTracking.recordPool.size());
+		ehTracking.recordPool.push_back(WavmEhRecord{});
+		ehTracking.slotGenerations.push_back(0);
+		return slot;
+	}
+
+	// Frees a pool slot: bumps its generation so stale exnrefs naming it fail, and recycles the
+	// slot. Idempotent: a slot may be named by more than one tracking list.
+	static void ehFreeRecord(EhSlot slot)
+	{
+		if(ehVectorContains(ehTracking.freeSlots, slot)) { return; }
+		++ehTracking.slotGenerations[slot];
+		ehTracking.freeSlots.push_back(slot);
+	}
+
+	static bool ehRecordIsHeld(EhSlot slot)
 	{
 		for(const CaughtExceptionEntry& entry : ehTracking.caughtExceptions)
 		{
-			if(entry.record == record) { return true; }
+			if(entry.slot == slot) { return true; }
 		}
 		return false;
 	}
 
-	// Frees a record once nothing can reference it: not held by a catch scope and not in flight.
-	static void ehReleaseRecord(WavmEhRecord* record)
+	// The exnref value naming a record: generation in the high bits and slot+1 in the low bits,
+	// so that 0 remains the null exnref.
+	static U64 ehMakeExnref(EhSlot slot)
 	{
-		if(!record) { return; }
-		if(ehRecordIsHeld(record) || ehVectorContains(ehTracking.inFlightRecords, record)) { return; }
-		ehVectorErase(ehTracking.deadRecords, record);
-		delete record;
+		return (U64(ehTracking.slotGenerations[slot]) << 32) | U64(slot + 1);
+	}
+
+	// Decodes an exnref to a pool slot, or returns invalidEhSlot for null, out-of-range, or
+	// stale-generation values.
+	static EhSlot ehExnrefToSlot(U64 exnref)
+	{
+		const U64 slotField = exnref & 0xffffffff;
+		if(!slotField) { return invalidEhSlot; }
+		const EhSlot slot = EhSlot(slotField - 1);
+		if(Uptr(slot) >= ehTracking.slotGenerations.size()
+		   || ehTracking.slotGenerations[slot] != U32(exnref >> 32))
+		{
+			return invalidEhSlot;
+		}
+		return slot;
+	}
+
+	// Frees a record once nothing can reference it: not held by a catch scope and not in flight.
+	static void ehReleaseRecord(EhSlot slot)
+	{
+		if(slot == invalidEhSlot) { return; }
+		if(ehRecordIsHeld(slot) || ehVectorContains(ehTracking.inFlightRecords, slot)) { return; }
+		ehVectorErase(ehTracking.deadRecords, slot);
+		ehFreeRecord(slot);
 	}
 
 	// Moves a record to the dead list, freeing the oldest dead record nothing references if the
 	// list overflows.
-	static void ehDeadlistRecord(WavmEhRecord* record)
+	static void ehDeadlistRecord(EhSlot slot)
 	{
-		if(!record || ehVectorContains(ehTracking.deadRecords, record)) { return; }
-		ehTracking.deadRecords.push_back(record);
+		if(slot == invalidEhSlot || ehVectorContains(ehTracking.deadRecords, slot)) { return; }
+		ehTracking.deadRecords.push_back(slot);
 		while(ehTracking.deadRecords.size() > maxDeadRecords)
 		{
 			auto it = ehTracking.deadRecords.begin();
@@ -205,46 +254,53 @@ namespace {
 				if(!ehRecordIsHeld(*it) && !ehVectorContains(ehTracking.inFlightRecords, *it)) { break; }
 			}
 			if(it == ehTracking.deadRecords.end()) { break; }
-			delete *it;
+			const EhSlot evicted = *it;
 			ehTracking.deadRecords.erase(it);
+			ehFreeRecord(evicted);
 		}
 	}
 
-	// Frees all records except `except`, which is already deleted by the caller (entries still
-	// naming it are dropped without a second delete). Only called when an exception propagated
-	// past all wasm frames, so every catch scope that held a record is dead. In-flight records
-	// are not freed: they are owned by an active raise call that will clean them up itself.
-	static void ehFreeAllCaught(const WavmEhRecord* except)
+	// Frees all records except `exceptSlot`, whose slot the caller has already freed (entries
+	// still naming it are dropped without a second free). Only called when an exception
+	// propagated past all wasm frames, so every catch scope that held a record is dead and every
+	// in-flight record belongs to a raise frame the resulting host exception unwinds through.
+	static void ehFreeAllCaught(EhSlot exceptSlot)
 	{
-		for(CaughtExceptionEntry& entry : ehTracking.caughtExceptions)
+		for(const CaughtExceptionEntry& entry : ehTracking.caughtExceptions)
 		{
-			if(entry.record != except) { delete entry.record; }
+			if(entry.slot != exceptSlot) { ehFreeRecord(entry.slot); }
 		}
 		ehTracking.caughtExceptions.clear();
-		for(WavmEhRecord* record : ehTracking.deadRecords)
+		for(EhSlot slot : ehTracking.deadRecords)
 		{
-			if(record != except) { delete record; }
+			if(slot != exceptSlot) { ehFreeRecord(slot); }
 		}
 		ehTracking.deadRecords.clear();
+		for(EhSlot slot : ehTracking.inFlightRecords)
+		{
+			if(slot != exceptSlot) { ehFreeRecord(slot); }
+		}
 		ehTracking.inFlightRecords.clear();
 	}
 }
 
 #if !defined(_MSC_VER)
-// Raises a wasm exception record via _Unwind_RaiseException. Does not return: a raise that finds
-// no wasm or host handler returns, and is converted to a WAVM uncaughtException runtime error.
-static void ehRaiseWasmRecord(wavm_eh_tag_unwind_eh* exception)
+// Raises the wasm exception record in `slot` via _Unwind_RaiseException. Does not return: a
+// raise that finds no wasm or host handler returns, and is converted to a WAVM
+// uncaughtException runtime error.
+static void ehRaiseWasmRecord(EhSlot slot)
 {
-	if(!ehVectorContains(ehTracking.inFlightRecords, exception)) { ehTracking.inFlightRecords.push_back(exception); }
+	WavmEhRecord* exception = ehRecordAt(slot);
+	if(!ehVectorContains(ehTracking.inFlightRecords, slot)) { ehTracking.inFlightRecords.push_back(slot); }
 	_Unwind_Reason_Code reason = _Unwind_RaiseException(&exception->itaniumeh);
 	// The exception propagated past all wasm frames, so all records held by catch scopes are
 	// dead too.
 	(void)reason;
 	const ::std::uint_least64_t tag = exception->ehtag;
 	const ::std::uint_least64_t userdata = exception->userdata;
-	ehVectorErase(ehTracking.inFlightRecords, exception);
-	delete exception;
-	ehFreeAllCaught(exception);
+	ehVectorErase(ehTracking.inFlightRecords, slot);
+	ehFreeRecord(slot);
+	ehFreeAllCaught(slot);
 	Runtime::throwException(Runtime::ExceptionTypes::uncaughtException,
 							{IR::UntaggedValue(U64(tag)), IR::UntaggedValue(U64(userdata))});
 }
@@ -259,11 +315,13 @@ extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t tag, ::std::uint_lea
 	exception->userdata = value;
 	_CxxThrowException(exception, &wavmThrowInfo);
 #else
-	auto* exception = new wavm_eh_tag_unwind_eh();
+	const EhSlot slot = ehAllocateRecord();
+	auto* exception = ehRecordAt(slot);
+	*exception = wavm_eh_tag_unwind_eh{};
 	exception->itaniumeh.exception_class = exceptionclass;
 	exception->ehtag = tag;
 	exception->userdata = value;
-	ehRaiseWasmRecord(exception);
+	ehRaiseWasmRecord(slot);
 #endif
 }
 
@@ -278,38 +336,43 @@ extern "C" void wavm_rethrow_record(void* recordPtr)
 #else
 	auto* exception = reinterpret_cast<wavm_eh_tag_unwind_eh*>(recordPtr);
 	if(!exception || exception->itaniumeh.exception_class != exceptionclass) { std::abort(); }
-	ehRaiseWasmRecord(exception);
+	const EhSlot slot = ehSlotOfRecord(exception);
+	if(slot == invalidEhSlot) { std::abort(); }
+	ehRaiseWasmRecord(slot);
 #endif
 }
 
 // Called when a try_table catch_ref/catch_all_ref clause accepts an exception: the exnref value
-// the clause pushed names this record, so it is registered as held by a catch scope. Before
-// pushing the new entry, entries pushed by frames that have returned or by code in this frame
-// that has finished are removed (on a downward-growing stack their bound is at or below this
-// call's bound). Their records go to the dead list rather than being freed, so an exnref that
-// outlived its scope can still rethrow them.
-extern "C" void wavm_eh_catch_entered(void* recordPtr)
+// the clause pushes names this record, so it is registered as held by a catch scope and its
+// handle is returned. Before pushing the new entry, entries pushed by frames that have returned
+// or by code in this frame that has finished are removed (on a downward-growing stack their
+// bound is at or below this call's bound). Their records go to the dead list rather than being
+// freed, so an exnref that outlived its scope can still rethrow them.
+extern "C" ::std::uint_least64_t wavm_eh_catch_entered(void* recordPtr)
 {
 	auto* record = reinterpret_cast<WavmEhRecord*>(recordPtr);
+	const EhSlot slot = ehSlotOfRecord(record);
+	if(slot == invalidEhSlot) { std::abort(); }
 	char boundMarker;
 	const Uptr bound = Uptr(&boundMarker);
 
 	// The exception has landed: it is no longer in flight, and if it was dead-listed while an
 	// exnref still named it, it is live again.
-	ehVectorErase(ehTracking.inFlightRecords, record);
-	ehVectorErase(ehTracking.deadRecords, record);
+	ehVectorErase(ehTracking.inFlightRecords, slot);
+	ehVectorErase(ehTracking.deadRecords, slot);
 
 	for(auto it = ehTracking.caughtExceptions.begin(); it != ehTracking.caughtExceptions.end();)
 	{
-		if(it->bound <= bound && !ehVectorContains(ehTracking.inFlightRecords, it->record))
+		if(it->bound <= bound && !ehVectorContains(ehTracking.inFlightRecords, it->slot))
 		{
-			WavmEhRecord* stale = it->record;
+			const EhSlot stale = it->slot;
 			it = ehTracking.caughtExceptions.erase(it);
-			if(stale != record) { ehDeadlistRecord(stale); }
+			if(stale != slot) { ehDeadlistRecord(stale); }
 		}
 		else { ++it; }
 	}
-	ehTracking.caughtExceptions.push_back({bound, record});
+	ehTracking.caughtExceptions.push_back({bound, slot});
+	return ehMakeExnref(slot);
 }
 
 // Called when a try_table catch/catch_all clause accepts an exception: the clause produces no
@@ -317,15 +380,17 @@ extern "C" void wavm_eh_catch_entered(void* recordPtr)
 extern "C" void wavm_eh_table_caught(void* recordPtr)
 {
 	auto* record = reinterpret_cast<WavmEhRecord*>(recordPtr);
-	ehVectorErase(ehTracking.inFlightRecords, record);
-	ehReleaseRecord(record);
+	const EhSlot slot = ehSlotOfRecord(record);
+	if(slot == invalidEhSlot) { std::abort(); }
+	ehVectorErase(ehTracking.inFlightRecords, slot);
+	ehReleaseRecord(slot);
 }
 
-// Implements the throw_ref instruction. The exnref operand is the address of the exception
-// record produced by the catch_ref/catch_all_ref clause that caught it. The reference is only
-// valid while it names a record WAVM still owns: held by a live catch scope, kept on the dead
-// list, or in flight. Anything else — null, a reference to a freed record, or a forged value —
-// fails closed with a runtime error instead of dereferencing it.
+// Implements the throw_ref instruction. The exnref operand is the handle produced by the
+// catch_ref/catch_all_ref clause that caught the exception. The handle is only valid while it
+// names a record WAVM still owns: held by a live catch scope, kept on the dead list, or in
+// flight. Anything else — null, a stale handle, or a forged value — fails closed with a
+// runtime error instead of dereferencing it.
 extern "C" void wavm_throw_ref(::std::uint_least64_t exnref)
 {
 #if defined(_MSC_VER)
@@ -336,15 +401,13 @@ extern "C" void wavm_throw_ref(::std::uint_least64_t exnref)
 	}
 	_CxxThrowException(exception, &wavmThrowInfo);
 #else
-	auto* exception = reinterpret_cast<wavm_eh_tag_unwind_eh*>(Uptr(exnref));
-	bool valid = false;
-	if(exception)
-	{
-		valid = ehVectorContains(ehTracking.inFlightRecords, exception) || ehRecordIsHeld(exception)
-				|| ehVectorErase(ehTracking.deadRecords, exception);
-	}
+	const EhSlot slot = ehExnrefToSlot(exnref);
+	const bool valid = slot != invalidEhSlot
+					   && (ehVectorContains(ehTracking.inFlightRecords, slot)
+						   || ehRecordIsHeld(slot)
+						   || ehVectorErase(ehTracking.deadRecords, slot));
 	if(!valid) { Runtime::throwException(Runtime::ExceptionTypes::invalidExnref, {}); }
-	ehRaiseWasmRecord(exception);
+	ehRaiseWasmRecord(slot);
 #endif
 }
 
@@ -394,8 +457,7 @@ static llvm::Function* getWavmEhCatchEnteredFunction(EmitModuleContext& moduleCo
 	{
 		LLVMContext& llvmContext = moduleContext.llvmContext;
 		moduleContext.wavmEhCatchEnteredFunction = llvm::Function::Create(
-			llvm::FunctionType::get(
-				llvm::Type::getVoidTy(llvmContext), {llvmContext.i8PtrType}, false),
+			llvm::FunctionType::get(llvmContext.i64Type, {llvmContext.i8PtrType}, false),
 			llvm::GlobalValue::LinkageTypes::ExternalLinkage,
 			"wavm_eh_catch_entered",
 			moduleContext.llvmModule);
@@ -730,14 +792,34 @@ void EmitFunctionContext::endTryTable()
 			irBuilder.CreateGEP(llvmContext.i8Type,
 								unwindehptr,
 								{::llvm::ConstantInt::get(llvmContext.i64Type, UserDataOffset)}));
+#if defined(_MSC_VER)
+		// For the exnref parameter produced by catch_ref/catch_all_ref, the exnref value is the
+		// address of the exception record itself.
+		llvm::Value* exnrefValue = irBuilder.CreatePtrToInt(unwindehptr, llvmContext.i64Type);
+#else
+		// A catch_ref/catch_all_ref clause keeps the record referenceable through the exnref it
+		// pushes; a plain catch/catch_all clause releases it unless a live catch scope still
+		// holds it. wavm_eh_catch_entered registers the record and returns the exnref handle.
+		const bool clauseProducesExnref = catchClause.kind == IR::CatchClauseKind::catch_ref
+										  || catchClause.kind == IR::CatchClauseKind::catch_all_ref;
+		llvm::Value* exnrefValue = nullptr;
+		if(clauseProducesExnref)
+		{
+			exnrefValue = irBuilder.CreateCall(
+				getWavmEhCatchEnteredFunction(moduleContext), {unwindehptr});
+		}
+		else
+		{
+			irBuilder.CreateCall(getWavmEhTableCaughtFunction(moduleContext), {unwindehptr});
+		}
+#endif
 		for(Uptr argIndex = 0; argIndex < target.params.size(); ++argIndex)
 		{
-			// For the exnref parameter produced by catch_ref/catch_all_ref, the exnref value is
-			// the address of the exception record itself. Other parameters carry the exception's
-			// payload.
+			// The exnref parameter produced by catch_ref/catch_all_ref gets the record's handle.
+			// Other parameters carry the exception's payload.
 			llvm::Value* payload
 				= target.params[argIndex] == IR::ValueType::exnref
-					  ? irBuilder.CreatePtrToInt(unwindehptr, llvmContext.i64Type)
+					  ? exnrefValue
 					  : coerceI64ToValueType(
 							irBuilder, llvmContext, userData, target.params[argIndex]);
 			target.phis[argIndex]->addIncoming(coerceToCanonicalType(payload),
@@ -746,15 +828,6 @@ void EmitFunctionContext::endTryTable()
 #if defined(_MSC_VER)
 		irBuilder.CreateCatchRet(tryTableContext.catchPadInst, target.block);
 #else
-		// A catch_ref/catch_all_ref clause keeps the record referenceable through the exnref it
-		// pushed; a plain catch/catch_all clause releases it unless a live catch scope still
-		// holds it.
-		const bool clauseProducesExnref = catchClause.kind == IR::CatchClauseKind::catch_ref
-										  || catchClause.kind == IR::CatchClauseKind::catch_all_ref;
-		irBuilder.CreateCall(clauseProducesExnref
-								 ? getWavmEhCatchEnteredFunction(moduleContext)
-								 : getWavmEhTableCaughtFunction(moduleContext),
-							 {unwindehptr});
 		irBuilder.CreateBr(target.block);
 #endif
 	}

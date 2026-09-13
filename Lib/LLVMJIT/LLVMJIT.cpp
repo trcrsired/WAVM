@@ -39,7 +39,7 @@ namespace LLVMRuntimeSymbols {
 	extern "C" void wavm_throw_wasm_ehtag(::std::uint_least64_t, ::std::uint_least64_t);
 	extern "C" void wavm_throw_ref(::std::uint_least64_t);
 	extern "C" void wavm_rethrow_record(void*);
-	extern "C" void wavm_eh_catch_entered(void*);
+	extern "C" ::std::uint_least64_t wavm_eh_catch_entered(void*);
 	extern "C" void wavm_eh_table_caught(void*);
 #if defined(_MSC_VER)
 	extern "C" void wavm_rethrow_current();
