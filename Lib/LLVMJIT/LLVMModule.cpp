@@ -117,7 +117,10 @@ struct LLVMJIT::ModuleMemoryManager : llvm::RTDyldMemoryManager
 		if(!USE_WINDOWS_SEH)
 		{
 			if(objectForEHRepair) { repairMachOAArch64EHFrames(addr, numBytes); }
-			Platform::registerEHFrames(imageBaseAddress, addr, numBytes);
+			Platform::registerEHFrames(imageBaseAddress,
+									   numAllocatedImagePages << Platform::getBytesPerPageLog2(),
+									   addr,
+									   numBytes);
 			hasRegisteredEHFrames = true;
 			ehFramesAddr = addr;
 			ehFramesNumBytes = numBytes;
@@ -142,7 +145,10 @@ struct LLVMJIT::ModuleMemoryManager : llvm::RTDyldMemoryManager
 	}
 	void registerFixedSEHFrames(U8* addr, Uptr numBytes)
 	{
-		Platform::registerEHFrames(imageBaseAddress, addr, numBytes);
+		Platform::registerEHFrames(imageBaseAddress,
+								   numAllocatedImagePages << Platform::getBytesPerPageLog2(),
+								   addr,
+								   numBytes);
 		hasRegisteredEHFrames = true;
 		ehFramesAddr = addr;
 		ehFramesNumBytes = numBytes;
@@ -152,7 +158,10 @@ struct LLVMJIT::ModuleMemoryManager : llvm::RTDyldMemoryManager
 		if(hasRegisteredEHFrames)
 		{
 			hasRegisteredEHFrames = false;
-			Platform::deregisterEHFrames(imageBaseAddress, ehFramesAddr, ehFramesNumBytes);
+			Platform::deregisterEHFrames(imageBaseAddress,
+										 numAllocatedImagePages << Platform::getBytesPerPageLog2(),
+										 ehFramesAddr,
+										 ehFramesNumBytes);
 		}
 	}
 

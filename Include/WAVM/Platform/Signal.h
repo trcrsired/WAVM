@@ -30,6 +30,12 @@ namespace WAVM { namespace Platform {
 							   bool (*filter)(void*, Signal, CallStack&&),
 							   void* argument);
 
-	WAVM_API void registerEHFrames(const U8* imageBase, const U8* ehFrames, Uptr numBytes);
-	WAVM_API void deregisterEHFrames(const U8* imageBase, const U8* ehFrames, Uptr numBytes);
+	WAVM_API void registerEHFrames(const U8* imageBase,
+								   Uptr imageNumBytes,
+								   const U8* ehFrames,
+								   Uptr numBytes);
+	WAVM_API void deregisterEHFrames(const U8* imageBase,
+									 Uptr imageNumBytes,
+									 const U8* ehFrames,
+									 Uptr numBytes);
 }}

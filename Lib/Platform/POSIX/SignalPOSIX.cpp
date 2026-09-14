@@ -2,6 +2,8 @@
 #include <signal.h>
 #include <unistd.h>
 #include <atomic>
+#include <mutex>
+#include <vector>
 #include "POSIXPrivate.h"
 #include "WAVM/Inline/Assert.h"
 #include "WAVM/Inline/Errors.h"
@@ -11,8 +13,23 @@ using namespace WAVM;
 using namespace WAVM::Platform;
 
 #if defined(__APPLE__)
+#include <mach-o/dyld.h>
 #define UC_RESET_ALT_STACK 0x80000000
 extern "C" int __sigreturn(ucontext_t*, int);
+
+// libunwind's SPI for JITs: a process-global lookup callback that reports the unwind info
+// sections covering an address that isn't in a normal Mach-O image. This is defined in
+// libunwind's private libunwind_ext.h, which isn't in the public SDK, so declare it here.
+struct unw_dynamic_unwind_sections
+{
+	Uptr dso_base;
+	Uptr dwarf_section;
+	Uptr dwarf_section_length;
+	Uptr compact_unwind_section;
+	Uptr compact_unwind_section_length;
+};
+extern "C" int __unw_add_find_dynamic_unwind_sections(
+	int (*)(Uptr addr, unw_dynamic_unwind_sections*));
 #endif
 
 thread_local SignalContext* Platform::innermostSignalContext = nullptr;
@@ -191,22 +208,94 @@ static void visitFDEs(const U8* ehFrames, Uptr numBytes, void (*visitFDE)(const 
 	} while(next < end);
 }
 
-void Platform::registerEHFrames(const U8* imageBase, const U8* ehFrames, Uptr numBytes)
+#if defined(__APPLE__)
+// Since macOS 15, Apple's libunwind reads the unwind_proc_info_t.extra field — the
+// mach_header of the image containing the frame — when _Unwind_SetIP redirects execution
+// to a landing pad, to determine whether the image uses arm64e pointer authentication.
+// FDEs registered through __register_frame have no associated dso, so extra is zero and
+// libunwind dereferences a null pointer. Reporting the JIT eh_frame through a dynamic
+// unwind-sections finder makes libunwind use the section lookup path, which carries a
+// valid dso_base.
+struct JITEHFrames
+{
+	const U8* codeStart;
+	Uptr codeNumBytes;
+	const U8* ehFrames;
+	Uptr ehFramesNumBytes;
+};
+static std::mutex jitEHFramesMutex;
+static std::vector<JITEHFrames> jitEHFrames;
+
+static int findJITEHFramesSection(Uptr addr, unw_dynamic_unwind_sections* info)
+{
+	std::lock_guard<std::mutex> lock(jitEHFramesMutex);
+	for(const JITEHFrames& section : jitEHFrames)
+	{
+		if(addr >= (Uptr)section.codeStart && addr - (Uptr)section.codeStart < section.codeNumBytes)
+		{
+			// libunwind reads the dso's mach_header to determine the image's pointer
+			// authentication mode; report the main executable's header so the JIT code is
+			// treated with the process's actual pointer authentication scheme.
+			info->dso_base = (Uptr)_dyld_get_image_header(0);
+			info->dwarf_section = (Uptr)section.ehFrames;
+			info->dwarf_section_length = section.ehFramesNumBytes;
+			info->compact_unwind_section = 0;
+			info->compact_unwind_section_length = 0;
+			return 1;
+		}
+	}
+	return 0;
+}
+#endif
+
+void Platform::registerEHFrames(const U8* imageBase,
+								Uptr imageNumBytes,
+								const U8* ehFrames,
+								Uptr numBytes)
 {
 	visitFDEs(ehFrames, numBytes, __register_frame);
+#if defined(__APPLE__)
+	{
+		std::lock_guard<std::mutex> lock(jitEHFramesMutex);
+		if(!jitEHFrames.size()) { __unw_add_find_dynamic_unwind_sections(findJITEHFramesSection); }
+		jitEHFrames.push_back({imageBase, imageNumBytes, ehFrames, numBytes});
+	}
+#endif
 }
 
-void Platform::deregisterEHFrames(const U8* imageBase, const U8* ehFrames, Uptr numBytes)
+void Platform::deregisterEHFrames(const U8* imageBase,
+								  Uptr imageNumBytes,
+								  const U8* ehFrames,
+								  Uptr numBytes)
 {
 	visitFDEs(ehFrames, numBytes, __deregister_frame);
+#if defined(__APPLE__)
+	{
+		std::lock_guard<std::mutex> lock(jitEHFramesMutex);
+		for(auto it = jitEHFrames.begin(); it != jitEHFrames.end(); ++it)
+		{
+			if(it->ehFrames == ehFrames)
+			{
+				jitEHFrames.erase(it);
+				break;
+			}
+		}
+	}
+#endif
 }
 #else
-void Platform::registerEHFrames(const U8* imageBase, const U8* ehFrames, Uptr numBytes)
+void Platform::registerEHFrames(const U8* imageBase,
+								Uptr imageNumBytes,
+								const U8* ehFrames,
+								Uptr numBytes)
 {
 	__register_frame(ehFrames);
 }
 
-void Platform::deregisterEHFrames(const U8* imageBase, const U8* ehFrames, Uptr numBytes)
+void Platform::deregisterEHFrames(const U8* imageBase,
+								  Uptr imageNumBytes,
+								  const U8* ehFrames,
+								  Uptr numBytes)
 {
 	__deregister_frame(ehFrames);
 }

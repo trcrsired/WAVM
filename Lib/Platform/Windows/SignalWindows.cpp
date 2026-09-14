@@ -22,7 +22,10 @@
 using namespace WAVM;
 using namespace WAVM::Platform;
 
-void Platform::registerEHFrames(const U8* imageBase, const U8* ehFrames, Uptr numBytes)
+void Platform::registerEHFrames(const U8* imageBase,
+								Uptr imageNumBytes,
+								const U8* ehFrames,
+								Uptr numBytes)
 {
 #ifdef _WIN64
 	const U32 numFunctions = (U32)(numBytes / sizeof(RUNTIME_FUNCTION));
@@ -37,7 +40,10 @@ void Platform::registerEHFrames(const U8* imageBase, const U8* ehFrames, Uptr nu
 	Errors::fatal("registerEHFrames isn't implemented on 32-bit Windows");
 #endif
 }
-void Platform::deregisterEHFrames(const U8* imageBase, const U8* ehFrames, Uptr numBytes)
+void Platform::deregisterEHFrames(const U8* imageBase,
+								  Uptr imageNumBytes,
+								  const U8* ehFrames,
+								  Uptr numBytes)
 {
 #ifdef _WIN64
 	RtlDeleteFunctionTable((RUNTIME_FUNCTION*)ehFrames);
