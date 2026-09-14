@@ -20,6 +20,7 @@ PUSH_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 #include <llvm/Support/DynamicLibrary.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetMachine.h>
+#include <llvm/Target/TargetOptions.h>
 POP_DISABLE_WARNINGS_FOR_LLVM_HEADERS
 
 namespace llvm {
@@ -253,6 +254,18 @@ std::unique_ptr<llvm::TargetMachine> LLVMJIT::getTargetMachine(
 	llvm::EngineBuilder engineBuilder;
 	::std::string errormessage;
 	engineBuilder.setErrorStr(::std::addressof(errormessage));
+#if LLVM_VERSION_MAJOR >= 13
+	if(triple.isOSDarwin() && triple.getArch() == llvm::Triple::aarch64)
+	{
+		// On AArch64 Darwin, LLVM only emits compact unwind info for JIT'd code,
+		// which leaves WAVM without a way to register the unwind info it needs to
+		// unwind through JIT'd frames. Force the emission of DWARF eh_frame FDEs
+		// that can be registered with the unwinder.
+		llvm::TargetOptions targetOptions;
+		targetOptions.MCOptions.EmitDwarfUnwind = llvm::EmitDwarfUnwindType::DwarfOnly;
+		engineBuilder.setTargetOptions(targetOptions);
+	}
+#endif
 	std::unique_ptr<llvm::TargetMachine> targetMachine(
 		engineBuilder.selectTarget(triple, "", targetSpec.cpu, targetAttributes));
 	if(!targetMachine)

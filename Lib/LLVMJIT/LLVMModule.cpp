@@ -116,10 +116,28 @@ struct LLVMJIT::ModuleMemoryManager : llvm::RTDyldMemoryManager
 	{
 		if(!USE_WINDOWS_SEH)
 		{
+			if(objectForEHRepair) { repairMachOAArch64EHFrames(addr, numBytes); }
 			Platform::registerEHFrames(imageBaseAddress, addr, numBytes);
 			hasRegisteredEHFrames = true;
 			ehFramesAddr = addr;
 			ehFramesNumBytes = numBytes;
+		}
+	}
+
+	// Set the object whose sections are being loaded. Must be called after loadObject and
+	// before finalizeWithMemoryManagerLocking.
+	void setEHRepairInfo(const llvm::object::ObjectFile* object,
+						 const llvm::RuntimeDyld::LoadedObjectInfo* loadedObject)
+	{
+		// RuntimeDyldMachO::processFDE assumes that eh_frame FDE fields contain
+		// unrelocated object-file addresses, as they do on x86-64. On AArch64 the fields
+		// are relocated by ARM64_RELOC_SUBTRACTOR pairs that resolveRelocations has
+		// already resolved to load-relative values, so the processFDE fixup corrupts
+		// them. Repair is needed before the FDEs are registered with the unwinder.
+		if(loadedObject && object->isMachO() && object->getArch() == llvm::Triple::aarch64)
+		{
+			objectForEHRepair = object;
+			loadedObjectForEHRepair = loadedObject;
 		}
 	}
 	void registerFixedSEHFrames(U8* addr, Uptr numBytes)
@@ -268,6 +286,77 @@ private:
 		Uptr numPages;
 		Uptr numCommittedBytes;
 	};
+
+	const llvm::object::ObjectFile* objectForEHRepair = nullptr;
+	const llvm::RuntimeDyld::LoadedObjectInfo* loadedObjectForEHRepair = nullptr;
+
+	void repairMachOAArch64EHFrames(U8* ehFrameAddr, Uptr ehFrameNumBytes)
+	{
+		llvm::object::SectionRef textSection, ehFrameSection, exceptTabSection;
+		bool hasTextSection = false, hasEHFrameSection = false, hasExceptTabSection = false;
+		for(auto section : objectForEHRepair->sections())
+		{
+			llvm::Expected<llvm::StringRef> nameOrError = section.getName();
+			if(!nameOrError) { continue; }
+			if(*nameOrError == "__text") { textSection = section; hasTextSection = true; }
+			else if(*nameOrError == "__eh_frame")
+			{
+				ehFrameSection = section;
+				hasEHFrameSection = true;
+			}
+			else if(*nameOrError == "__gcc_except_tab")
+			{
+				exceptTabSection = section;
+				hasExceptTabSection = true;
+			}
+		}
+		if(!hasTextSection || !hasEHFrameSection) { return; }
+
+		const U64 textLoadAddress
+			= loadedObjectForEHRepair->getSectionLoadAddress(textSection);
+		const U64 ehFrameLoadAddress
+			= loadedObjectForEHRepair->getSectionLoadAddress(ehFrameSection);
+		const I64 deltaForText = I64(textSection.getAddress())
+								 - I64(ehFrameSection.getAddress()) - I64(textLoadAddress)
+								 + I64(ehFrameLoadAddress);
+		I64 deltaForEH = 0;
+		if(hasExceptTabSection)
+		{
+			const U64 exceptTabLoadAddress
+				= loadedObjectForEHRepair->getSectionLoadAddress(exceptTabSection);
+			deltaForEH = I64(exceptTabSection.getAddress()) - I64(ehFrameSection.getAddress())
+						 - I64(exceptTabLoadAddress) + I64(ehFrameLoadAddress);
+		}
+
+		U8* fde = ehFrameAddr;
+		U8* const end = fde + ehFrameNumBytes;
+		while(fde < end)
+		{
+			U32 numFDEBytes;
+			memcpy(&numFDEBytes, fde, 4);
+			if(numFDEBytes == 0 || numFDEBytes == 0xffffffff) { break; }
+			U8* const nextFDE = fde + 4 + numFDEBytes;
+			U32 cieOffset;
+			memcpy(&cieOffset, fde + 4, 4);
+			if(cieOffset != 0)
+			{
+				// FDE fields: pc_begin at +8 (8 bytes), pc_range at +16 (8 bytes),
+				// augmentation length at +24, LSDA pointer at +25 if present.
+				I64 pcBegin;
+				memcpy(&pcBegin, fde + 8, 8);
+				pcBegin += deltaForText;
+				memcpy(fde + 8, &pcBegin, 8);
+				if(fde[24] != 0)
+				{
+					I64 lsda;
+					memcpy(&lsda, fde + 25, 8);
+					lsda += deltaForEH;
+					memcpy(fde + 25, &lsda, 8);
+				}
+			}
+			fde = nextFDE;
+		}
+	}
 
 	U8* imageBaseAddress;
 	Uptr numAllocatedImagePages;
@@ -490,6 +579,9 @@ Module::Module(const std::vector<U8>& objectBytes,
 
 	// Use the LLVM object loader to load the object.
 	std::unique_ptr<llvm::RuntimeDyld::LoadedObjectInfo> loadedObject = loader.loadObject(*object);
+#if LLVM_VERSION_MAJOR >= 8
+	memoryManager->setEHRepairInfo(object.get(), loadedObject.get());
+#endif
 	loader.finalizeWithMemoryManagerLocking();
 	if(loader.hasError())
 	{
