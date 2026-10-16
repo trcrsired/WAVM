@@ -42,6 +42,42 @@ static inline Uptr getPlatformPagesPerWebAssemblyPageLog2()
 	return IR::numBytesPerPageLog2 - v;
 }
 
+static inline void wavm_random_tag_fill_buffer_function(U8* base, U8* ed) noexcept
+{
+	try
+	{
+		::WAVM::Platform::getCryptographicRNG(reinterpret_cast<U8*>(base),
+											  static_cast<::std::size_t>(ed - base));
+	}
+	catch(...)
+	{
+		::std::abort();
+	}
+}
+
+static MemtagRandomBufferInMemory createMemoryTagRandomBufferImpl(U8 mask) noexcept
+{
+	::std::random_device eng;
+	::std::uniform_int_distribution<::std::size_t> dis(4096, 16384);
+	::std::size_t buffersize{dis(eng)};
+	U8* ptr = reinterpret_cast<U8*>(::std::malloc(buffersize));
+	if(ptr == nullptr) { ::std::abort(); }
+	U8* ed = ptr + buffersize;
+	wavm_random_tag_fill_buffer_function(ptr, ed);
+	constexpr U8 u8mx{::std::numeric_limits<U8>::max()};
+	if(mask != u8mx)
+	{
+		for(auto it{ptr}; it != ed; ++it) { *it &= mask; }
+	}
+	return {ptr, ed};
+}
+
+static inline constexpr U8 computeMemtagBufferMask(IR::IndexType idx) noexcept
+{
+	return static_cast<U8>(idx == IR::IndexType::i32 ? ::WAVM::IR::memtag32constants::index_mask
+													 : ::WAVM::IR::memtag64constants::index_mask);
+}
+
 static Memory* createMemoryImpl(Compartment* compartment,
 								IR::MemoryType type,
 								std::string&& debugName,
@@ -84,6 +120,13 @@ static Memory* createMemoryImpl(Compartment* compartment,
 		auto baseAddressTags = Platform::allocateVirtualPages(totaltaggedpages);
 		if(!baseAddressTags) { return nullptr; }
 		memory->baseAddressTags = baseAddressTags;
+		memory->memtagRandomBuffer
+			= createMemoryTagRandomBufferImpl(computeMemtagBufferMask(type.indexType));
+	}
+	else if(isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+	{
+		memory->memtagRandomBuffer = createMemoryTagRandomBufferImpl(
+			static_cast<U8>(::WAVM::IR::memtagarmmteconstants::index_mask));
 	}
 	memory->numReservedBytes = memoryMaxPages << pageBytesLog2;
 	if(!memory->baseAddress) { return nullptr; }
@@ -122,6 +165,17 @@ Memory* Runtime::createMemory(Compartment* compartment,
 		runtimeData.endAddress = memory->numReservedBytes;
 		runtimeData.memtagBase = memory->baseAddressTags;
 		memoryuptr->memtagstatus = isMemTagged;
+		if(isMemTagged == ::WAVM::LLVMJIT::memtagStatus::basic
+		   || isMemTagged == ::WAVM::LLVMJIT::memtagStatus::full
+		   || isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmte)
+		{
+			auto memtagrdbf{memory->memtagRandomBuffer};
+			runtimeData.memtagRandomBuffer = {memtagrdbf.Base, memtagrdbf.End, memtagrdbf.End};
+		}
+		else
+		{
+			runtimeData.memtagRandomBuffer = {};
+		}
 		runtimeData.numPages.store(memory->numPages.load(std::memory_order_acquire),
 								   std::memory_order_release);
 	}
@@ -149,6 +203,8 @@ Memory* Runtime::cloneMemory(Memory* memory, Compartment* newCompartment)
 		memcpy(newMemory->baseAddressTags,
 			   memory->baseAddressTags,
 			   memoryType.size.min * (IR::numBytesPerPage >> 4u));
+		newMemory->memtagRandomBuffer
+			= createMemoryTagRandomBufferImpl(computeMemtagBufferMask(memoryType.indexType));
 	}
 	resizingLock.unlock();
 
@@ -165,6 +221,15 @@ Memory* Runtime::cloneMemory(Memory* memory, Compartment* newCompartment)
 		runtimeData.numPages.store(newMemory->numPages, std::memory_order_release);
 		runtimeData.endAddress = newMemory->numReservedBytes;
 		runtimeData.memtagBase = newMemory->baseAddressTags;
+		auto memtagrdbf{newMemory->memtagRandomBuffer};
+		if(memtagrdbf.Base)
+		{
+			runtimeData.memtagRandomBuffer = {memtagrdbf.Base, memtagrdbf.End, memtagrdbf.End};
+		}
+		else
+		{
+			runtimeData.memtagRandomBuffer = {};
+		}
 	}
 
 	return newMemory;
@@ -185,6 +250,7 @@ Runtime::Memory::~Memory()
 		runtimeData.numPages.store(0, std::memory_order_release);
 		runtimeData.endAddress = 0;
 		runtimeData.memtagBase = nullptr;
+		runtimeData.memtagRandomBuffer = {};
 	}
 
 	// Remove the memory from the global array.
@@ -219,6 +285,14 @@ Runtime::Memory::~Memory()
 
 	// Free the allocated quota.
 	if(resourceQuota) { resourceQuota->memoryPages.free(numPages); }
+
+	if(memtagRandomBuffer.Base)
+	{
+		::WAVM::Utils::secure_clear(
+			memtagRandomBuffer.Base,
+			static_cast<::std::size_t>(memtagRandomBuffer.End - memtagRandomBuffer.Base));
+		free(memtagRandomBuffer.Base);
+	}
 }
 
 bool Runtime::isAddressOwnedByMemory(U8* address, Memory*& outMemory, Uptr& outMemoryAddress)
@@ -464,18 +538,12 @@ GrowResult Runtime::growMemory(Memory* memory, Uptr numPagesToGrow, Uptr* outOld
 				return GrowResult::outOfMemory;
 			}
 
-			// The random-tag buffer is shared by every memory in the compartment and is deliberately
-			// unmasked, so mask the byte to this memory's tag width before using it as a tag.
-			auto& randombuffer{memory->compartment->memtagRandomBuffer};
+			auto& randombuffer{memory->memtagRandomBuffer};
 			if(randombuffer.Base)
 			{
 				if(randombuffer.Base != randombuffer.End)
 				{
-					const U8 tagmask
-						= memory->indexType == IR::IndexType::i32
-							  ? static_cast<U8>(::WAVM::IR::memtag32constants::index_mask)
-							  : static_cast<U8>(::WAVM::IR::memtag64constants::index_mask);
-					auto ch{static_cast<U8>(randombuffer.End[-1] & tagmask)};
+					auto ch{randombuffer.End[-1]};
 					if(ch == 0) // ensure ch is never a 0
 					{
 						if(memory->indexType == IR::IndexType::i32)
@@ -541,8 +609,7 @@ static U8* getValidatedMemoryOffsetRangeImpl(Memory* memory,
 											 U8* memoryBase,
 											 Uptr memoryNumBytes,
 											 Uptr address,
-											 Uptr numBytes,
-											 bool checkTag = true)
+											 Uptr numBytes)
 {
 	auto baseaddrestags = memory->baseAddressTags;
 	U8 color = 0;
@@ -587,10 +654,7 @@ static U8* getValidatedMemoryOffsetRangeImpl(Memory* memory,
 					   {asObject(memory),
 						U64(boundsaddress > memoryNumBytes ? boundsaddress : memoryNumBytes)});
 	}
-	// The caller may have already validated the tag (e.g. the JIT does the software tag check
-	// inline and then passes the de-tagged address to a runtime intrinsic), in which case it
-	// passes checkTag=false to avoid re-checking a colour that is no longer present.
-	if(checkTag && baseaddrestags && numBytes != 0)
+	if(baseaddrestags && numBytes != 0)
 	{
 		Uptr tagaddress = address >> 4;
 		Uptr tagaddresslast = (address + numBytes - 1) >> 4;
@@ -628,22 +692,6 @@ U8* Runtime::getValidatedMemoryOffsetRange(Memory* memory, Uptr address, Uptr nu
 		memory->numPages.load(std::memory_order_acquire) * IR::numBytesPerPage,
 		address,
 		numBytes);
-}
-
-U8* Runtime::getValidatedMemoryOffsetRangeNoTagCheck(Memory* memory, Uptr address, Uptr numBytes)
-{
-	WAVM_ASSERT(memory);
-
-	// Same as getValidatedMemoryOffsetRange, but skips the software memory tag check. Used by
-	// runtime intrinsics whose address comes from the JIT, which has already done the tag check
-	// inline and passed a de-tagged address.
-	return ::getValidatedMemoryOffsetRangeImpl(
-		memory,
-		memory->baseAddress,
-		memory->numPages.load(std::memory_order_acquire) * IR::numBytesPerPage,
-		address,
-		numBytes,
-		false);
 }
 
 void Runtime::initDataSegment(Instance* instance,

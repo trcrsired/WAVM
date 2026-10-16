@@ -164,18 +164,15 @@ namespace WAVM { namespace LLVMJIT {
 												   memoryOffset->getType()),
 							memoryInfo.memtagBasePointerVariable);
 					}
-					// The tag cursor is thread-local: point at this context's copy rather than at
-					// the shared compartment memory data, so concurrently running threads don't
-					// race on the same bufferCurr.
+					::llvm::Value* memtagRandomBufferOffset = ::llvm::ConstantExpr::getAdd(
+						memoryOffset,
+						emitLiteralIptr(offsetof(Runtime::MemoryRuntimeData, memtagRandomBuffer),
+										memoryOffset->getType()));
 					irBuilder.CreateStore(
-						::WAVM::LLVMJIT::wavmCreateInBoundsGEP(
-							irBuilder,
-							llvmContext.i8Type,
-							::WAVM::LLVMJIT::wavmCreateLoad(
-								irBuilder, llvmContext.i8PtrType, contextPointerVariable),
-							{emitLiteralIptr(offsetof(Runtime::ContextRuntimeData,
-														memtagRandomBuffer),
-											 llvmContext.i64Type)}),
+						::WAVM::LLVMJIT::wavmCreateInBoundsGEP(irBuilder,
+															   llvmContext.i8Type,
+															   compartmentAddress,
+															   {memtagRandomBufferOffset}),
 						memoryInfo.memtagRandomBufferVariable);
 				}
 			}

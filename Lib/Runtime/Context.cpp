@@ -6,7 +6,6 @@
 #include "WAVM/Inline/BasicTypes.h"
 #include "WAVM/Platform/Memory.h"
 #include "WAVM/Platform/RWMutex.h"
-#include "WAVM/Platform/Random.h"
 #include "WAVM/Runtime/Runtime.h"
 #include "WAVM/RuntimeABI/RuntimeABI.h"
 
@@ -45,26 +44,6 @@ Context* Runtime::createContext(Compartment* compartment, std::string&& debugNam
 			   maxMutableGlobals * sizeof(IR::UntaggedValue));
 
 		context->runtimeData->context = context;
-
-		// Point this thread's cursor at a random position in the compartment's shared tag-byte
-		// buffer. The buffer is shared, but each thread loops over it independently, so the cursor
-		// lives here (per-thread) rather than in MemoryRuntimeData (per-compartment); starting each
-		// thread at a different position keeps two threads from emitting the same tag sequence in
-		// lockstep. The buffer outlives every context (it is owned by the compartment), so the
-		// bounds stored here never go stale.
-		MemtagRandomBufferInMemory& randomBuffer = compartment->memtagRandomBuffer;
-		if(randomBuffer.Base && randomBuffer.Base != randomBuffer.End)
-		{
-			const Uptr numBytes = Uptr(randomBuffer.End - randomBuffer.Base);
-			Uptr offset = 0;
-			Platform::getCryptographicRNG(reinterpret_cast<U8*>(&offset), sizeof(offset));
-			context->runtimeData->memtagRandomBuffer
-				= {randomBuffer.Base, randomBuffer.Base + (offset % numBytes), randomBuffer.End};
-		}
-		else
-		{
-			context->runtimeData->memtagRandomBuffer = {};
-		}
 	}
 
 	return context;
