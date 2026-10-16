@@ -399,11 +399,21 @@ namespace WAVM { namespace Runtime {
 	// Validates that an offset range is wholly inside a Memory's committed pages.
 	WAVM_API U8* getValidatedMemoryOffsetRange(Memory* memory, Uptr offset, Uptr numBytes);
 
+	// As getValidatedMemoryOffsetRange, but skips the software memory tag check. For use by
+	// runtime intrinsics whose address was validated by the JIT (which de-tags it before passing
+	// it on), so re-checking the tag here would compare against a colour that is no longer present.
+	WAVM_API U8* getValidatedMemoryOffsetRangeNoTagCheck(Memory* memory, Uptr offset, Uptr numBytes);
+
 	// Validates an access to a single element of memory at the given offset, and returns a
 	// reference to it.
 	template<typename Value> Value& memoryRef(Memory* memory, Uptr offset)
 	{
 		return *(Value*)getValidatedMemoryOffsetRange(memory, offset, sizeof(Value));
+	}
+
+	template<typename Value> Value& memoryRefNoTagCheck(Memory* memory, Uptr offset)
+	{
+		return *(Value*)getValidatedMemoryOffsetRangeNoTagCheck(memory, offset, sizeof(Value));
 	}
 
 	// Validates an access to multiple elements of memory at the given offset, and returns a pointer

@@ -861,6 +861,22 @@ static inline ::llvm::Value* generateMemRandomTagByte(EmitFunctionContext& funct
 	currphiNode->addIncoming(currptr, rdtagentryBlock);
 	::llvm::Value* rettag = ::WAVM::LLVMJIT::wavmCreateLoad(
 		irBuilder, functionContext.llvmContext.i8Type, currphiNode);
+
+	// The shared random-tag buffer is unmasked so that a single buffer can serve every memory, so
+	// mask the byte to this memory's tag width here, where its type (and memtag status) is known.
+	// This reproduces exactly the byte range the old per-memory buffers were created with.
+	const U8 tagmask
+		= ::WAVM::LLVMJIT::is_memtagstatus_armmte(functionContext.isMemTagged)
+			  ? static_cast<U8>(::WAVM::IR::memtagarmmteconstants::index_mask)
+			  : (functionContext.moduleContext.irModule.memories.getType(memoryIndex).indexType
+						 == ::WAVM::IR::IndexType::i64
+					 ? static_cast<U8>(::WAVM::IR::memtag64constants::index_mask)
+					 : static_cast<U8>(::WAVM::IR::memtag32constants::index_mask));
+	if(tagmask != ::std::numeric_limits<U8>::max())
+	{
+		rettag = irBuilder.CreateAnd(rettag, irBuilder.getInt8(tagmask));
+	}
+
 	currptr = irBuilder.CreateGEP(
 		functionContext.llvmContext.i8Type, currphiNode, {irBuilder.getInt32(1)});
 	irBuilder.CreateStore(currptr, currptraddr);
@@ -2239,8 +2255,10 @@ void EmitFunctionContext::atomic_fence(AtomicFenceImm imm)
 														 BoundsCheckOp::clampToGuardRegion);       \
 		trapIfMisalignedAtomic(boundedAddress, numBytesLog2);                                      \
 		auto pointer = coerceAddressToPointer(boundedAddress, llvmMemoryType, imm.memoryIndex);    \
-		auto load = ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, address->getType(), pointer);       \
-		load->setAlignment(LLVM_ALIGNMENT(U64(1) << imm.alignmentLog2));                           \
+		auto load = ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, llvmMemoryType, pointer);           \
+		/* trapIfMisalignedAtomic guarantees natural alignment, so use it instead of the (possibly  \
+		 * smaller) alignment hint to keep LLVM from lowering the access to a libatomic call. */   \
+		load->setAlignment(LLVM_ALIGNMENT(U64(1) << numBytesLog2));                                \
 		load->setVolatile(true);                                                                   \
 		load->setAtomic(llvm::AtomicOrdering::SequentiallyConsistent);                             \
 		push(memToValue(load, asLLVMType(llvmContext, ValueType::valueTypeId)));                   \
@@ -2261,7 +2279,8 @@ void EmitFunctionContext::atomic_fence(AtomicFenceImm imm)
 		auto memoryValue = valueToMem(value, llvmMemoryType);                                      \
 		auto store = irBuilder.CreateStore(memoryValue, pointer);                                  \
 		store->setVolatile(true);                                                                  \
-		store->setAlignment(LLVM_ALIGNMENT(U64(1) << imm.alignmentLog2));                          \
+		/* trapIfMisalignedAtomic guarantees natural alignment. */                                 \
+		store->setAlignment(LLVM_ALIGNMENT(U64(1) << numBytesLog2));                               \
 		store->setAtomic(llvm::AtomicOrdering::SequentiallyConsistent);                            \
 	}
 EMIT_ATOMIC_LOAD_OP(i32, atomic_load, llvmContext.i32Type, 2, identity)

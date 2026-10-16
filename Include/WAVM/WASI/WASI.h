@@ -47,6 +47,11 @@ namespace WAVM { namespace WASI {
 	WAVM_API Runtime::Memory* getProcessMemory(const Process& process);
 	WAVM_API void setProcessMemory(Process& process, Runtime::Memory* memory);
 
+	// Sets the instantiated module that the process runs. The WASI threads extension (the
+	// thread-spawn syscall) looks up the module's exported wasi_thread_start entry point here.
+	WAVM_API Runtime::Instance* getProcessInstance(const Process& process);
+	WAVM_API void setProcessInstance(Process& process, Runtime::Instance* instance);
+
 	enum class SyscallTraceLevel
 	{
 		none,

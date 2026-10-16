@@ -1,5 +1,6 @@
 #include <stddef.h>
 #include <atomic>
+#include <cstdlib>
 #include <memory>
 #include <vector>
 #include "RuntimePrivate.h"
@@ -8,11 +9,31 @@
 #include "WAVM/Inline/Timing.h"
 #include "WAVM/Platform/Memory.h"
 #include "WAVM/Platform/RWMutex.h"
+#include "WAVM/Platform/Random.h"
 #include "WAVM/Runtime/Runtime.h"
 #include "WAVM/RuntimeABI/RuntimeABI.h"
 
 using namespace WAVM;
 using namespace WAVM::Runtime;
+
+// Creates the buffer of random tag bytes that every thread of the compartment shares. It is
+// deliberately unmasked: each memory masks the byte it reads with its own tag width (see
+// generateMemRandomTagByte), so one shared buffer serves i32, i64, and armmte memories alike.
+static MemtagRandomBufferInMemory createMemtagRandomBuffer() noexcept
+{
+	U8* base = reinterpret_cast<U8*>(::std::malloc(memoryTagBufferBytes));
+	if(base == nullptr) { ::std::abort(); }
+	U8* end = base + memoryTagBufferBytes;
+	try
+	{
+		Platform::getCryptographicRNG(base, Uptr(memoryTagBufferBytes));
+	}
+	catch(...)
+	{
+		::std::abort();
+	}
+	return {base, end};
+}
 
 Runtime::Compartment::Compartment(std::string&& inDebugName,
 								  struct CompartmentRuntimeData* inRuntimeData,
@@ -28,6 +49,7 @@ Runtime::Compartment::Compartment(std::string&& inDebugName,
 , instances(0, UINTPTR_MAX - 1)
 , contexts(0, maxContexts - 1)
 , foreigns(0, UINTPTR_MAX - 1)
+, memtagRandomBuffer(createMemtagRandomBuffer())
 {
 	runtimeData->compartment = this;
 }
@@ -35,6 +57,14 @@ Runtime::Compartment::Compartment(std::string&& inDebugName,
 Runtime::Compartment::~Compartment()
 {
 	Platform::RWMutex::ExclusiveLock compartmentLock(mutex);
+
+	if(memtagRandomBuffer.Base)
+	{
+		::WAVM::Utils::secure_clear(memtagRandomBuffer.Base,
+									static_cast<::std::size_t>(memtagRandomBuffer.End
+															   - memtagRandomBuffer.Base));
+		::std::free(memtagRandomBuffer.Base);
+	}
 
 	WAVM_ASSERT(!memories.size());
 	WAVM_ASSERT(!tables.size());

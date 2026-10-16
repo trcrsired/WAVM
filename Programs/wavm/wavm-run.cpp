@@ -919,6 +919,10 @@ struct State
 				return EXIT_FAILURE;
 			}
 			WASI::setProcessMemory(*wasiProcess, memory);
+
+			// Give the process the module instance so the thread-spawn syscall can find the
+			// module's wasi_thread_start entry point.
+			WASI::setProcessInstance(*wasiProcess, instance);
 		}
 
 		// Execute the program.

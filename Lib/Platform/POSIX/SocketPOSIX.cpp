@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/uio.h>
+#include <poll.h>
 #include <unistd.h>
 #include <memory>
 #include <string>
@@ -225,6 +226,12 @@ struct POSIXSocketVFD : VFD
 	}
 
 	virtual Result sync(SyncType syncType) override { return Result::notSynchronizable; }
+
+	virtual bool getPollableFD(Uptr& outFD) override
+	{
+		outFD = Uptr(U32(fd));
+		return true;
+	}
 
 	virtual Result getVFDInfo(VFDInfo& outInfo) override
 	{
@@ -860,4 +867,29 @@ Result Platform::resolveAddress(const std::string& hostName,
 	freeaddrinfo(addrInfoList);
 	*inOutNumAddresses = numAddresses;
 	return numAddresses ? Result::success : Result::nameLookupFailed;
+}
+
+VFS::Result Platform::pollFDs(PollFD* fds, Uptr numFDs, I64 timeoutNanos)
+{
+	std::vector<struct pollfd> pollFds(numFDs);
+	for(Uptr i = 0; i < numFDs; ++i)
+	{
+		pollFds[i].fd = I32(fds[i].fd);
+		pollFds[i].events = short((fds[i].waitRead ? POLLIN : 0) | (fds[i].waitWrite ? POLLOUT : 0));
+		pollFds[i].revents = 0;
+		fds[i].ready = false;
+	}
+
+	I32 timeoutMs = -1;
+	if(timeoutNanos >= 0)
+	{
+		// Round up so a sub-millisecond timeout doesn't turn into an infinite wait.
+		timeoutMs = I32((timeoutNanos + 999999) / 1000000);
+	}
+
+	const I32 result = ::poll(pollFds.data(), nfds_t(numFDs), timeoutMs);
+	if(result < 0) { return asSocketVFSResult(errno); }
+
+	for(Uptr i = 0; i < numFDs; ++i) { fds[i].ready = pollFds[i].revents != 0; }
+	return Result::success;
 }

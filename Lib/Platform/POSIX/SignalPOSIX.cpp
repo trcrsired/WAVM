@@ -130,6 +130,14 @@ static void maskSignals(int how)
 
 bool Platform::initGlobalSignalsOnce()
 {
+	// Ignore SIGPIPE process-wide. The VM owns the whole process, and a write to a socket or pipe
+	// whose peer has closed should surface as EPIPE (which the socket layer maps to the guest's
+	// brokenPipe result) instead of killing WAVM. Host socket writes also pass MSG_NOSIGNAL, but
+	// this covers writes that go through a plain fd.
+#ifdef SIGPIPE
+	WAVM_ERROR_UNLESS(signal(SIGPIPE, SIG_IGN) != SIG_ERR);
+#endif
+
 	// Set the signal handler for the signals we want to intercept.
 	struct sigaction signalAction;
 	signalAction.sa_sigaction = signalHandler;

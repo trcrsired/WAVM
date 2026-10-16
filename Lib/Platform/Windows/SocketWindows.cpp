@@ -244,6 +244,12 @@ struct WindowsSocketVFD : VFD
 
 	virtual Result sync(SyncType syncType) override { return Result::notSynchronizable; }
 
+	virtual bool getPollableFD(Uptr& outFD) override
+	{
+		outFD = Uptr(sock);
+		return true;
+	}
+
 	virtual Result getVFDInfo(VFDInfo& outInfo) override
 	{
 		outInfo.type = fileType;
@@ -955,4 +961,25 @@ Result Platform::resolveAddress(const std::string& hostName,
 	freeaddrinfo(addrInfoList);
 	*inOutNumAddresses = numAddresses;
 	return numAddresses ? Result::success : Result::nameLookupFailed;
+}
+
+VFS::Result Platform::pollFDs(PollFD* fds, Uptr numFDs, I64 timeoutNanos)
+{
+	std::vector<WSAPOLLFD> pollFds(numFDs);
+	for(Uptr i = 0; i < numFDs; ++i)
+	{
+		pollFds[i].fd = SOCKET(fds[i].fd);
+		pollFds[i].events = short((fds[i].waitRead ? POLLRDNORM : 0) | (fds[i].waitWrite ? POLLWRNORM : 0));
+		pollFds[i].revents = 0;
+		fds[i].ready = false;
+	}
+
+	INT timeoutMs = -1;
+	if(timeoutNanos >= 0) { timeoutMs = INT((timeoutNanos + 999999) / 1000000); }
+
+	const int result = WSAPoll(pollFds.data(), ULONG(numFDs), timeoutMs);
+	if(result == SOCKET_ERROR) { return asSocketVFSResult(WSAGetLastError()); }
+
+	for(Uptr i = 0; i < numFDs; ++i) { fds[i].ready = pollFds[i].revents != 0; }
+	return Result::success;
 }

@@ -57,8 +57,22 @@ namespace WAVM { namespace Runtime {
 
 	static constexpr Uptr contextNumBytes = 16384;
 	static constexpr Uptr maxThunkArgAndReturnBytes = 256;
+
+	// A cursor that loops over a buffer of random tag bytes. The buffer is shared by every thread of
+	// a compartment, but each thread advances its own cursor independently, so the cursor must be
+	// thread-local. It lives in ContextRuntimeData (one per thread) rather than in MemoryRuntimeData
+	// (one per compartment), which is where it used to be -- that made every thread race on the same
+	// bufferCurr.
+	struct MemoryRandomTagBuffer
+	{
+		void* bufferBeg;
+		void* bufferCurr;
+		void* bufferEnd;
+	};
+
 	static constexpr Uptr maxMutableGlobals
-		= (contextNumBytes - maxThunkArgAndReturnBytes - sizeof(Context*))
+		= (contextNumBytes - maxThunkArgAndReturnBytes - sizeof(Context*)
+		   - sizeof(MemoryRandomTagBuffer))
 		  / sizeof(IR::UntaggedValue);
 	static constexpr Uptr contextRuntimeDataAlignment = 16384;
 
@@ -70,18 +84,17 @@ namespace WAVM { namespace Runtime {
 	{
 		U8 thunkArgAndReturnData[maxThunkArgAndReturnBytes];
 		Context* context;
+
+		// This thread's cursor over the compartment's random tag-byte buffer. Initialized to a
+		// random position when the context is created (see Runtime::createContext), advanced and
+		// wrapped by the memtag random-tag instructions.
+		MemoryRandomTagBuffer memtagRandomBuffer;
+
 		IR::UntaggedValue mutableGlobals[maxMutableGlobals];
 	};
 
 	static_assert(sizeof(ContextRuntimeData) == contextNumBytes,
 				  "ContextRuntimeData isn't the expected size");
-
-	struct MemoryRandomTagBuffer
-	{
-		void* bufferBeg;
-		void* bufferCurr;
-		void* bufferEnd;
-	};
 
 	struct MemoryRuntimeData
 	{
@@ -89,6 +102,9 @@ namespace WAVM { namespace Runtime {
 		std::atomic<Uptr> numPages;
 		Uptr endAddress;
 		void* memtagBase;
+		// The tag cursor is thread-local now (see ContextRuntimeData::memtagRandomBuffer). This slot
+		// is unused, but dropping it would shrink MemoryRuntimeData and break the page alignment of
+		// CompartmentRuntimeData::contexts, so it stays purely as padding.
 		MemoryRandomTagBuffer memtagRandomBuffer;
 	};
 

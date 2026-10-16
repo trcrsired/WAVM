@@ -1,4 +1,5 @@
 #include <memory.h>
+#include "WAVM/IR/Memtag.h"
 #include "WAVM/IR/Types.h"
 #include "WAVM/Inline/BasicTypes.h"
 #include "WAVM/Inline/HashMap.h"
@@ -119,6 +120,11 @@ namespace WAVM { namespace WASI {
 	{
 		Runtime::GCPointer<Runtime::Compartment> compartment;
 		Runtime::GCPointer<Runtime::Memory> memory;
+
+		// The instantiated module the process runs. Set by the embedder after instantiation; used
+		// by the thread-spawn syscall to find the module's wasi_thread_start entry point.
+		Runtime::GCPointer<Runtime::Instance> instance;
+
 		std::vector<std::string> args;
 		std::vector<std::string> envs;
 
@@ -130,6 +136,12 @@ namespace WAVM { namespace WASI {
 		// Whether the process is allowed to use the network (the sock_* syscalls). Sockets can
 		// only enter the process's FD table if this was enabled when the socket FD was created.
 		bool networkEnabled = false;
+
+		// The memtag mode the module was compiled/loaded with. A spawned thread must invoke the
+		// module's wasi_thread_start with the same mode as the main thread, otherwise the invoke
+		// thunk it uses will not set up the memtag base/random-buffer context variables, and the
+		// thread will trap on its first tagged memory access.
+		::WAVM::LLVMJIT::memtagStatus memtagStatus = ::WAVM::LLVMJIT::memtagStatus::none;
 
 		ProcessResolver resolver;
 

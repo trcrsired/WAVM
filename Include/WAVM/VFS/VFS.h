@@ -295,6 +295,13 @@ namespace WAVM { namespace VFS {
 
 		virtual Result openDir(DirEntStream*& outStream) = 0;
 
+		// If this VFD is backed by an OS descriptor that can be waited on for read/write
+		// readiness (used to implement poll_oneoff), returns true and sets outFD to that
+		// descriptor. The default implementation returns false, meaning the FD can't be waited
+		// on. The returned descriptor is only used for polling, and must stay valid while the
+		// VFD is alive.
+		virtual bool getPollableFD(Uptr& outFD);
+
 		// Socket operations. The default implementations return notSupported for FDs that
 		// aren't sockets.
 

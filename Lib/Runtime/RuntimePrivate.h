@@ -98,7 +98,6 @@ namespace WAVM { namespace Runtime {
 
 		U8* baseAddress = nullptr;
 		U8* baseAddressTags = nullptr;
-		MemtagRandomBufferInMemory memtagRandomBuffer;
 		Uptr numReservedBytes = 0;
 
 		mutable Platform::RWMutex resizingMutex;
@@ -267,6 +266,11 @@ namespace WAVM { namespace Runtime {
 		IndexMap<Uptr, Instance*> instances;
 		IndexMap<Uptr, Context*> contexts;
 		IndexMap<Uptr, Foreign*> foreigns;
+
+		// The buffer of random tag bytes shared by all threads of the compartment. Each thread's
+		// cursor into it lives in its own ContextRuntimeData. Created with the compartment so that it
+		// is guaranteed to exist before any context (and before any memory), and outlives them all.
+		MemtagRandomBufferInMemory memtagRandomBuffer;
 
 		DenseStaticIntSet<U32, maxMutableGlobals> globalDataAllocationMask;
 		IR::UntaggedValue initialContextMutableGlobals[maxMutableGlobals];

@@ -269,6 +269,12 @@ struct POSIXFD : VFD
 		return result;
 	}
 
+	virtual bool getPollableFD(Uptr& outFD) override
+	{
+		outFD = Uptr(U32(fd));
+		return true;
+	}
+
 	virtual Result seek(I64 offset, SeekOrigin origin, U64* outAbsoluteOffset = nullptr) override
 	{
 		I32 whence = 0;

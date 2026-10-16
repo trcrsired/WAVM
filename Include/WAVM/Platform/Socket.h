@@ -30,4 +30,18 @@ namespace WAVM { namespace Platform {
 										bool allowIPv6,
 										VFS::SocketAddress* outAddresses,
 										Uptr* inOutNumAddresses);
+
+	// A descriptor to wait on, with the operations pollFDs is waiting for.
+	struct PollFD
+	{
+		Uptr fd;
+		bool waitRead;
+		bool waitWrite;
+		bool ready;
+	};
+
+	// Waits until any of the given descriptors is ready for the requested operation, or until
+	// timeoutNanos elapses (or indefinitely if timeoutNanos < 0). Sets fds[i].ready to whether
+	// fds[i] is ready. Returns the error from the underlying poll if it failed.
+	WAVM_API VFS::Result pollFDs(PollFD* fds, Uptr numFDs, I64 timeoutNanos);
 }}

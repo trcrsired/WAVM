@@ -71,10 +71,139 @@ namespace LLVMRuntimeSymbols {
 	extern "C" void __cxa_end_catch();
 #endif
 
+#if !defined(_MSC_VER)
+	// LLVM's AtomicExpandPass lowers an atomic access whose alignment hint is
+	// smaller than its access size to these generic libatomic entry points.
+	// WAVM's atomic accesses are trap-checked for natural alignment, but provide
+	// native size-dispatched implementations so the JIT never has to resolve an
+	// undefined symbol. (MSVC does not provide the __atomic_* builtins.)
+	static void wavm_libatomic_load(Uptr size, void* pointer, void* outValue, int ordering) noexcept
+	{
+		switch(size)
+		{
+		case 1: {
+			const U8 value = __atomic_load_n(reinterpret_cast<U8*>(pointer), ordering);
+			memcpy(outValue, &value, 1);
+			break;
+		}
+		case 2: {
+			const U16 value = __atomic_load_n(reinterpret_cast<U16*>(pointer), ordering);
+			memcpy(outValue, &value, 2);
+			break;
+		}
+		case 4: {
+			const U32 value = __atomic_load_n(reinterpret_cast<U32*>(pointer), ordering);
+			memcpy(outValue, &value, 4);
+			break;
+		}
+		case 8: {
+			const U64 value = __atomic_load_n(reinterpret_cast<U64*>(pointer), ordering);
+			memcpy(outValue, &value, 8);
+			break;
+		}
+		default: WAVM_UNREACHABLE();
+		}
+	}
+
+	static void wavm_libatomic_store(Uptr size, void* pointer, void* value, int ordering) noexcept
+	{
+		switch(size)
+		{
+		case 1: __atomic_store_n(reinterpret_cast<U8*>(pointer), *reinterpret_cast<U8*>(value), ordering); break;
+		case 2: __atomic_store_n(reinterpret_cast<U16*>(pointer), *reinterpret_cast<U16*>(value), ordering); break;
+		case 4: __atomic_store_n(reinterpret_cast<U32*>(pointer), *reinterpret_cast<U32*>(value), ordering); break;
+		case 8: __atomic_store_n(reinterpret_cast<U64*>(pointer), *reinterpret_cast<U64*>(value), ordering); break;
+		default: WAVM_UNREACHABLE();
+		}
+	}
+
+	static void wavm_libatomic_exchange(
+		Uptr size, void* pointer, void* value, void* outValue, int ordering) noexcept
+	{
+		switch(size)
+		{
+		case 1: {
+			const U8 result = __atomic_exchange_n(reinterpret_cast<U8*>(pointer), *reinterpret_cast<U8*>(value), ordering);
+			memcpy(outValue, &result, 1);
+			break;
+		}
+		case 2: {
+			const U16 result = __atomic_exchange_n(reinterpret_cast<U16*>(pointer), *reinterpret_cast<U16*>(value), ordering);
+			memcpy(outValue, &result, 2);
+			break;
+		}
+		case 4: {
+			const U32 result = __atomic_exchange_n(reinterpret_cast<U32*>(pointer), *reinterpret_cast<U32*>(value), ordering);
+			memcpy(outValue, &result, 4);
+			break;
+		}
+		case 8: {
+			const U64 result = __atomic_exchange_n(reinterpret_cast<U64*>(pointer), *reinterpret_cast<U64*>(value), ordering);
+			memcpy(outValue, &result, 8);
+			break;
+		}
+		default: WAVM_UNREACHABLE();
+		}
+	}
+
+	static int wavm_libatomic_compare_exchange(Uptr size,
+											   void* pointer,
+											   void* expected,
+											   void* desired,
+											   int successOrdering,
+											   int failureOrdering) noexcept
+	{
+		switch(size)
+		{
+		case 1:
+			return __atomic_compare_exchange_n(reinterpret_cast<U8*>(pointer),
+											   reinterpret_cast<U8*>(expected),
+											   *reinterpret_cast<U8*>(desired),
+											   false,
+											   successOrdering,
+											   failureOrdering)
+					   ? 1
+					   : 0;
+		case 2:
+			return __atomic_compare_exchange_n(reinterpret_cast<U16*>(pointer),
+											   reinterpret_cast<U16*>(expected),
+											   *reinterpret_cast<U16*>(desired),
+											   false,
+											   successOrdering,
+											   failureOrdering)
+					   ? 1
+					   : 0;
+		case 4:
+			return __atomic_compare_exchange_n(reinterpret_cast<U32*>(pointer),
+											   reinterpret_cast<U32*>(expected),
+											   *reinterpret_cast<U32*>(desired),
+											   false,
+											   successOrdering,
+											   failureOrdering)
+					   ? 1
+					   : 0;
+		case 8:
+			return __atomic_compare_exchange_n(reinterpret_cast<U64*>(pointer),
+											   reinterpret_cast<U64*>(expected),
+											   *reinterpret_cast<U64*>(desired),
+											   false,
+											   successOrdering,
+											   failureOrdering)
+					   ? 1
+					   : 0;
+		default: WAVM_UNREACHABLE();
+		}
+	}
+#endif
+
 	static HashMap<std::string, void*> map = {
 		{"memmove", (void*)&memmove},
 		{"memset", (void*)&memset},
 #if !defined(_MSC_VER)
+		{"__atomic_load", (void*)&wavm_libatomic_load},
+		{"__atomic_store", (void*)&wavm_libatomic_store},
+		{"__atomic_exchange", (void*)&wavm_libatomic_exchange},
+		{"__atomic_compare_exchange", (void*)&wavm_libatomic_compare_exchange},
 		{"_Unwind_Resume", (void*)&_Unwind_Resume},
 		{"_Unwind_RaiseException", (void*)&_Unwind_RaiseException},
 #endif

@@ -18,6 +18,8 @@ WAVM_ENUM_VFS_RESULTS(V)
 	};
 }
 
+bool VFD::getPollableFD(Uptr& outFD) { return false; }
+
 Result VFD::sockAccept(VFD*& outVFD,
 					   const VFDFlags& acceptedFlags,
 					   SocketAddress* outPeerAddress)
