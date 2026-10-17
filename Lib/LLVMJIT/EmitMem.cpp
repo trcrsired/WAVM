@@ -861,6 +861,22 @@ static inline ::llvm::Value* generateMemRandomTagByte(EmitFunctionContext& funct
 	currphiNode->addIncoming(currptr, rdtagentryBlock);
 	::llvm::Value* rettag = ::WAVM::LLVMJIT::wavmCreateLoad(
 		irBuilder, functionContext.llvmContext.i8Type, currphiNode);
+
+	// The shared random-tag buffer is unmasked so that a single buffer can serve every memory, so
+	// mask the byte to this memory's tag width here, where its type (and memtag status) is known.
+	// This reproduces exactly the byte range the old per-memory buffers were created with.
+	const U8 tagmask
+		= ::WAVM::LLVMJIT::is_memtagstatus_armmte(functionContext.isMemTagged)
+			  ? static_cast<U8>(::WAVM::IR::memtagarmmteconstants::index_mask)
+			  : (functionContext.moduleContext.irModule.memories.getType(memoryIndex).indexType
+						 == ::WAVM::IR::IndexType::i64
+					 ? static_cast<U8>(::WAVM::IR::memtag64constants::index_mask)
+					 : static_cast<U8>(::WAVM::IR::memtag32constants::index_mask));
+	if(tagmask != ::std::numeric_limits<U8>::max())
+	{
+		rettag = irBuilder.CreateAnd(rettag, irBuilder.getInt8(tagmask));
+	}
+
 	currptr = irBuilder.CreateGEP(
 		functionContext.llvmContext.i8Type, currphiNode, {irBuilder.getInt32(1)});
 	irBuilder.CreateStore(currptr, currptraddr);
@@ -1072,8 +1088,26 @@ static inline ::llvm::Value* StoreTagIntoMemAndZeroing(EmitFunctionContext& func
 				irBuilder.CreateAnd(cndpageprotect,
 									irBuilder.CreateAnd(cndbig, addressPlusOffsetOverflowed)));
 		}
-		irBuilder.CreateMemSet(
-			realtagaddress, color, irBuilder.CreateLShr(taggedbytes, 4), LLVM_ALIGNMENT(1), false);
+		// The tag shadow holds one byte per 16-byte line. Tagging `taggedbytes` bytes starting at
+		// `address` must cover every line those bytes touch, so the byte count rounds up and
+		// includes the partial line at the start:
+		//   ceil(((address & 15) + taggedbytes) / 16)
+		// A plain `taggedbytes >> 4` leaves the trailing partial line untagged whenever the region
+		// does not finish on a 16-byte boundary, and every later access to that tail then fails the
+		// tag check even though the bytes are within the tag-stored region.
+		::llvm::Type* tagcounttype = taggedbytes->getType();
+		::llvm::Value* addresslowbits = address;
+		if(addresslowbits->getType() != tagcounttype)
+		{
+			addresslowbits = irBuilder.CreateZExtOrTrunc(addresslowbits, tagcounttype);
+		}
+		::llvm::Value* taglinemask = ::llvm::ConstantInt::get(tagcounttype, 15);
+		::llvm::Value* tagbytecount = irBuilder.CreateLShr(
+			irBuilder.CreateAdd(
+				irBuilder.CreateAdd(taggedbytes, irBuilder.CreateAnd(addresslowbits, taglinemask)),
+				taglinemask),
+			4);
+		irBuilder.CreateMemSet(realtagaddress, color, tagbytecount, LLVM_ALIGNMENT(1), false);
 		if(zeroing) { memtag_zero_memory(functionContext, memoryIndex, address, taggedbytes); }
 	}
 	return address;
@@ -2240,7 +2274,7 @@ void EmitFunctionContext::atomic_fence(AtomicFenceImm imm)
 		trapIfMisalignedAtomic(boundedAddress, numBytesLog2);                                      \
 		auto pointer = coerceAddressToPointer(boundedAddress, llvmMemoryType, imm.memoryIndex);    \
 		auto load = ::WAVM::LLVMJIT::wavmCreateLoad(irBuilder, llvmMemoryType, pointer);           \
-		/* trapIfMisalignedAtomic guarantees natural alignment, so use it instead of the (possibly  \
+		/* trapIfMisalignedAtomic guarantees natural alignment, so use it instead of the (possibly \
 		 * smaller) alignment hint to keep LLVM from lowering the access to a libatomic call. */   \
 		load->setAlignment(LLVM_ALIGNMENT(U64(1) << numBytesLog2));                                \
 		load->setVolatile(true);                                                                   \

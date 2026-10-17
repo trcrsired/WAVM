@@ -68,8 +68,8 @@ static void closeWaitList(Uptr address, WaitList* waitList)
 {
 	// Release the reference while holding the map mutex, so that the decrement is serialized with
 	// openWaitList's lookup-and-acquire. If the reference were released outside the mutex, this
-	// thread could be preempted after the count reaches zero but before it removes the map entry and
-	// deletes the list; another thread could then acquire the (last) reference, release it, and
+	// thread could be preempted after the count reaches zero but before it removes the map entry
+	// and deletes the list; another thread could then acquire the (last) reference, release it, and
 	// delete the list, and this thread would resume and read the freed list's reference count.
 	// Holding the mutex across the decrement and the delete ensures that no thread can acquire a
 	// reference to a wait list that is about to be deleted.
@@ -210,9 +210,7 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsAtomics,
 							   void,
 							   misalignedAtomicTrap,
 							   U64 address)
-{
-	throwException(ExceptionTypes::misalignedAtomicMemoryAccess, {address});
-}
+{ throwException(ExceptionTypes::misalignedAtomicMemoryAccess, {address}); }
 
 WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsAtomics,
 							   "memory.atomic.notify",
@@ -255,7 +253,9 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsAtomics,
 	WAVM_ASSERT(!(address & 3));
 
 	// Validate that the address is within the memory's bounds, and convert it to a pointer.
-	I32* valuePointer = &memoryRef<I32>(memory, address);
+	// The address has already had its software memory tag checked inline by the JIT, which then
+	// de-tagged it, so do not re-check the tag here.
+	I32* valuePointer = &memoryRefNoTagCheck<I32>(memory, address);
 
 	return waitOnAddress(valuePointer, expectedValue, timeout);
 }
@@ -277,7 +277,8 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsAtomics,
 	WAVM_ASSERT(!(address & 7));
 
 	// Validate that the address is within the memory's bounds, and convert it to a pointer.
-	I64* valuePointer = &memoryRef<I64>(memory, address);
+	// See atomic_wait_I32: the JIT has already checked the tag and de-tagged the address.
+	I64* valuePointer = &memoryRefNoTagCheck<I64>(memory, address);
 
 	return waitOnAddress(valuePointer, expectedValue, timeout);
 }
