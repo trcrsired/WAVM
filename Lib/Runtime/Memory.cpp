@@ -594,10 +594,24 @@ static U8* getValidatedMemoryOffsetRangeImpl(Memory* memory,
 	if(checkTag && baseaddrestags && numBytes != 0)
 	{
 		Uptr tagaddress = address >> 4;
-		Uptr tagaddresslast = (address + numBytes - 1) >> 4;
-		if(baseaddrestags[tagaddress] != color || baseaddrestags[tagaddresslast] != color)
+		if(baseaddrestags[tagaddress] != color)
 		{
 			throwException(ExceptionTypes::invalidMemoryTagAccess, {});
+		}
+		// The software tagging check mode mirrors the JIT's: release ("memtag-soft") validates
+		// only the granule containing the first byte of the access, while debug
+		// ("memtag-soft-debug") additionally validates the granule containing the last byte.
+		// The JIT gates the last-granule test on memtagStatus::full; the runtime-side validator
+		// (used by WASI syscalls and other runtime memory accesses) must agree, otherwise a
+		// release-mode build traps here on accesses that straddle into a differently-tagged
+		// trailing granule.
+		if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::full)
+		{
+			Uptr tagaddresslast = (address + numBytes - 1) >> 4;
+			if(baseaddrestags[tagaddresslast] != color)
+			{
+				throwException(ExceptionTypes::invalidMemoryTagAccess, {});
+			}
 		}
 	}
 	WAVM_ASSERT(memoryBase);
