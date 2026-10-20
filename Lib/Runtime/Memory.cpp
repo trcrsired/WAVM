@@ -541,6 +541,37 @@ void Runtime::unmapMemoryPages(Memory* memory, Uptr pageIndex, Uptr numPages)
 
 U8* Runtime::getMemoryBaseAddress(Memory* memory) { return memory->baseAddress; }
 
+void Runtime::setMemoryTag(Memory* memory, Uptr address, Uptr numBytes, U8 tag)
+{
+	if(memory->baseAddressTags)
+	{
+		// The tag shadow holds one byte per 16-byte granule.
+		const Uptr firstGranule = address >> 4;
+		const Uptr endGranule = (address + numBytes + 15) >> 4;
+		for(Uptr granule = firstGranule; granule < endGranule; ++granule)
+		{
+			memory->baseAddressTags[granule] = tag;
+		}
+		return;
+	}
+#if defined(__aarch64__) && (!defined(_MSC_VER) || defined(__clang__) || defined(__GNUC__))
+	if constexpr(platform_support_arm_mte)
+	{
+		if(::WAVM::LLVMJIT::is_memtagstatus_armmte(memory->memtagstatus))
+		{
+			// Hardware tags live in the top byte of the pointer; the low four address bits are
+			// ignored by STG, so round outwards to whole granules.
+			const Uptr startAddress = address & ~Uptr(15);
+			const Uptr endAddress = (address + numBytes + 15) & ~Uptr(15);
+			const Uptr hostAddress
+				= reinterpret_cast<Uptr>(memory->baseAddress + startAddress)
+				  | (Uptr(tag) << ::WAVM::IR::memtagarmmteconstants::shifter);
+			wavm_aarch64_mte_settag(reinterpret_cast<void*>(hostAddress), endAddress - startAddress);
+		}
+	}
+#endif
+}
+
 static U8* getValidatedMemoryOffsetRangeImpl(Memory* memory,
 											 U8* memoryBase,
 											 Uptr memoryNumBytes,

@@ -9,7 +9,9 @@
 #include "WAVM/Inline/BasicTypes.h"
 #include "WAVM/Inline/Hash.h"
 #include "WAVM/Inline/HashMap.h"
+#include "WAVM/Inline/LEB128.h"
 #include "WAVM/Inline/Timing.h"
+#include "WAVM/Platform/Random.h"
 #include "WAVM/LLVMJIT/LLVMJIT.h"
 #include "WAVM/Platform/Intrinsic.h"
 #include "WAVM/Platform/RWMutex.h"
@@ -62,6 +64,67 @@ static Uptr getIndexValue(const Value& value, IndexType indexType)
 #else
 	return value.u32;
 #endif
+}
+
+static bool readULEB128(Serialization::MemoryInputStream& stream, U64& value)
+{
+	try
+	{
+		Serialization::serializeVarUInt64(stream, value);
+		return true;
+	}
+	catch(Serialization::FatalSerializationException&)
+	{
+		return false;
+	}
+}
+
+// Assigns a random tag to each global that the compiler/linker marked as memory-tagged. The
+// "memtag.globals" section emitted by wasm-ld lists the final address and size of those globals;
+// guest code reads the assigned tag back through the memtag.load instruction.
+static void initializeMemtagGlobals(Instance* instance, const IR::Module& module_)
+{
+	Uptr sectionIndex = 0;
+	if(!findCustomSection(module_, "memtag.globals", sectionIndex)) { return; }
+	if(instance->memories.empty()) { return; }
+
+	const CustomSection& section = module_.customSections[sectionIndex];
+	Serialization::MemoryInputStream stream(section.data.data(), section.data.size());
+	U64 version = 0;
+	U64 numGlobals = 0;
+	if(!readULEB128(stream, version) || version != 1 || !readULEB128(stream, numGlobals))
+	{
+		return;
+	}
+
+	// All static data is placed in memory 0.
+	Memory* memory = instance->memories[0];
+	const U64 numBytes
+		= U64(memory->numPages.load(std::memory_order_acquire)) * IR::numBytesPerPage;
+	const U8 indexMask = memory->indexType == IR::IndexType::i32
+							 ? U8(IR::memtag32constants::index_mask)
+							 : U8(IR::memtag64constants::index_mask);
+	const U8 nullPtrTag = memory->indexType == IR::IndexType::i32
+							  ? IR::memtag32constants::nullptrtag
+							  : IR::memtag64constants::nullptrtag;
+
+	for(U64 globalIndex = 0; globalIndex < numGlobals; ++globalIndex)
+	{
+		U64 address = 0;
+		U64 size = 0;
+		if(!readULEB128(stream, address) || !readULEB128(stream, size)) { return; }
+
+		// The section is untrusted module data; ignore ranges outside the memory.
+		if(address > numBytes || size > numBytes - address) { continue; }
+
+		U8 randomByte = 0;
+		Platform::getCryptographicRNG(&randomByte, 1);
+		U8 tag = U8(randomByte & indexMask);
+		// Tag 0 is the tag of untagged pointers, so it would disable checking for this range.
+		if(tag == 0) { tag = nullPtrTag; }
+
+		setMemoryTag(memory, Uptr(address), Uptr(size), tag);
+	}
 }
 
 Instance::~Instance()
@@ -463,6 +526,9 @@ Instance* Runtime::instantiateModuleInternal(Compartment* compartment,
 							dataSegment.data->size());
 		}
 	}
+
+	// Tag the module's globals now that their initial contents are in place.
+	initializeMemtagGlobals(instance, module_->ir);
 
 	// Copy the module's elem segments into their designated table instances.
 	for(Uptr segmentIndex = 0; segmentIndex < module_->ir.elemSegments.size(); ++segmentIndex)

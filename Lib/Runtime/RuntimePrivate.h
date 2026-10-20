@@ -85,6 +85,12 @@ namespace WAVM { namespace Runtime {
 		U8* End = nullptr;
 	};
 
+	struct Memory;
+
+	// Applies a memory tag to a range of a memory: writes the software tag shadow
+	// in software memtag modes, and stores allocation tags in hardware MTE modes.
+	void setMemoryTag(Memory* memory, Uptr address, Uptr numBytes, U8 tag);
+
 	// An instance of a WebAssembly Memory.
 	struct Memory : GCObject
 	{

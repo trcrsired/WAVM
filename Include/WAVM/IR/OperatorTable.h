@@ -214,9 +214,6 @@
 	visitOp(0xfc2d, memtag_random             , "memtag.random"             , MemoryImm                           , memtag_1r1a            , mvp                    )   \
 	visitOp(0xfc2e, memtag_randomstore        , "memtag.randomstore"        , MemoryImm                           , memtag_1r2a            , mvp                    )   \
 	visitOp(0xfc2f, memtag_randomstorez       , "memtag.randomstorez"       , MemoryImm                           , memtag_1r2a            , mvp                    )   \
-	visitOp(0xfc30, memtag_randommask         , "memtag.randommask"         , MemoryImm                           , memtag_1r2a            , mvp                    )   \
-	visitOp(0xfc31, memtag_randommaskstore    , "memtag.randommaskstore"    , MemoryImm                           , memtag_1r3a            , mvp                    )   \
-	visitOp(0xfc32, memtag_randommaskstorez   , "memtag.randommaskstorez"   , MemoryImm                           , memtag_1r3a            , mvp                    )   \
 	visitOp(0xfc36, memtag_hint               , "memtag.hint"               , MemoryImm                           , memtag_1r3a            , mvp                    )   \
 	visitOp(0xfc37, memtag_hintstore          , "memtag.hintstore"          , MemoryImm                           , memtag_1r4a            , mvp                    )   \
 	visitOp(0xfc38, memtag_hintstorez         , "memtag.hintstorez"         , MemoryImm                           , memtag_1r4a            , mvp                    )

@@ -1218,7 +1218,6 @@ void EmitFunctionContext::memtag_startbit(MemoryImm imm)
 static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functionContext,
 													 Uptr memoryIndex,
 													 ::llvm::Value* memaddress,
-													 ::llvm::Value* mask,
 													 ::llvm::Value* taggedbytes,
 													 bool zeroing)
 {
@@ -1241,14 +1240,12 @@ static ::llvm::Value* memtag_random_store_tag_common(EmitFunctionContext& functi
 				memoryIndex);
 			memaddress = basepointeraddressResult.bytePointer;
 			auto basepointer = basepointeraddressResult.memoryBasePointer;
-			if(mask || functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmteirg)
+			if(functionContext.isMemTagged == ::WAVM::LLVMJIT::memtagStatus::armmteirg)
 			{
 				memaddress = irBuilder.CreateIntrinsic(
 					::llvm::Intrinsic::aarch64_irg,
 					{},
-					{memaddress,
-					 mask ? mask
-						  : (::llvm::ConstantInt::get(functionContext.llvmContext.i64Type, 0))});
+					{memaddress, ::llvm::ConstantInt::get(functionContext.llvmContext.i64Type, 0)});
 			}
 			else
 			{
@@ -1290,7 +1287,7 @@ void EmitFunctionContext::memtag_randomstore(MemoryImm imm)
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
 	push(memtag_random_store_tag_common(
-		*this, imm.memoryIndex, memaddress, nullptr, taggedbytes, false));
+		*this, imm.memoryIndex, memaddress, taggedbytes, false));
 }
 
 void EmitFunctionContext::memtag_randomstorez(MemoryImm imm)
@@ -1298,25 +1295,7 @@ void EmitFunctionContext::memtag_randomstorez(MemoryImm imm)
 	::llvm::Value* taggedbytes = pop();
 	::llvm::Value* memaddress = pop();
 	push(memtag_random_store_tag_common(
-		*this, imm.memoryIndex, memaddress, nullptr, taggedbytes, true));
-}
-
-void EmitFunctionContext::memtag_randommaskstore(MemoryImm imm)
-{
-	::llvm::Value* mask = pop();
-	::llvm::Value* taggedbytes = pop();
-	::llvm::Value* memaddress = pop();
-	push(memtag_random_store_tag_common(
-		*this, imm.memoryIndex, memaddress, mask, taggedbytes, false));
-}
-
-void EmitFunctionContext::memtag_randommaskstorez(MemoryImm imm)
-{
-	::llvm::Value* mask = pop();
-	::llvm::Value* taggedbytes = pop();
-	::llvm::Value* memaddress = pop();
-	push(memtag_random_store_tag_common(
-		*this, imm.memoryIndex, memaddress, mask, taggedbytes, true));
+		*this, imm.memoryIndex, memaddress, taggedbytes, true));
 }
 
 void EmitFunctionContext::memtag_extract(MemoryImm imm)
@@ -1499,32 +1478,6 @@ void EmitFunctionContext::memtag_random(MemoryImm imm)
 					{},
 					{irBuilder.CreateIntToPtr(memaddress, this->llvmContext.i8PtrType),
 					 ::llvm::ConstantInt::get(this->llvmContext.i64Type, 0)}),
-				this->llvmContext.i64Type);
-			memaddress = armmte64_to_32_value(*this, imm.memoryIndex, memaddress);
-		}
-		else
-		{
-			auto color = generateMemRandomTagByte(*this, imm.memoryIndex);
-			memaddress = TagMemPointer(*this, imm.memoryIndex, memaddress, color, false);
-		}
-	}
-	push(memaddress);
-}
-
-void EmitFunctionContext::memtag_randommask(MemoryImm imm) // Todo
-{
-	::llvm::Value* mask = pop();
-	::llvm::Value* memaddress = pop();
-	if(isMemTaggedEnabled(*this))
-	{
-		if(::WAVM::LLVMJIT::is_memtagstatus_armmte(this->isMemTagged))
-		{
-			memaddress = armmte32_to_64ptr_value(*this, imm.memoryIndex, memaddress);
-			memaddress = irBuilder.CreatePtrToInt(
-				irBuilder.CreateIntrinsic(
-					::llvm::Intrinsic::aarch64_irg,
-					{},
-					{irBuilder.CreateIntToPtr(memaddress, this->llvmContext.i8PtrType), mask}),
 				this->llvmContext.i64Type);
 			memaddress = armmte64_to_32_value(*this, imm.memoryIndex, memaddress);
 		}
