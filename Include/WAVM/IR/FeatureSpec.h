@@ -24,7 +24,7 @@
 // Proposed standard extensions. These are disabled by default, but may be enabled on the
 // command-line.
 #define WAVM_ENUM_PROPOSED_FEATURES(V)                                                             \
-	V(atomics, "atomics", "Shared memories and atomic instructions")                               \
+	V(threads, "threads", "Shared memories, atomic instructions, and WASI threads")                \
 	V(extendedNameSection, "extended-name-section", "Extended name section")                       \
 	V(multipleMemories, "multi-memory", "Multiple memories")                                       \
 	V(memory64, "memory64", "Memories with 64-bit addresses")
@@ -107,9 +107,7 @@ namespace WAVM { namespace IR {
 		Uptr maxSyntaxRecursion = 500;
 
 		FeatureSpec(FeatureLevel featureLevel = FeatureLevel::mature)
-		{
-			setFeatureLevel(featureLevel);
-		}
+		{ setFeatureLevel(featureLevel); }
 
 		WAVM_API void setFeatureLevel(FeatureLevel featureLevel);
 	};

@@ -254,8 +254,8 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsAtomics,
 
 	// Validate that the address is within the memory's bounds, and convert it to a pointer.
 	// The address has already had its software memory tag checked inline by the JIT, which then
-	// de-tagged it, so do not re-check the tag here.
-	I32* valuePointer = &memoryRefNoTagCheck<I32>(memory, address);
+	// de-tagged it.
+	I32* valuePointer = &memoryRef<I32>(memory, address);
 
 	return waitOnAddress(valuePointer, expectedValue, timeout);
 }
@@ -278,7 +278,7 @@ WAVM_DEFINE_INTRINSIC_FUNCTION(wavmIntrinsicsAtomics,
 
 	// Validate that the address is within the memory's bounds, and convert it to a pointer.
 	// See atomic_wait_I32: the JIT has already checked the tag and de-tagged the address.
-	I64* valuePointer = &memoryRefNoTagCheck<I64>(memory, address);
+	I64* valuePointer = &memoryRef<I64>(memory, address);
 
 	return waitOnAddress(valuePointer, expectedValue, timeout);
 }

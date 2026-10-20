@@ -56,19 +56,13 @@ typedef struct wasm_module_t wasm_shared_module_t;
 static_assert(sizeof(wasm_val_t) == sizeof(UntaggedValue), "wasm_val_t should match UntaggedValue");
 
 struct wasm_config_t
-{
-	FeatureSpec featureSpec;
-};
+{ FeatureSpec featureSpec; };
 
 struct wasm_engine_t
-{
-	wasm_config_t config;
-};
+{ wasm_config_t config; };
 
 struct wasm_valtype_t
-{
-	ValueType type;
-};
+{ ValueType type; };
 
 struct wasm_externtype_t
 {
@@ -141,13 +135,9 @@ static wasm_tabletype_t* as_externtype(TableType type)
 		type, new wasm_valtype_t{ValueType(type.elementType)}, as_limits(type.size));
 }
 static wasm_memorytype_t* as_externtype(MemoryType type)
-{
-	return new wasm_memorytype_t(type, as_limits(type.size));
-}
+{ return new wasm_memorytype_t(type, as_limits(type.size)); }
 static wasm_globaltype_t* as_externtype(GlobalType type)
-{
-	return new wasm_globaltype_t(type, new wasm_valtype_t{ValueType(type.valueType)});
-}
+{ return new wasm_globaltype_t(type, new wasm_valtype_t{ValueType(type.valueType)}); }
 static wasm_externtype_t* as_externtype(ExternType type)
 {
 	switch(type.kind)
@@ -244,9 +234,7 @@ wasm_config_t* wasm_config_new() { return new wasm_config_t; }
 
 #define IMPLEMENT_FEATURE(cAPIName, wavmName)                                                      \
 	WASM_C_API void wasm_config_feature_set_##cAPIName(wasm_config_t* config, bool enable)         \
-	{                                                                                              \
-		config->featureSpec.wavmName = enable;                                                     \
-	}
+	{ config->featureSpec.wavmName = enable; }
 
 IMPLEMENT_FEATURE(import_export_mutable_globals, importExportMutableGlobals)
 IMPLEMENT_FEATURE(nontrapping_float_to_int, nonTrappingFloatToInt)
@@ -254,7 +242,7 @@ IMPLEMENT_FEATURE(sign_extension, signExtension)
 IMPLEMENT_FEATURE(bulk_memory_ops, bulkMemoryOperations)
 
 IMPLEMENT_FEATURE(simd, simd)
-IMPLEMENT_FEATURE(atomics, atomics)
+IMPLEMENT_FEATURE(atomics, threads)
 IMPLEMENT_FEATURE(exception_handling, exceptionHandling)
 IMPLEMENT_FEATURE(multivalue, multipleResultsAndBlockParams)
 IMPLEMENT_FEATURE(reference_types, referenceTypes)
@@ -291,13 +279,9 @@ wasm_compartment_t* wasm_compartment_new(wasm_engine_t*, const char* debug_name)
 	return compartment;
 }
 wasm_compartment_t* wasm_compartment_clone(const wasm_compartment_t* compartment)
-{
-	return cloneCompartment(compartment);
-}
+{ return cloneCompartment(compartment); }
 bool wasm_compartment_contains(const wasm_compartment_t* compartment, const wasm_ref_t* ref)
-{
-	return isInCompartment(ref, compartment);
-}
+{ return isInCompartment(ref, compartment); }
 
 // wasm_store_t
 void wasm_store_delete(wasm_store_t* store) { removeGCRoot(store); }
@@ -338,9 +322,7 @@ wasm_valkind_t wasm_valtype_kind(const wasm_valtype_t* type)
 // wasm_functype_t
 void wasm_functype_delete(wasm_functype_t* type) { delete type; }
 wasm_functype_t* wasm_functype_copy(wasm_functype_t* type)
-{
-	return new wasm_functype_t(type->type);
-}
+{ return new wasm_functype_t(type->type); }
 wasm_functype_t* wasm_functype_new(wasm_valtype_t** params,
 								   uintptr_t numParams,
 								   wasm_valtype_t** results,
@@ -364,17 +346,11 @@ wasm_functype_t* wasm_functype_new(wasm_valtype_t** params,
 }
 size_t wasm_functype_num_params(const wasm_functype_t* type) { return type->type.params().size(); }
 wasm_valtype_t* wasm_functype_param(const wasm_functype_t* type, size_t index)
-{
-	return new wasm_valtype_t{type->type.params()[index]};
-}
+{ return new wasm_valtype_t{type->type.params()[index]}; }
 size_t wasm_functype_num_results(const wasm_functype_t* type)
-{
-	return type->type.results().size();
-}
+{ return type->type.results().size(); }
 wasm_valtype_t* wasm_functype_result(const wasm_functype_t* type, size_t index)
-{
-	return new wasm_valtype_t{type->type.results()[index]};
-}
+{ return new wasm_valtype_t{type->type.results()[index]}; }
 
 // wasm_globaltype_t
 void wasm_globaltype_delete(wasm_globaltype_t* type)
@@ -383,21 +359,13 @@ void wasm_globaltype_delete(wasm_globaltype_t* type)
 	delete type;
 }
 wasm_globaltype_t* wasm_globaltype_copy(wasm_globaltype_t* type)
-{
-	return new wasm_globaltype_t(type->type, wasm_valtype_copy(type->valtype));
-}
+{ return new wasm_globaltype_t(type->type, wasm_valtype_copy(type->valtype)); }
 wasm_globaltype_t* wasm_globaltype_new(wasm_valtype_t* valtype, wasm_mutability_t mutability)
-{
-	return new wasm_globaltype_t(GlobalType(valtype->type, mutability == WASM_VAR), valtype);
-}
+{ return new wasm_globaltype_t(GlobalType(valtype->type, mutability == WASM_VAR), valtype); }
 const wasm_valtype_t* wasm_globaltype_content(const wasm_globaltype_t* type)
-{
-	return type->valtype;
-}
+{ return type->valtype; }
 wasm_mutability_t wasm_globaltype_mutability(const wasm_globaltype_t* type)
-{
-	return wasm_mutability_t(type->type.isMutable ? WASM_VAR : WASM_CONST);
-}
+{ return wasm_mutability_t(type->type.isMutable ? WASM_VAR : WASM_CONST); }
 
 // wasm_tabletype_t
 void wasm_tabletype_delete(wasm_tabletype_t* type)
@@ -406,9 +374,7 @@ void wasm_tabletype_delete(wasm_tabletype_t* type)
 	delete type;
 }
 wasm_tabletype_t* wasm_tabletype_copy(wasm_tabletype_t* type)
-{
-	return new wasm_tabletype_t(type->type, wasm_valtype_copy(type->element), type->limits);
-}
+{ return new wasm_tabletype_t(type->type, wasm_valtype_copy(type->element), type->limits); }
 wasm_tabletype_t* wasm_tabletype_new(wasm_valtype_t* element,
 									 const wasm_limits_t* limits,
 									 wasm_shared_t shared,
@@ -425,20 +391,14 @@ wasm_tabletype_t* wasm_tabletype_new(wasm_valtype_t* element,
 const wasm_valtype_t* wasm_tabletype_element(const wasm_tabletype_t* type) { return type->element; }
 const wasm_limits_t* wasm_tabletype_limits(const wasm_tabletype_t* type) { return &type->limits; }
 wasm_shared_t wasm_tabletype_shared(const wasm_tabletype_t* type)
-{
-	return wasm_shared_t(type->type.isShared ? WASM_SHARED : WASM_NOTSHARED);
-}
+{ return wasm_shared_t(type->type.isShared ? WASM_SHARED : WASM_NOTSHARED); }
 wasm_index_t wasm_tabletype_index(const wasm_tabletype_t* type)
-{
-	return as_index(type->type.indexType);
-}
+{ return as_index(type->type.indexType); }
 
 // wasm_memorytype_t
 void wasm_memorytype_delete(wasm_memorytype_t* type) { delete type; }
 wasm_memorytype_t* wasm_memorytype_copy(wasm_memorytype_t* type)
-{
-	return new wasm_memorytype_t(type->type, type->limits);
-}
+{ return new wasm_memorytype_t(type->type, type->limits); }
 wasm_memorytype_t* wasm_memorytype_new(const wasm_limits_t* limits,
 									   wasm_shared_t shared,
 									   wasm_index_t index)
@@ -450,13 +410,9 @@ wasm_memorytype_t* wasm_memorytype_new(const wasm_limits_t* limits,
 }
 const wasm_limits_t* wasm_memorytype_limits(const wasm_memorytype_t* type) { return &type->limits; }
 wasm_shared_t wasm_memorytype_shared(const wasm_memorytype_t* type)
-{
-	return wasm_shared_t(type->type.isShared ? WASM_SHARED : WASM_NOTSHARED);
-}
+{ return wasm_shared_t(type->type.isShared ? WASM_SHARED : WASM_NOTSHARED); }
 wasm_index_t wasm_memorytype_index(const wasm_memorytype_t* type)
-{
-	return as_index(type->type.indexType);
-}
+{ return as_index(type->type.indexType); }
 
 // wasm_externtype_t
 void wasm_externtype_delete(wasm_externtype_t* type)
@@ -509,69 +465,37 @@ wasm_externkind_t wasm_externtype_kind(const wasm_externtype_t* type)
 	}
 }
 wasm_externtype_t* wasm_functype_as_externtype(wasm_functype_t* type)
-{
-	return (wasm_externtype_t*)type;
-}
+{ return (wasm_externtype_t*)type; }
 wasm_externtype_t* wasm_globaltype_as_externtype(wasm_globaltype_t* type)
-{
-	return (wasm_externtype_t*)type;
-}
+{ return (wasm_externtype_t*)type; }
 wasm_externtype_t* wasm_tabletype_as_externtype(wasm_tabletype_t* type)
-{
-	return (wasm_externtype_t*)type;
-}
+{ return (wasm_externtype_t*)type; }
 wasm_externtype_t* wasm_memorytype_as_externtype(wasm_memorytype_t* type)
-{
-	return (wasm_externtype_t*)type;
-}
+{ return (wasm_externtype_t*)type; }
 wasm_functype_t* wasm_externtype_as_functype(wasm_externtype_t* type)
-{
-	return (wasm_functype_t*)type;
-}
+{ return (wasm_functype_t*)type; }
 wasm_globaltype_t* wasm_externtype_as_globaltype(wasm_externtype_t* type)
-{
-	return (wasm_globaltype_t*)type;
-}
+{ return (wasm_globaltype_t*)type; }
 wasm_tabletype_t* wasm_externtype_as_tabletype(wasm_externtype_t* type)
-{
-	return (wasm_tabletype_t*)type;
-}
+{ return (wasm_tabletype_t*)type; }
 wasm_memorytype_t* wasm_externtype_as_memorytype(wasm_externtype_t* type)
-{
-	return (wasm_memorytype_t*)type;
-}
+{ return (wasm_memorytype_t*)type; }
 const wasm_externtype_t* wasm_functype_as_externtype_const(const wasm_functype_t* type)
-{
-	return (wasm_externtype_t*)type;
-}
+{ return (wasm_externtype_t*)type; }
 const wasm_externtype_t* wasm_globaltype_as_externtype_const(const wasm_globaltype_t* type)
-{
-	return (wasm_externtype_t*)type;
-}
+{ return (wasm_externtype_t*)type; }
 const wasm_externtype_t* wasm_tabletype_as_externtype_const(const wasm_tabletype_t* type)
-{
-	return (wasm_externtype_t*)type;
-}
+{ return (wasm_externtype_t*)type; }
 const wasm_externtype_t* wasm_memorytype_as_externtype_const(const wasm_memorytype_t* type)
-{
-	return (wasm_externtype_t*)type;
-}
+{ return (wasm_externtype_t*)type; }
 const wasm_functype_t* wasm_externtype_as_functype_const(const wasm_externtype_t* type)
-{
-	return (wasm_functype_t*)type;
-}
+{ return (wasm_functype_t*)type; }
 const wasm_globaltype_t* wasm_externtype_as_globaltype_const(const wasm_externtype_t* type)
-{
-	return (wasm_globaltype_t*)type;
-}
+{ return (wasm_globaltype_t*)type; }
 const wasm_tabletype_t* wasm_externtype_as_tabletype_const(const wasm_externtype_t* type)
-{
-	return (wasm_tabletype_t*)type;
-}
+{ return (wasm_tabletype_t*)type; }
 const wasm_memorytype_t* wasm_externtype_as_memorytype_const(const wasm_externtype_t* type)
-{
-	return (wasm_memorytype_t*)type;
-}
+{ return (wasm_memorytype_t*)type; }
 
 // wasm_ref_t
 #define IMPLEMENT_REF_BASE(name, Type)                                                             \
@@ -587,14 +511,10 @@ const wasm_memorytype_t* wasm_externtype_as_memorytype_const(const wasm_externty
                                                                                                    \
 	void* wasm_##name##_get_host_info(const wasm_##name##_t* ref) { return getUserData(ref); }     \
 	void wasm_##name##_set_host_info(wasm_##name##_t* ref, void* userData)                         \
-	{                                                                                              \
-		setUserData(ref, userData, nullptr);                                                       \
-	}                                                                                              \
+	{ setUserData(ref, userData, nullptr); }                                                       \
 	void wasm_##name##_set_host_info_with_finalizer(                                               \
 		wasm_##name##_t* ref, void* userData, void (*finalizeUserData)(void*))                     \
-	{                                                                                              \
-		setUserData(ref, userData, finalizeUserData);                                              \
-	}                                                                                              \
+	{ setUserData(ref, userData, finalizeUserData); }                                              \
                                                                                                    \
 	wasm_##name##_t* wasm_##name##_remap_to_cloned_compartment(                                    \
 		const wasm_##name##_t* ref, const wasm_compartment_t* compartment)                         \
@@ -612,13 +532,9 @@ const wasm_memorytype_t* wasm_externtype_as_memorytype_const(const wasm_externty
 	wasm_ref_t* wasm_##name##_as_ref(wasm_##name##_t* ref) { return asObject(ref); }               \
 	wasm_##name##_t* wasm_ref_as_##name(wasm_ref_t* ref) { return as##Type(ref); }                 \
 	const wasm_ref_t* wasm_##name##_as_ref_const(const wasm_##name##_t* ref)                       \
-	{                                                                                              \
-		return asObject(ref);                                                                      \
-	}                                                                                              \
+	{ return asObject(ref); }                                                                      \
 	const wasm_##name##_t* wasm_ref_as_##name##_const(const wasm_ref_t* ref)                       \
-	{                                                                                              \
-		return as##Type(ref);                                                                      \
-	}
+	{ return as##Type(ref); }
 
 #define IMPLEMENT_SHAREABLE_REF(name, Type)                                                        \
 	IMPLEMENT_REF(name, Type)                                                                      \
@@ -651,33 +567,23 @@ bool wasm_trap_same(const wasm_trap_t* a, const wasm_trap_t* b) { return a == b;
 
 void* wasm_trap_get_host_info(const wasm_trap_t* trap) { return getUserData(trap); }
 void wasm_trap_set_host_info(wasm_trap_t* trap, void* userData)
-{
-	setUserData(trap, userData, nullptr);
-}
+{ setUserData(trap, userData, nullptr); }
 void wasm_trap_set_host_info_with_finalizer(wasm_trap_t* trap,
 											void* userData,
 											void (*finalizeUserData)(void*))
-{
-	setUserData(trap, userData, finalizeUserData);
-}
+{ setUserData(trap, userData, finalizeUserData); }
 
 wasm_ref_t* wasm_trap_as_ref(wasm_trap_t* trap) { Errors::unimplemented("wasm_trap_as_ref"); }
 wasm_trap_t* wasm_ref_as_trap(wasm_ref_t* object) { Errors::unimplemented("wasm_ref_as_trap"); }
 const wasm_ref_t* wasm_trap_as_ref_const(const wasm_trap_t*)
-{
-	Errors::unimplemented("wasm_trap_as_ref_const");
-}
+{ Errors::unimplemented("wasm_trap_as_ref_const"); }
 const wasm_trap_t* wasm_ref_as_trap_const(const wasm_ref_t*)
-{
-	Errors::unimplemented("wasm_ref_as_trap_const");
-}
+{ Errors::unimplemented("wasm_ref_as_trap_const"); }
 
 wasm_trap_t* wasm_trap_new(wasm_compartment_t* compartment,
 						   const char* message,
 						   size_t num_message_bytes)
-{
-	return createException(ExceptionTypes::calledAbort, nullptr, 0, Platform::captureCallStack(1));
-}
+{ return createException(ExceptionTypes::calledAbort, nullptr, 0, Platform::captureCallStack(1)); }
 bool wasm_trap_message(const wasm_trap_t* trap, char* out_message, size_t* inout_num_message_bytes)
 {
 	const std::string description = describeExceptionType(getExceptionType(trap));
@@ -731,16 +637,12 @@ wasm_foreign_t* wasm_foreign_new(wasm_compartment_t* compartment, const char* de
 // wasm_val_t
 void wasm_val_delete(wasm_valkind_t kind, wasm_val_t* val) {}
 void wasm_val_copy(wasm_valkind_t kind, wasm_val_t* out, const wasm_val_t* val)
-{
-	memcpy(out, val, sizeof(wasm_val_t));
-}
+{ memcpy(out, val, sizeof(wasm_val_t)); }
 
 // wasm_module_t
 void wasm_module_delete(wasm_module_t* module_) { delete module_; }
 wasm_module_t* wasm_module_copy(wasm_module_t* module_)
-{
-	return new wasm_module_t{module_->module_};
-}
+{ return new wasm_module_t{module_->module_}; }
 wasm_module_t* wasm_module_new(wasm_engine_t* engine, const char* wasmBytes, uintptr_t numWASMBytes)
 {
 	WASM::LoadError loadError;
@@ -804,9 +706,7 @@ bool wasm_module_validate(const char* binary, size_t numBinaryBytes)
 }
 
 size_t wasm_module_num_imports(const wasm_module_t* module_)
-{
-	return getModuleIR(module_->module_).imports.size();
-}
+{ return getModuleIR(module_->module_).imports.size(); }
 void wasm_module_import(const wasm_module_t* module_, size_t index, wasm_import_t* out_import)
 {
 	const IR::Module& irModule = getModuleIR(module_->module_);
@@ -858,9 +758,7 @@ void wasm_module_import(const wasm_module_t* module_, size_t index, wasm_import_
 	};
 }
 size_t wasm_module_num_exports(const wasm_module_t* module_)
-{
-	return getModuleIR(module_->module_).exports.size();
-}
+{ return getModuleIR(module_->module_).exports.size(); }
 void wasm_module_export(const wasm_module_t* module_, size_t index, wasm_export_t* out_export)
 {
 	const IR::Module& irModule = getModuleIR(module_->module_);
@@ -915,21 +813,13 @@ wasm_func_t* wasm_func_new_with_env(wasm_compartment_t*,
 									void* env,
 									void (*finalizer)(void*),
 									const char* debug_name)
-{
-	Errors::fatal("wasm_func_new_with_env is not yet supported");
-}
+{ Errors::fatal("wasm_func_new_with_env is not yet supported"); }
 wasm_functype_t* wasm_func_type(const wasm_func_t* function)
-{
-	return new wasm_functype_t(getFunctionType(function));
-}
+{ return new wasm_functype_t(getFunctionType(function)); }
 size_t wasm_func_param_arity(const wasm_func_t* function)
-{
-	return getFunctionType(function).params().size();
-}
+{ return getFunctionType(function).params().size(); }
 size_t wasm_func_result_arity(const wasm_func_t* function)
-{
-	return getFunctionType(function).results().size();
-}
+{ return getFunctionType(function).results().size(); }
 
 wasm_trap_t* wasm_func_call(wasm_store_t* store,
 							const wasm_func_t* function,
@@ -977,14 +867,10 @@ wasm_global_t* wasm_global_new(wasm_compartment_t* compartment,
 }
 
 wasm_globaltype_t* wasm_global_type(const wasm_global_t* global)
-{
-	return as_externtype(getGlobalType(global));
-}
+{ return as_externtype(getGlobalType(global)); }
 
 void wasm_global_get(wasm_store_t* store, const wasm_global_t* global, wasm_val_t* out)
-{
-	*out = as_val(getGlobalValue(store, global));
-}
+{ *out = as_val(getGlobalValue(store, global)); }
 
 void wasm_global_set(wasm_global_t*, const wasm_val_t*);
 
@@ -1002,14 +888,10 @@ wasm_table_t* wasm_table_new(wasm_compartment_t* compartment,
 }
 
 wasm_tabletype_t* wasm_table_type(const wasm_table_t* table)
-{
-	return as_externtype(getTableType(table));
-}
+{ return as_externtype(getTableType(table)); }
 
 wasm_ref_t* wasm_table_get(const wasm_table_t* table, wasm_table_size_t index)
-{
-	return getTableElement(table, index);
-}
+{ return getTableElement(table, index); }
 bool wasm_table_set(wasm_table_t* table, wasm_table_size_t index, wasm_ref_t* value)
 {
 	bool result = true;
@@ -1054,15 +936,11 @@ wasm_memory_t* wasm_memory_new(wasm_compartment_t* compartment,
 }
 
 wasm_memorytype_t* wasm_memory_type(const wasm_memory_t* memory)
-{
-	return as_externtype(getMemoryType(memory));
-}
+{ return as_externtype(getMemoryType(memory)); }
 
 char* wasm_memory_data(wasm_memory_t* memory) { return (char*)getMemoryBaseAddress(memory); }
 size_t wasm_memory_data_size(const wasm_memory_t* memory)
-{
-	return getMemoryNumPages(memory) * IR::numBytesPerPage;
-}
+{ return getMemoryNumPages(memory) * IR::numBytesPerPage; }
 
 wasm_memory_pages_t wasm_memory_size(const wasm_memory_t* memory)
 {
@@ -1106,21 +984,15 @@ wasm_externkind_t wasm_extern_kind(const wasm_extern_t* object)
 	};
 }
 wasm_externtype_t* wasm_extern_type(const wasm_extern_t* object)
-{
-	return as_externtype(getExternType(object));
-}
+{ return as_externtype(getExternType(object)); }
 
 #define IMPLEMENT_EXTERN_SUBTYPE(name, Name)                                                       \
 	wasm_extern_t* wasm_##name##_as_extern(wasm_##name##_t* name) { return asObject(name); }       \
 	const wasm_extern_t* wasm_##name##_as_extern_const(const wasm_##name##_t* name)                \
-	{                                                                                              \
-		return asObject(name);                                                                     \
-	}                                                                                              \
+	{ return asObject(name); }                                                                     \
 	wasm_##name##_t* wasm_extern_as_##name(wasm_extern_t* object) { return as##Name(object); }     \
 	const wasm_##name##_t* wasm_extern_as_##name##_const(const wasm_extern_t* object)              \
-	{                                                                                              \
-		return as##Name(object);                                                                   \
-	}
+	{ return as##Name(object); }
 
 IMPLEMENT_EXTERN_SUBTYPE(func, Function)
 IMPLEMENT_EXTERN_SUBTYPE(global, Global)
@@ -1159,7 +1031,10 @@ wasm_instance_t* wasm_instance_new(wasm_store_t* store,
 		},
 		[&](Runtime::Exception* exception) {
 			if(out_trap) { *out_trap = exception; }
-			else { destroyException(exception); }
+			else
+			{
+				destroyException(exception);
+			}
 		});
 
 	return instance;
@@ -1168,12 +1043,8 @@ wasm_instance_t* wasm_instance_new(wasm_store_t* store,
 void wasm_instance_delete(wasm_instance_t* instance) { removeGCRoot(instance); }
 
 size_t wasm_instance_num_exports(const wasm_instance_t* instance)
-{
-	return getInstanceExports(instance).size();
-}
+{ return getInstanceExports(instance).size(); }
 
 wasm_extern_t* wasm_instance_export(const wasm_instance_t* instance, size_t index)
-{
-	return getInstanceExports(instance)[index];
-}
+{ return getInstanceExports(instance)[index]; }
 }

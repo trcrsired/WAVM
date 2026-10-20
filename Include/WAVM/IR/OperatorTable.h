@@ -130,74 +130,74 @@
 	visitOp(0xff16, v64x2_store_interleaved_3 , "v64x2.store_interleaved_3" , LoadOrStoreImm<4>                   , store_v128xN<3>           , interleavedLoadStore   )   \
 	visitOp(0xff17, v64x2_store_interleaved_4 , "v64x2.store_interleaved_4" , LoadOrStoreImm<4>                   , store_v128xN<4>           , interleavedLoadStore   )   \
 /* Atomic wait/wake                                                                                                                                                     */ \
-	visitOp(0xfe00, memory_atomic_notify      , "memory.atomic.notify"      , AtomicLoadOrStoreImm<2>             , notify                    , atomics                )   \
-	visitOp(0xfe01, memory_atomic_wait32      , "memory.atomic.wait32"      , AtomicLoadOrStoreImm<2>             , wait32                    , atomics                )   \
-	visitOp(0xfe02, memory_atomic_wait64      , "memory.atomic.wait64"      , AtomicLoadOrStoreImm<3>             , wait64                    , atomics                )   \
+	visitOp(0xfe00, memory_atomic_notify      , "memory.atomic.notify"      , AtomicLoadOrStoreImm<2>             , notify                    , threads                )   \
+	visitOp(0xfe01, memory_atomic_wait32      , "memory.atomic.wait32"      , AtomicLoadOrStoreImm<2>             , wait32                    , threads                )   \
+	visitOp(0xfe02, memory_atomic_wait64      , "memory.atomic.wait64"      , AtomicLoadOrStoreImm<3>             , wait64                    , threads                )   \
 /* Atomic load/store                                                                                                                                                    */ \
-	visitOp(0xfe10, i32_atomic_load           , "i32.atomic.load"           , AtomicLoadOrStoreImm<2>             , load_i32                  , atomics                )   \
-	visitOp(0xfe11, i64_atomic_load           , "i64.atomic.load"           , AtomicLoadOrStoreImm<3>             , load_i64                  , atomics                )   \
-	visitOp(0xfe12, i32_atomic_load8_u        , "i32.atomic.load8_u"        , AtomicLoadOrStoreImm<0>             , load_i32                  , atomics                )   \
-	visitOp(0xfe13, i32_atomic_load16_u       , "i32.atomic.load16_u"       , AtomicLoadOrStoreImm<1>             , load_i32                  , atomics                )   \
-	visitOp(0xfe14, i64_atomic_load8_u        , "i64.atomic.load8_u"        , AtomicLoadOrStoreImm<0>             , load_i64                  , atomics                )   \
-	visitOp(0xfe15, i64_atomic_load16_u       , "i64.atomic.load16_u"       , AtomicLoadOrStoreImm<1>             , load_i64                  , atomics                )   \
-	visitOp(0xfe16, i64_atomic_load32_u       , "i64.atomic.load32_u"       , AtomicLoadOrStoreImm<2>             , load_i64                  , atomics                )   \
-	visitOp(0xfe17, i32_atomic_store          , "i32.atomic.store"          , AtomicLoadOrStoreImm<2>             , store_i32                 , atomics                )   \
-	visitOp(0xfe18, i64_atomic_store          , "i64.atomic.store"          , AtomicLoadOrStoreImm<3>             , store_i64                 , atomics                )   \
-	visitOp(0xfe19, i32_atomic_store8         , "i32.atomic.store8"         , AtomicLoadOrStoreImm<0>             , store_i32                 , atomics                )   \
-	visitOp(0xfe1a, i32_atomic_store16        , "i32.atomic.store16"        , AtomicLoadOrStoreImm<1>             , store_i32                 , atomics                )   \
-	visitOp(0xfe1b, i64_atomic_store8         , "i64.atomic.store8"         , AtomicLoadOrStoreImm<0>             , store_i64                 , atomics                )   \
-	visitOp(0xfe1c, i64_atomic_store16        , "i64.atomic.store16"        , AtomicLoadOrStoreImm<1>             , store_i64                 , atomics                )   \
-	visitOp(0xfe1d, i64_atomic_store32        , "i64.atomic.store32"        , AtomicLoadOrStoreImm<2>             , store_i64                 , atomics                )   \
+	visitOp(0xfe10, i32_atomic_load           , "i32.atomic.load"           , AtomicLoadOrStoreImm<2>             , load_i32                  , threads                )   \
+	visitOp(0xfe11, i64_atomic_load           , "i64.atomic.load"           , AtomicLoadOrStoreImm<3>             , load_i64                  , threads                )   \
+	visitOp(0xfe12, i32_atomic_load8_u        , "i32.atomic.load8_u"        , AtomicLoadOrStoreImm<0>             , load_i32                  , threads                )   \
+	visitOp(0xfe13, i32_atomic_load16_u       , "i32.atomic.load16_u"       , AtomicLoadOrStoreImm<1>             , load_i32                  , threads                )   \
+	visitOp(0xfe14, i64_atomic_load8_u        , "i64.atomic.load8_u"        , AtomicLoadOrStoreImm<0>             , load_i64                  , threads                )   \
+	visitOp(0xfe15, i64_atomic_load16_u       , "i64.atomic.load16_u"       , AtomicLoadOrStoreImm<1>             , load_i64                  , threads                )   \
+	visitOp(0xfe16, i64_atomic_load32_u       , "i64.atomic.load32_u"       , AtomicLoadOrStoreImm<2>             , load_i64                  , threads                )   \
+	visitOp(0xfe17, i32_atomic_store          , "i32.atomic.store"          , AtomicLoadOrStoreImm<2>             , store_i32                 , threads                )   \
+	visitOp(0xfe18, i64_atomic_store          , "i64.atomic.store"          , AtomicLoadOrStoreImm<3>             , store_i64                 , threads                )   \
+	visitOp(0xfe19, i32_atomic_store8         , "i32.atomic.store8"         , AtomicLoadOrStoreImm<0>             , store_i32                 , threads                )   \
+	visitOp(0xfe1a, i32_atomic_store16        , "i32.atomic.store16"        , AtomicLoadOrStoreImm<1>             , store_i32                 , threads                )   \
+	visitOp(0xfe1b, i64_atomic_store8         , "i64.atomic.store8"         , AtomicLoadOrStoreImm<0>             , store_i64                 , threads                )   \
+	visitOp(0xfe1c, i64_atomic_store16        , "i64.atomic.store16"        , AtomicLoadOrStoreImm<1>             , store_i64                 , threads                )   \
+	visitOp(0xfe1d, i64_atomic_store32        , "i64.atomic.store32"        , AtomicLoadOrStoreImm<2>             , store_i64                 , threads                )   \
 /* Atomic read-modify-write                                                                                                                                             */ \
-	visitOp(0xfe1e, i32_atomic_rmw_add        , "i32.atomic.rmw.add"        , AtomicLoadOrStoreImm<2>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe1f, i64_atomic_rmw_add        , "i64.atomic.rmw.add"        , AtomicLoadOrStoreImm<3>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe20, i32_atomic_rmw8_add_u     , "i32.atomic.rmw8.add_u"     , AtomicLoadOrStoreImm<0>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe21, i32_atomic_rmw16_add_u    , "i32.atomic.rmw16.add_u"    , AtomicLoadOrStoreImm<1>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe22, i64_atomic_rmw8_add_u     , "i64.atomic.rmw8.add_u"     , AtomicLoadOrStoreImm<0>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe23, i64_atomic_rmw16_add_u    , "i64.atomic.rmw16.add_u"    , AtomicLoadOrStoreImm<1>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe24, i64_atomic_rmw32_add_u    , "i64.atomic.rmw32.add_u"    , AtomicLoadOrStoreImm<2>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe25, i32_atomic_rmw_sub        , "i32.atomic.rmw.sub"        , AtomicLoadOrStoreImm<2>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe26, i64_atomic_rmw_sub        , "i64.atomic.rmw.sub"        , AtomicLoadOrStoreImm<3>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe27, i32_atomic_rmw8_sub_u     , "i32.atomic.rmw8.sub_u"     , AtomicLoadOrStoreImm<0>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe28, i32_atomic_rmw16_sub_u    , "i32.atomic.rmw16.sub_u"    , AtomicLoadOrStoreImm<1>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe29, i64_atomic_rmw8_sub_u     , "i64.atomic.rmw8.sub_u"     , AtomicLoadOrStoreImm<0>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe2a, i64_atomic_rmw16_sub_u    , "i64.atomic.rmw16.sub_u"    , AtomicLoadOrStoreImm<1>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe2b, i64_atomic_rmw32_sub_u    , "i64.atomic.rmw32.sub_u"    , AtomicLoadOrStoreImm<2>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe2c, i32_atomic_rmw_and        , "i32.atomic.rmw.and"        , AtomicLoadOrStoreImm<2>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe2d, i64_atomic_rmw_and        , "i64.atomic.rmw.and"        , AtomicLoadOrStoreImm<3>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe2e, i32_atomic_rmw8_and_u     , "i32.atomic.rmw8.and_u"     , AtomicLoadOrStoreImm<0>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe2f, i32_atomic_rmw16_and_u    , "i32.atomic.rmw16.and_u"    , AtomicLoadOrStoreImm<1>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe30, i64_atomic_rmw8_and_u     , "i64.atomic.rmw8.and_u"     , AtomicLoadOrStoreImm<0>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe31, i64_atomic_rmw16_and_u    , "i64.atomic.rmw16.and_u"    , AtomicLoadOrStoreImm<1>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe32, i64_atomic_rmw32_and_u    , "i64.atomic.rmw32.and_u"    , AtomicLoadOrStoreImm<2>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe33, i32_atomic_rmw_or         , "i32.atomic.rmw.or"         , AtomicLoadOrStoreImm<2>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe34, i64_atomic_rmw_or         , "i64.atomic.rmw.or"         , AtomicLoadOrStoreImm<3>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe35, i32_atomic_rmw8_or_u      , "i32.atomic.rmw8.or_u"      , AtomicLoadOrStoreImm<0>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe36, i32_atomic_rmw16_or_u     , "i32.atomic.rmw16.or_u"     , AtomicLoadOrStoreImm<1>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe37, i64_atomic_rmw8_or_u      , "i64.atomic.rmw8.or_u"      , AtomicLoadOrStoreImm<0>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe38, i64_atomic_rmw16_or_u     , "i64.atomic.rmw16.or_u"     , AtomicLoadOrStoreImm<1>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe39, i64_atomic_rmw32_or_u     , "i64.atomic.rmw32.or_u"     , AtomicLoadOrStoreImm<2>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe3a, i32_atomic_rmw_xor        , "i32.atomic.rmw.xor"        , AtomicLoadOrStoreImm<2>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe3b, i64_atomic_rmw_xor        , "i64.atomic.rmw.xor"        , AtomicLoadOrStoreImm<3>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe3c, i32_atomic_rmw8_xor_u     , "i32.atomic.rmw8.xor_u"     , AtomicLoadOrStoreImm<0>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe3d, i32_atomic_rmw16_xor_u    , "i32.atomic.rmw16.xor_u"    , AtomicLoadOrStoreImm<1>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe3e, i64_atomic_rmw8_xor_u     , "i64.atomic.rmw8.xor_u"     , AtomicLoadOrStoreImm<0>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe3f, i64_atomic_rmw16_xor_u    , "i64.atomic.rmw16.xor_u"    , AtomicLoadOrStoreImm<1>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe40, i64_atomic_rmw32_xor_u    , "i64.atomic.rmw32.xor_u"    , AtomicLoadOrStoreImm<2>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe41, i32_atomic_rmw_xchg       , "i32.atomic.rmw.xchg"       , AtomicLoadOrStoreImm<2>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe42, i64_atomic_rmw_xchg       , "i64.atomic.rmw.xchg"       , AtomicLoadOrStoreImm<3>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe43, i32_atomic_rmw8_xchg_u    , "i32.atomic.rmw8.xchg_u"    , AtomicLoadOrStoreImm<0>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe44, i32_atomic_rmw16_xchg_u   , "i32.atomic.rmw16.xchg_u"   , AtomicLoadOrStoreImm<1>             , atomicrmw_i32             , atomics                )   \
-	visitOp(0xfe45, i64_atomic_rmw8_xchg_u    , "i64.atomic.rmw8.xchg_u"    , AtomicLoadOrStoreImm<0>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe46, i64_atomic_rmw16_xchg_u   , "i64.atomic.rmw16.xchg_u"   , AtomicLoadOrStoreImm<1>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe47, i64_atomic_rmw32_xchg_u   , "i64.atomic.rmw32.xchg_u"   , AtomicLoadOrStoreImm<2>             , atomicrmw_i64             , atomics                )   \
-	visitOp(0xfe48, i32_atomic_rmw_cmpxchg    , "i32.atomic.rmw.cmpxchg"    , AtomicLoadOrStoreImm<2>             , atomiccmpxchg_i32         , atomics                )   \
-	visitOp(0xfe49, i64_atomic_rmw_cmpxchg    , "i64.atomic.rmw.cmpxchg"    , AtomicLoadOrStoreImm<3>             , atomiccmpxchg_i64         , atomics                )   \
-	visitOp(0xfe4a, i32_atomic_rmw8_cmpxchg_u , "i32.atomic.rmw8.cmpxchg_u" , AtomicLoadOrStoreImm<0>             , atomiccmpxchg_i32         , atomics                )   \
-	visitOp(0xfe4b, i32_atomic_rmw16_cmpxchg_u, "i32.atomic.rmw16.cmpxchg_u", AtomicLoadOrStoreImm<1>             , atomiccmpxchg_i32         , atomics                )   \
-	visitOp(0xfe4c, i64_atomic_rmw8_cmpxchg_u , "i64.atomic.rmw8.cmpxchg_u" , AtomicLoadOrStoreImm<0>             , atomiccmpxchg_i64         , atomics                )   \
-	visitOp(0xfe4d, i64_atomic_rmw16_cmpxchg_u, "i64.atomic.rmw16.cmpxchg_u", AtomicLoadOrStoreImm<1>             , atomiccmpxchg_i64         , atomics                )   \
-	visitOp(0xfe4e, i64_atomic_rmw32_cmpxchg_u, "i64.atomic.rmw32.cmpxchg_u", AtomicLoadOrStoreImm<2>             , atomiccmpxchg_i64         , atomics                )   \
+	visitOp(0xfe1e, i32_atomic_rmw_add        , "i32.atomic.rmw.add"        , AtomicLoadOrStoreImm<2>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe1f, i64_atomic_rmw_add        , "i64.atomic.rmw.add"        , AtomicLoadOrStoreImm<3>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe20, i32_atomic_rmw8_add_u     , "i32.atomic.rmw8.add_u"     , AtomicLoadOrStoreImm<0>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe21, i32_atomic_rmw16_add_u    , "i32.atomic.rmw16.add_u"    , AtomicLoadOrStoreImm<1>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe22, i64_atomic_rmw8_add_u     , "i64.atomic.rmw8.add_u"     , AtomicLoadOrStoreImm<0>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe23, i64_atomic_rmw16_add_u    , "i64.atomic.rmw16.add_u"    , AtomicLoadOrStoreImm<1>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe24, i64_atomic_rmw32_add_u    , "i64.atomic.rmw32.add_u"    , AtomicLoadOrStoreImm<2>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe25, i32_atomic_rmw_sub        , "i32.atomic.rmw.sub"        , AtomicLoadOrStoreImm<2>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe26, i64_atomic_rmw_sub        , "i64.atomic.rmw.sub"        , AtomicLoadOrStoreImm<3>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe27, i32_atomic_rmw8_sub_u     , "i32.atomic.rmw8.sub_u"     , AtomicLoadOrStoreImm<0>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe28, i32_atomic_rmw16_sub_u    , "i32.atomic.rmw16.sub_u"    , AtomicLoadOrStoreImm<1>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe29, i64_atomic_rmw8_sub_u     , "i64.atomic.rmw8.sub_u"     , AtomicLoadOrStoreImm<0>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe2a, i64_atomic_rmw16_sub_u    , "i64.atomic.rmw16.sub_u"    , AtomicLoadOrStoreImm<1>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe2b, i64_atomic_rmw32_sub_u    , "i64.atomic.rmw32.sub_u"    , AtomicLoadOrStoreImm<2>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe2c, i32_atomic_rmw_and        , "i32.atomic.rmw.and"        , AtomicLoadOrStoreImm<2>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe2d, i64_atomic_rmw_and        , "i64.atomic.rmw.and"        , AtomicLoadOrStoreImm<3>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe2e, i32_atomic_rmw8_and_u     , "i32.atomic.rmw8.and_u"     , AtomicLoadOrStoreImm<0>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe2f, i32_atomic_rmw16_and_u    , "i32.atomic.rmw16.and_u"    , AtomicLoadOrStoreImm<1>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe30, i64_atomic_rmw8_and_u     , "i64.atomic.rmw8.and_u"     , AtomicLoadOrStoreImm<0>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe31, i64_atomic_rmw16_and_u    , "i64.atomic.rmw16.and_u"    , AtomicLoadOrStoreImm<1>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe32, i64_atomic_rmw32_and_u    , "i64.atomic.rmw32.and_u"    , AtomicLoadOrStoreImm<2>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe33, i32_atomic_rmw_or         , "i32.atomic.rmw.or"         , AtomicLoadOrStoreImm<2>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe34, i64_atomic_rmw_or         , "i64.atomic.rmw.or"         , AtomicLoadOrStoreImm<3>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe35, i32_atomic_rmw8_or_u      , "i32.atomic.rmw8.or_u"      , AtomicLoadOrStoreImm<0>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe36, i32_atomic_rmw16_or_u     , "i32.atomic.rmw16.or_u"     , AtomicLoadOrStoreImm<1>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe37, i64_atomic_rmw8_or_u      , "i64.atomic.rmw8.or_u"      , AtomicLoadOrStoreImm<0>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe38, i64_atomic_rmw16_or_u     , "i64.atomic.rmw16.or_u"     , AtomicLoadOrStoreImm<1>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe39, i64_atomic_rmw32_or_u     , "i64.atomic.rmw32.or_u"     , AtomicLoadOrStoreImm<2>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe3a, i32_atomic_rmw_xor        , "i32.atomic.rmw.xor"        , AtomicLoadOrStoreImm<2>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe3b, i64_atomic_rmw_xor        , "i64.atomic.rmw.xor"        , AtomicLoadOrStoreImm<3>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe3c, i32_atomic_rmw8_xor_u     , "i32.atomic.rmw8.xor_u"     , AtomicLoadOrStoreImm<0>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe3d, i32_atomic_rmw16_xor_u    , "i32.atomic.rmw16.xor_u"    , AtomicLoadOrStoreImm<1>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe3e, i64_atomic_rmw8_xor_u     , "i64.atomic.rmw8.xor_u"     , AtomicLoadOrStoreImm<0>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe3f, i64_atomic_rmw16_xor_u    , "i64.atomic.rmw16.xor_u"    , AtomicLoadOrStoreImm<1>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe40, i64_atomic_rmw32_xor_u    , "i64.atomic.rmw32.xor_u"    , AtomicLoadOrStoreImm<2>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe41, i32_atomic_rmw_xchg       , "i32.atomic.rmw.xchg"       , AtomicLoadOrStoreImm<2>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe42, i64_atomic_rmw_xchg       , "i64.atomic.rmw.xchg"       , AtomicLoadOrStoreImm<3>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe43, i32_atomic_rmw8_xchg_u    , "i32.atomic.rmw8.xchg_u"    , AtomicLoadOrStoreImm<0>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe44, i32_atomic_rmw16_xchg_u   , "i32.atomic.rmw16.xchg_u"   , AtomicLoadOrStoreImm<1>             , atomicrmw_i32             , threads                )   \
+	visitOp(0xfe45, i64_atomic_rmw8_xchg_u    , "i64.atomic.rmw8.xchg_u"    , AtomicLoadOrStoreImm<0>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe46, i64_atomic_rmw16_xchg_u   , "i64.atomic.rmw16.xchg_u"   , AtomicLoadOrStoreImm<1>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe47, i64_atomic_rmw32_xchg_u   , "i64.atomic.rmw32.xchg_u"   , AtomicLoadOrStoreImm<2>             , atomicrmw_i64             , threads                )   \
+	visitOp(0xfe48, i32_atomic_rmw_cmpxchg    , "i32.atomic.rmw.cmpxchg"    , AtomicLoadOrStoreImm<2>             , atomiccmpxchg_i32         , threads                )   \
+	visitOp(0xfe49, i64_atomic_rmw_cmpxchg    , "i64.atomic.rmw.cmpxchg"    , AtomicLoadOrStoreImm<3>             , atomiccmpxchg_i64         , threads                )   \
+	visitOp(0xfe4a, i32_atomic_rmw8_cmpxchg_u , "i32.atomic.rmw8.cmpxchg_u" , AtomicLoadOrStoreImm<0>             , atomiccmpxchg_i32         , threads                )   \
+	visitOp(0xfe4b, i32_atomic_rmw16_cmpxchg_u, "i32.atomic.rmw16.cmpxchg_u", AtomicLoadOrStoreImm<1>             , atomiccmpxchg_i32         , threads                )   \
+	visitOp(0xfe4c, i64_atomic_rmw8_cmpxchg_u , "i64.atomic.rmw8.cmpxchg_u" , AtomicLoadOrStoreImm<0>             , atomiccmpxchg_i64         , threads                )   \
+	visitOp(0xfe4d, i64_atomic_rmw16_cmpxchg_u, "i64.atomic.rmw16.cmpxchg_u", AtomicLoadOrStoreImm<1>             , atomiccmpxchg_i64         , threads                )   \
+	visitOp(0xfe4e, i64_atomic_rmw32_cmpxchg_u, "i64.atomic.rmw32.cmpxchg_u", AtomicLoadOrStoreImm<2>             , atomiccmpxchg_i64         , threads                )   \
 	visitOp(0xfc20, memtag_status             , "memtag.status"             , MemoryImm                           , memtag_1r0a             , mvp                    )   \
 	visitOp(0xfc21, memtag_extract            , "memtag.extract"            , MemoryImm                           , memtag_1r1a            , mvp                    )   \
 	visitOp(0xfc22, memtag_insert             , "memtag.insert"             , MemoryImm                           , memtag_1r2a             , mvp                    )   \
@@ -619,7 +619,7 @@
 	visitOp(0xfdfe, f64x2_convert_low_i32x4_s     , "f64x2.convert_low_i32x4_s"     , NoImm                     , v128_to_v128              , simd                   )   \
 	visitOp(0xfdff, f64x2_convert_low_i32x4_u     , "f64x2.convert_low_i32x4_u"     , NoImm                     , v128_to_v128              , simd                   )   \
 /* Atomic fence                                                                                                                                                       */ \
-	visitOp(0xfe03, atomic_fence                  , "atomic.fence"                  , AtomicFenceImm            , none_to_none              , atomics                )
+	visitOp(0xfe03, atomic_fence                  , "atomic.fence"                  , AtomicFenceImm            , none_to_none              , threads                )
 
 // clang-format on
 

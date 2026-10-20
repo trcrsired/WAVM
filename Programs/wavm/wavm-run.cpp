@@ -195,13 +195,13 @@ void showRunHelp(Log::Category outputCategory)
 				"  --precompiled         Use precompiled object code in program file\n"
 				"  --nocache             Don't use the WAVM object cache\n"
 				"  --enable <feature>    Enable the specified feature. See the list of supported\n"
-				"                        features below.\n"
+				"                        features below. The 'networks' feature allows the WASI\n"
+				"                        process to use the network (the sock_* syscalls); it is\n"
+				"                        disabled by default.\n"
 				"  --abi=<abi>           Specifies the ABI used by the WASM module. See the list\n"
 				"                        of supported ABIs below. The default is to detect the\n"
 				"                        ABI based on the module imports/exports.\n"
 				"  --mount-root <dir>    Mounts <dir> as the WASI root directory\n"
-				"  --enable-network      Allows the WASI process to use the network (the\n"
-				"                        sock_* syscalls). Disabled by default.\n"
 				"  --wasi-trace=<level>  Sets the level of WASI tracing:\n"
 				"                        - syscalls\n"
 				"                        - syscalls-with-callstacks\n"
@@ -218,9 +218,7 @@ void showRunHelp(Log::Category outputCategory)
 
 template<Uptr numPrefixChars>
 static bool stringStartsWith(const char* string, const char (&prefix)[numPrefixChars])
-{
-	return !strncmp(string, prefix, numPrefixChars - 1);
-}
+{ return !strncmp(string, prefix, numPrefixChars - 1); }
 
 static std::string getFilenameAndExtension(const char* path)
 {
@@ -320,7 +318,8 @@ struct State
 					return false;
 				}
 
-				if(!parseAndSetFeature(*nextArg, featureSpec, true))
+				if(!strcmp(*nextArg, "networks")) { allowNetwork = true; }
+				else if(!parseAndSetFeature(*nextArg, featureSpec, true))
 				{
 					Log::printf(Log::error,
 								"Unknown feature '%s'. Supported features:\n"
@@ -333,7 +332,6 @@ struct State
 			}
 			else if(!strcmp(*nextArg, "--precompiled")) { precompiled = true; }
 			else if(!strcmp(*nextArg, "--nocache")) { allowCaching = false; }
-			else if(!strcmp(*nextArg, "--enable-network")) { allowNetwork = true; }
 			else if(!strcmp(*nextArg, "--mount-root"))
 			{
 				if(rootMountPath)
@@ -620,9 +618,7 @@ struct State
 		}
 		else if(allowNetwork)
 		{
-			Log::printf(
-				Log::error,
-				"--enable-network may only be used with the WASI ABI.\n");
+			Log::printf(Log::error, "--enable networks may only be used with the WASI ABI.\n");
 			return false;
 		}
 		else if(abi == ABI::bare)
@@ -896,7 +892,10 @@ struct State
 			NullResolver nullResolver;
 			linkResult = linkModule(irModule, nullResolver);
 		}
-		else { WAVM_UNREACHABLE(); }
+		else
+		{
+			WAVM_UNREACHABLE();
+		}
 
 		if(!linkResult.success)
 		{
@@ -931,7 +930,10 @@ struct State
 		int result;
 		if(emscriptenProcess) { result = Emscripten::catchExit(std::move(executeThunk)); }
 		else if(wasiProcess) { result = WASI::catchExit(std::move(executeThunk)); }
-		else { result = executeThunk(); }
+		else
+		{
+			result = executeThunk();
+		}
 		Timing::logTimer("Executed program", executionTimer);
 
 		// Log the peak memory usage.

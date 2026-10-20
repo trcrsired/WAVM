@@ -1413,12 +1413,34 @@ void EmitFunctionContext::memtag_untagstore(MemoryImm imm)
 	::llvm::Value* memaddress = pop();
 	if(isMemTaggedEnabled(*this))
 	{
-		memaddress = UntagAddress(*this, imm.memoryIndex, memaddress);
-		StoreTagIntoMem(*this,
-						imm.memoryIndex,
-						memaddress,
-						taggedbytes,
-						llvm::ConstantInt::get(this->llvmContext.i8Type, 0));
+		if(::WAVM::LLVMJIT::is_memtagstatus_armmte(this->isMemTagged))
+		{
+			memaddress = UntagAddress(*this, imm.memoryIndex, memaddress);
+			StoreTagIntoMem(*this,
+							imm.memoryIndex,
+							memaddress,
+							taggedbytes,
+							llvm::ConstantInt::get(this->llvmContext.i8Type, 0));
+		}
+		else if(::llvm::isa<::llvm::Constant>(taggedbytes))
+		{
+			// The stack-tagging pass ends an alloca's lifetime with
+			// memtag.untagstore(0, alloca, constSize). The alloca address carries the stack
+			// pointer's tag, which is nonzero when the stack was allocated for a spawned thread.
+			// Restoring that tag (rather than zeroing) keeps later stack-pointer-derived accesses
+			// tag-correct. Heap frees pass a dynamic size and must still zero the shadow so that
+			// stale or double frees are caught.
+			memaddress = StoreTagIntoMem(*this, imm.memoryIndex, memaddress, taggedbytes, nullptr);
+		}
+		else
+		{
+			memaddress = UntagAddress(*this, imm.memoryIndex, memaddress);
+			StoreTagIntoMem(*this,
+							imm.memoryIndex,
+							memaddress,
+							taggedbytes,
+							llvm::ConstantInt::get(this->llvmContext.i8Type, 0));
+		}
 	}
 	push(memaddress);
 }

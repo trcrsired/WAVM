@@ -163,9 +163,7 @@ template<typename Imm> bool isImmValid(const FunctionState&, ImmTypeAsValue<Imm>
 static void generateImm(const FunctionState& state, RandomStream& random, NoImm& outImm) {}
 
 static bool isImmValid(const FunctionState& state, ImmTypeAsValue<FunctionRefImm>)
-{
-	return state.moduleState.declaredFunctionIndices.size();
-}
+{ return state.moduleState.declaredFunctionIndices.size(); }
 static void generateImm(const FunctionState& state, RandomStream& random, FunctionRefImm& outImm)
 {
 	outImm.functionIndex = state.moduleState.declaredFunctionIndices[random.get(
@@ -173,14 +171,10 @@ static void generateImm(const FunctionState& state, RandomStream& random, Functi
 }
 
 static void generateImm(const FunctionState& state, RandomStream& random, LiteralImm<I32>& outImm)
-{
-	outImm.value = I32(random.get(UINT32_MAX));
-}
+{ outImm.value = I32(random.get(UINT32_MAX)); }
 
 static void generateImm(const FunctionState& state, RandomStream& random, LiteralImm<I64>& outImm)
-{
-	outImm.value = I64(random.get(UINT64_MAX));
-}
+{ outImm.value = I64(random.get(UINT64_MAX)); }
 
 static void generateImm(const FunctionState& state, RandomStream& random, LiteralImm<F32>& outImm)
 {
@@ -201,17 +195,13 @@ static void generateImm(const FunctionState& state, RandomStream& random, Litera
 }
 
 static void generateImm(const FunctionState& state, RandomStream& random, AtomicFenceImm& outImm)
-{
-	outImm.order = MemoryOrder::sequentiallyConsistent;
-}
+{ outImm.order = MemoryOrder::sequentiallyConsistent; }
 
 template<Uptr numLanes>
 static void generateImm(const FunctionState& state,
 						RandomStream& random,
 						LaneIndexImm<numLanes>& outImm)
-{
-	outImm.laneIndex = random.get<U8>(numLanes - 1);
-}
+{ outImm.laneIndex = random.get<U8>(numLanes - 1); }
 
 template<Uptr numLanes>
 static void generateImm(const FunctionState& state,
@@ -225,9 +215,7 @@ static void generateImm(const FunctionState& state,
 }
 
 static bool isImmValid(const FunctionState& state, ImmTypeAsValue<DataSegmentImm>)
-{
-	return state.module_.dataSegments.size();
-}
+{ return state.module_.dataSegments.size(); }
 static void generateImm(const FunctionState& state, RandomStream& random, DataSegmentImm& outImm)
 {
 	WAVM_ASSERT(state.module_.dataSegments.size());
@@ -235,9 +223,7 @@ static void generateImm(const FunctionState& state, RandomStream& random, DataSe
 }
 
 static bool isImmValid(const FunctionState& state, ImmTypeAsValue<ElemSegmentImm>)
-{
-	return state.module_.elemSegments.size();
-}
+{ return state.module_.elemSegments.size(); }
 static void generateImm(const FunctionState& state, RandomStream& random, ElemSegmentImm& outImm)
 {
 	WAVM_ASSERT(state.module_.elemSegments.size());
@@ -1094,7 +1080,7 @@ void IR::generateValidModule(Module& module_, RandomStream& random)
 	ModuleState moduleState(module_, random);
 
 	WAVM_ASSERT(module_.featureSpec.simd);
-	WAVM_ASSERT(module_.featureSpec.atomics);
+	WAVM_ASSERT(module_.featureSpec.threads);
 	WAVM_ASSERT(module_.featureSpec.exceptionHandling);
 	WAVM_ASSERT(module_.featureSpec.multipleResultsAndBlockParams);
 	WAVM_ASSERT(module_.featureSpec.bulkMemoryOperations);

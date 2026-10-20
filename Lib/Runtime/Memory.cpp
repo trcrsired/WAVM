@@ -545,23 +545,25 @@ static U8* getValidatedMemoryOffsetRangeImpl(Memory* memory,
 											 U8* memoryBase,
 											 Uptr memoryNumBytes,
 											 Uptr address,
-											 Uptr numBytes,
-											 bool checkTag = true)
+											 Uptr numBytes)
 {
+	// Runtime-side accesses are host accesses: the WASI/Emscripten layer copies data with plain
+	// host pointers, exactly like a kernel copy in a real MTE system, where such accesses never
+	// check memory tags. Guest instructions are tag-checked by the JIT inline instead. So the
+	// address is only de-tagged here; enforcing the guest's software tags on host accesses would
+	// spuriously trap on buffers that the guest never itself accesses with the passed tag (e.g. a
+	// syscall output buffer whose trailing granule holds a stale/dead tag from an earlier frame).
 	auto baseaddrestags = memory->baseAddressTags;
-	U8 color = 0;
 	if(baseaddrestags)
 	{
 		if(memory->indexType == IR::IndexType::i32)
 		{
 			using constanttype = ::WAVM::IR::memtag32constants;
-			color = static_cast<U8>(address >> (constanttype::shifter));
 			address &= constanttype::mask;
 		}
 		else
 		{
 			using constanttype = ::WAVM::IR::memtag64constants;
-			color = static_cast<U8>(address >> (constanttype::shifter));
 			address &= constanttype::mask;
 		}
 	}
@@ -590,29 +592,6 @@ static U8* getValidatedMemoryOffsetRangeImpl(Memory* memory,
 		throwException(ExceptionTypes::outOfBoundsMemoryAccess,
 					   {asObject(memory),
 						U64(boundsaddress > memoryNumBytes ? boundsaddress : memoryNumBytes)});
-	}
-	if(checkTag && baseaddrestags && numBytes != 0)
-	{
-		Uptr tagaddress = address >> 4;
-		if(baseaddrestags[tagaddress] != color)
-		{
-			throwException(ExceptionTypes::invalidMemoryTagAccess, {});
-		}
-		// The software tagging check mode mirrors the JIT's: release ("memtag-soft") validates
-		// only the granule containing the first byte of the access, while debug
-		// ("memtag-soft-debug") additionally validates the granule containing the last byte.
-		// The JIT gates the last-granule test on memtagStatus::full; the runtime-side validator
-		// (used by WASI syscalls and other runtime memory accesses) must agree, otherwise a
-		// release-mode build traps here on accesses that straddle into a differently-tagged
-		// trailing granule.
-		if(memory->memtagstatus == ::WAVM::LLVMJIT::memtagStatus::full)
-		{
-			Uptr tagaddresslast = (address + numBytes - 1) >> 4;
-			if(baseaddrestags[tagaddresslast] != color)
-			{
-				throwException(ExceptionTypes::invalidMemoryTagAccess, {});
-			}
-		}
 	}
 	WAVM_ASSERT(memoryBase);
 	numBytes = branchlessMin(numBytes, memoryNumBytes);
@@ -643,22 +622,6 @@ U8* Runtime::getValidatedMemoryOffsetRange(Memory* memory, Uptr address, Uptr nu
 		memory->numPages.load(std::memory_order_acquire) * IR::numBytesPerPage,
 		address,
 		numBytes);
-}
-
-U8* Runtime::getValidatedMemoryOffsetRangeNoTagCheck(Memory* memory, Uptr address, Uptr numBytes)
-{
-	WAVM_ASSERT(memory);
-
-	// Same as getValidatedMemoryOffsetRange, but skips the software memory tag check. Used by
-	// runtime intrinsics whose address comes from the JIT, which has already done the tag check
-	// inline and passed a de-tagged address.
-	return ::getValidatedMemoryOffsetRangeImpl(
-		memory,
-		memory->baseAddress,
-		memory->numPages.load(std::memory_order_acquire) * IR::numBytesPerPage,
-		address,
-		numBytes,
-		false);
 }
 
 void Runtime::initDataSegment(Instance* instance,

@@ -64,9 +64,7 @@ namespace WAVM { namespace IR {
 }}
 
 std::shared_ptr<ModuleValidationState> IR::createModuleValidationState(const IR::Module& module_)
-{
-	return std::make_shared<ModuleValidationState>(module_);
-}
+{ return std::make_shared<ModuleValidationState>(module_); }
 
 static void validate(const IR::Module& module_, IR::ValueType valueType)
 {
@@ -128,7 +126,7 @@ static void validate(const Module& module_, MemoryType type)
 			 type.indexType == IndexType::i32 ? IR::maxMemory32Pages : IR::maxMemory64Pages);
 	if(type.isShared)
 	{
-		VALIDATE_FEATURE("shared memory", atomics);
+		VALIDATE_FEATURE("shared memory", threads);
 		VALIDATE_UNLESS("shared memories must have a maximum size: ", type.size.max == UINT64_MAX);
 	}
 	if(type.indexType != IndexType::i32) { VALIDATE_FEATURE("64-bit memory addresses", memory64); }
@@ -204,9 +202,7 @@ static FunctionType validateFunctionIndex(const Module& module_, Uptr functionIn
 }
 
 static void validateFunctionRef(const ModuleValidationState& state, Uptr functionIndex)
-{
-	validateFunctionIndex(state.module_, functionIndex);
-}
+{ validateFunctionIndex(state.module_, functionIndex); }
 
 static void validateFunctionRefIsDeclared(const ModuleValidationState& state, Uptr functionIndex)
 {
@@ -517,7 +513,10 @@ struct FunctionValidationContext
 				throw ValidationException(
 					"br_table targets must all take the same number of parameters");
 			}
-			else { peekAndValidateTypeTuple("br_table case argument", targetParams); }
+			else
+			{
+				peekAndValidateTypeTuple("br_table case argument", targetParams);
+			}
 		}
 
 		popAndValidateTypeTuple("br_table argument", defaultTargetParams);
@@ -567,13 +566,9 @@ struct FunctionValidationContext
 	}
 
 	void local_get(GetOrSetVariableImm<false> imm)
-	{
-		pushOperand(validateLocalIndex(imm.variableIndex));
-	}
+	{ pushOperand(validateLocalIndex(imm.variableIndex)); }
 	void local_set(GetOrSetVariableImm<false> imm)
-	{
-		popAndValidateOperand("local.set", validateLocalIndex(imm.variableIndex));
-	}
+	{ popAndValidateOperand("local.set", validateLocalIndex(imm.variableIndex)); }
 	void local_tee(GetOrSetVariableImm<false> imm)
 	{
 		const ValueType localType = validateLocalIndex(imm.variableIndex);
@@ -729,9 +724,7 @@ struct FunctionValidationContext
 	}
 
 	template<Uptr numLanes> void validateImm(LaneIndexImm<numLanes> imm)
-	{
-		VALIDATE_UNLESS("invalid lane index: ", imm.laneIndex >= numLanes);
-	}
+	{ VALIDATE_UNLESS("invalid lane index: ", imm.laneIndex >= numLanes); }
 
 	template<Uptr numLanes> void validateImm(ShuffleImm<numLanes> imm)
 	{
@@ -752,9 +745,7 @@ struct FunctionValidationContext
 	}
 
 	void validateImm(AtomicFenceImm imm)
-	{
-		WAVM_ASSERT(imm.order == MemoryOrder::sequentiallyConsistent);
-	}
+	{ WAVM_ASSERT(imm.order == MemoryOrder::sequentiallyConsistent); }
 
 	void validateImm(DataSegmentAndMemImm imm)
 	{
@@ -763,9 +754,7 @@ struct FunctionValidationContext
 	}
 
 	void validateImm(DataSegmentImm imm)
-	{
-		VALIDATE_INDEX(imm.dataSegmentIndex, module_.dataSegments.size());
-	}
+	{ VALIDATE_INDEX(imm.dataSegmentIndex, module_.dataSegments.size()); }
 
 	void validateImm(ElemSegmentAndTableImm imm)
 	{
@@ -791,9 +780,7 @@ struct FunctionValidationContext
 	}
 
 	void validateImm(ElemSegmentImm imm)
-	{
-		VALIDATE_INDEX(imm.elemSegmentIndex, module_.elemSegments.size());
-	}
+	{ VALIDATE_INDEX(imm.elemSegmentIndex, module_.elemSegments.size()); }
 
 #define VALIDATE_OP(_1, name, nameString, Imm, Signature, requiredFeature)                         \
 	void name(Imm imm)                                                                             \
@@ -859,9 +846,7 @@ private:
 						  TypeTuple params,
 						  TypeTuple results,
 						  TypeTuple elseParams = TypeTuple())
-	{
-		controlStack.push_back({type, stack.size(), params, results, true, elseParams});
-	}
+	{ controlStack.push_back({type, stack.size(), params, results, true, elseParams}); }
 
 	void validateStackEmptyAtEndOfControlStructure()
 	{
@@ -953,9 +938,7 @@ private:
 
 	template<Uptr num>
 	void popAndValidateOperandArray(const char* context, const ValueType (&expectedTypes)[num])
-	{
-		popAndValidateOperandArray(context, expectedTypes, num);
-	}
+	{ popAndValidateOperandArray(context, expectedTypes, num); }
 
 	template<typename... OperandTypes>
 	void popAndValidateOperands(const char* context, OperandTypes... operands)
@@ -975,14 +958,10 @@ private:
 	}
 
 	void popAndValidateTypeTuple(const char* context, TypeTuple expectedTypes)
-	{
-		popAndValidateOperandArray(context, expectedTypes.data(), expectedTypes.size());
-	}
+	{ popAndValidateOperandArray(context, expectedTypes.data(), expectedTypes.size()); }
 
 	void popAndValidateOpParams(const char* context, OpTypeTuple expectedTypes)
-	{
-		popAndValidateOperandArray(context, expectedTypes.data(), expectedTypes.size());
-	}
+	{ popAndValidateOperandArray(context, expectedTypes.data(), expectedTypes.size()); }
 
 	void peekAndValidateTypeTuple(const char* context, TypeTuple expectedTypes)
 	{
@@ -1333,9 +1312,7 @@ namespace WAVM { namespace IR {
 
 IR::CodeValidationStream::CodeValidationStream(ModuleValidationState& moduleValidationState,
 											   const FunctionDef& functionDef)
-{
-	impl = new CodeValidationStreamImpl(moduleValidationState, functionDef);
-}
+{ impl = new CodeValidationStreamImpl(moduleValidationState, functionDef); }
 
 IR::CodeValidationStream::~CodeValidationStream()
 {

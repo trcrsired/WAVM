@@ -37,7 +37,10 @@ static Command parseCommand(const char* string)
 	else if(!strcmp(string, "compile")) { return Command::compile; }
 	else if(!strcmp(string, "run")) { return Command::run; }
 #endif
-	else { return Command::invalid; }
+	else
+	{
+		return Command::invalid;
+	}
 }
 
 static const char* getCommandListHelpText()
@@ -128,6 +131,13 @@ bool parseAndSetFeature(const char* featureName, IR::FeatureSpec& featureSpec, b
 	WAVM_ENUM_STANDARD_FEATURES(VISIT_FEATURE)
 #undef VISIT_FEATURE
 
+	// The feature was called "atomics" before it was extended to cover WASI threads.
+	if(!strcmp(featureName, "atomics"))
+	{
+		featureSpec.threads = enable;
+		return true;
+	}
+
 	return false;
 }
 
@@ -188,9 +198,7 @@ static int execHelpCommand(int argc, char** argv)
 }
 
 void showVersionHelp(Log::Category outputCategory)
-{
-	Log::printf(outputCategory, "Usage: wavm version\n");
-}
+{ Log::printf(outputCategory, "Usage: wavm version\n"); }
 
 #define LOG_BUILD_CONFIG_BOOL(variable)                                                            \
 	Log::printf(Log::output, "%-30s %s\n", #variable ":", variable ? "true" : "false");

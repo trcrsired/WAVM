@@ -76,4 +76,4 @@ ADD_WAST_TESTS(
 		utf8-import-field.wast
 		utf8-import-module.wast
 		utf8-invalid-encoding.wast
-	WAVM_ARGS --test-cloning --enable atomics --disable ref-types)
+	WAVM_ARGS --test-cloning --enable threads --disable ref-types)
