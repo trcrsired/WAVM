@@ -50,6 +50,9 @@ namespace WAVM { namespace Platform {
 		{
 			Uptr data[::WAVM::wavm_pthread_cond_words];
 		} pthreadCond;
+		// Matches the Windows auto-reset event: a signal that arrives before
+		// the waiter blocks is remembered instead of being lost.
+		bool signaled = false;
 #endif
 	};
 }}

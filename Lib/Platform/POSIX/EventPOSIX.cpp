@@ -44,44 +44,84 @@ bool Platform::Event::wait(Time waitDuration)
 {
 	WAVM_ERROR_UNLESS(!pthread_mutex_lock((pthread_mutex_t*)&pthreadMutex));
 
-	int result;
+	// Like the Windows auto-reset event, a signal is sticky: signal() records
+	// it under this mutex, so one delivered before the wait blocks is not
+	// lost. Callers (e.g. the atomics wait list) have no predicate of their
+	// own to re-check after a wakeup, which is what pthread_cond_wait
+	// normally requires.
+	if(signaled)
+	{
+		signaled = false;
+		WAVM_ERROR_UNLESS(!pthread_mutex_unlock((pthread_mutex_t*)&pthreadMutex));
+		return true;
+	}
+
+	bool result;
 	if(isInfinity(waitDuration))
 	{
-		result = pthread_cond_wait((pthread_cond_t*)&pthreadCond, (pthread_mutex_t*)&pthreadMutex);
+		int condResult;
+		while(!signaled)
+		{
+			condResult
+				= pthread_cond_wait((pthread_cond_t*)&pthreadCond, (pthread_mutex_t*)&pthreadMutex);
+			if(condResult != 0) { WAVM_ERROR_UNLESS(!condResult); }
+		}
+		signaled = false;
+		result = true;
 	}
 	else
 	{
 		// Use the non-POSIX relative time wait on Mac, and an absolute monotonic clock timeout on
 		// other POSIX systems.
-#ifdef __APPLE__
-		timespec waitTimeSpec;
-		waitTimeSpec.tv_sec = U64(waitDuration.ns / 1000000000);
-		waitTimeSpec.tv_nsec = U64(waitDuration.ns % 1000000000);
-
-		result = pthread_cond_timedwait_relative_np(
-			(pthread_cond_t*)&pthreadCond, (pthread_mutex_t*)&pthreadMutex, &waitTimeSpec);
-#else
+#ifndef __APPLE__
 		const I128 untilTimeNS = getClockTime(Clock::monotonic).ns + waitDuration.ns;
-		timespec untilTimeSpec;
-		untilTimeSpec.tv_sec = U64(untilTimeNS / 1000000000);
-		untilTimeSpec.tv_nsec = U64(untilTimeNS % 1000000000);
-
-		result = pthread_cond_timedwait(
-			(pthread_cond_t*)&pthreadCond, (pthread_mutex_t*)&pthreadMutex, &untilTimeSpec);
 #endif
+		result = true;
+		for(;;)
+		{
+			int condResult;
+#ifdef __APPLE__
+			timespec waitTimeSpec;
+			waitTimeSpec.tv_sec = U64(waitDuration.ns / 1000000000);
+			waitTimeSpec.tv_nsec = U64(waitDuration.ns % 1000000000);
+			condResult = pthread_cond_timedwait_relative_np(
+				(pthread_cond_t*)&pthreadCond, (pthread_mutex_t*)&pthreadMutex, &waitTimeSpec);
+#else
+			timespec untilTimeSpec;
+			untilTimeSpec.tv_sec = U64(untilTimeNS / 1000000000);
+			untilTimeSpec.tv_nsec = U64(untilTimeNS % 1000000000);
+			condResult = pthread_cond_timedwait(
+				(pthread_cond_t*)&pthreadCond, (pthread_mutex_t*)&pthreadMutex, &untilTimeSpec);
+#endif
+			if(condResult == ETIMEDOUT)
+			{
+				// A signaler that ran just before the timeout took the mutex
+				// and set signaled; consume it like a signal that won.
+				if(signaled) { result = true; }
+				else
+				{
+					result = false;
+				}
+				break;
+			}
+			if(condResult != 0) { WAVM_ERROR_UNLESS(!condResult); }
+			if(signaled)
+			{
+				result = true;
+				break;
+			}
+		}
+		if(result) { signaled = false; }
 	}
 
 	WAVM_ERROR_UNLESS(!pthread_mutex_unlock((pthread_mutex_t*)&pthreadMutex));
-
-	if(result == ETIMEDOUT) { return false; }
-	else
-	{
-		WAVM_ERROR_UNLESS(!result);
-		return true;
-	}
+	return result;
 }
 
 void Platform::Event::signal()
 {
+	WAVM_ERROR_UNLESS(!pthread_mutex_lock((pthread_mutex_t*)&pthreadMutex));
+	signaled = true;
 	WAVM_ERROR_UNLESS(!pthread_cond_signal((pthread_cond_t*)&pthreadCond));
+	WAVM_ERROR_UNLESS(!pthread_mutex_unlock((pthread_mutex_t*)&pthreadMutex));
 }
