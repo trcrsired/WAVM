@@ -2627,3 +2627,152 @@ WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
 		= WASIAddressIPtr(numAddresses);
 	return TRACE_SYSCALL_RETURN(__WASI_ESUCCESS, "(%u addresses)", U32(numAddresses));
 }
+
+// ifaddrs_get(0, 0, &needed): returns the size of an interface snapshot in *needed.
+// ifaddrs_get(buffer, length, &needed): copies the snapshot into the guest buffer, or returns
+// ENOSPC and the required size in *needed when the buffer is too small.
+//
+// The snapshot is a sequence of 4-byte aligned records, all integers little-endian, offsets
+// relative to the start of the buffer:
+//   u32 nextRecordOffset;  // 0 for the last record, else the next record's offset
+//   u16 family;            // 1 = IPv4, 2 = IPv6
+//   u16 flags;             // IFF_* bits using musl's <net/if.h> values
+//   u8  addressLength;     // 4 or 16
+//   u8  netmaskLength;     // 0, 4 or 16
+//   u16 nameLength;        // including the trailing NUL
+//   u8  address[16];       // network byte order
+//   u8  netmask[16];       // network byte order
+//   char name[nameLength];
+static __wasi_errno_t writeHostInterfaces(Memory* memory,
+										  WASIAddressIPtr bufferAddress,
+										  WASIAddressIPtr bufferLength,
+										  WASIAddressIPtr outNeededAddress)
+{
+	constexpr U32 recordHeaderSize = 44;
+	constexpr U16 wireFamilyIPv4 = 1;
+	constexpr U16 wireFamilyIPv6 = 2;
+
+	struct InterfaceRecord
+	{
+		char name[256];
+		U16 nameLength;
+		U16 family;
+		U16 flags;
+		U8 addressLength;
+		U8 netmaskLength;
+		U8 address[16];
+		U8 netmask[16];
+	};
+
+	std::vector<Platform::InterfaceAddress> hostInterfaces;
+	const VFS::Result enumerateResult = Platform::getInterfaceAddresses(hostInterfaces);
+	if(enumerateResult != VFS::Result::success) { return asWASIErrNo(enumerateResult); }
+
+	std::vector<InterfaceRecord> records;
+	for(const Platform::InterfaceAddress& hostInterface : hostInterfaces)
+	{
+		InterfaceRecord record = {};
+		const bool isIPv4 = hostInterface.family == VFS::SocketAddress::Family::ipv4;
+		record.family = isIPv4 ? wireFamilyIPv4 : wireFamilyIPv6;
+		record.flags = U16(hostInterface.flags);
+		record.addressLength = isIPv4 ? 4 : 16;
+		memcpy(record.address, hostInterface.ipBytes, record.addressLength);
+		if(hostInterface.hasNetmask)
+		{
+			record.netmaskLength = record.addressLength;
+			memcpy(record.netmask, hostInterface.netmaskBytes, record.netmaskLength);
+		}
+
+		Uptr nameLength = hostInterface.name.size();
+		if(nameLength >= sizeof(record.name)) { nameLength = sizeof(record.name) - 1; }
+		memcpy(record.name, hostInterface.name.data(), nameLength);
+		record.name[nameLength] = 0;
+		record.nameLength = U16(nameLength + 1);
+
+		records.push_back(record);
+	}
+
+	U64 neededSize = 0;
+	for(const InterfaceRecord& record : records)
+	{
+		neededSize += recordHeaderSize + ((record.nameLength + 3) & ~U32(3));
+	}
+
+	if(!bufferAddress || U64(bufferLength) < neededSize)
+	{
+		if(outNeededAddress)
+		{
+			memoryRef<WASIAddressIPtr>(memory, outNeededAddress) = WASIAddressIPtr(neededSize);
+		}
+		return bufferAddress ? __WASI_ENOSPC : __WASI_ESUCCESS;
+	}
+
+	U8* buffer = memoryArrayPtr<U8>(memory, bufferAddress, Uptr(neededSize));
+	const auto writeU16 = [&](U32 offset, U16 value) {
+		buffer[offset] = U8(value);
+		buffer[offset + 1] = U8(value >> 8);
+	};
+	const auto writeU32 = [&](U32 offset, U32 value) {
+		buffer[offset] = U8(value);
+		buffer[offset + 1] = U8(value >> 8);
+		buffer[offset + 2] = U8(value >> 16);
+		buffer[offset + 3] = U8(value >> 24);
+	};
+
+	U32 offset = 0;
+	for(Uptr index = 0; index < records.size(); ++index)
+	{
+		const InterfaceRecord& record = records[index];
+		const U32 recordSize = recordHeaderSize + ((record.nameLength + 3) & ~U32(3));
+
+		writeU32(offset, index + 1 < records.size() ? offset + recordSize : 0);
+		writeU16(offset + 4, record.family);
+		writeU16(offset + 6, record.flags);
+		buffer[offset + 8] = record.addressLength;
+		buffer[offset + 9] = record.netmaskLength;
+		writeU16(offset + 10, record.nameLength);
+		memcpy(buffer + offset + 12, record.address, 16);
+		memcpy(buffer + offset + 28, record.netmask, 16);
+		memcpy(buffer + offset + recordHeaderSize, record.name, record.nameLength);
+		offset += recordSize;
+	}
+
+	if(outNeededAddress)
+	{
+		memoryRef<WASIAddressIPtr>(memory, outNeededAddress) = WASIAddressIPtr(neededSize);
+	}
+	return __WASI_ESUCCESS;
+}
+
+WAVM_DEFINE_INTRINSIC_FUNCTION_IPTR(wasiFile,
+									"ifaddrs_get",
+									__wasi_errno_return_t,
+									wasi_ifaddrs_get,
+									WASIAddressIPtr bufferAddress,
+									WASIAddressIPtr bufferLength,
+									WASIAddressIPtr outNeededAddress)
+{
+	TRACE_SYSCALL_IPTR("ifaddrs_get",
+					   "(" WASIADDRESSIPTR_FORMAT ", " WASIADDRESSIPTR_FORMAT
+					   ", " WASIADDRESSIPTR_FORMAT ")",
+					   bufferAddress,
+					   bufferLength,
+					   outNeededAddress);
+
+	Process* process = getProcessFromContextRuntimeData(contextRuntimeData);
+	if(!process->networkEnabled) { return TRACE_SYSCALL_RETURN(__WASI_ENOTCAPABLE); }
+
+	__wasi_errno_t result = __WASI_ESUCCESS;
+	Runtime::catchRuntimeExceptions(
+		[&] {
+			result = writeHostInterfaces(
+				process->memory, bufferAddress, bufferLength, outNeededAddress);
+		},
+		[&](Exception* exception) {
+			WAVM_ERROR_UNLESS(getExceptionType(exception)
+							  == ExceptionTypes::outOfBoundsMemoryAccess);
+			destroyException(exception);
+			result = __WASI_EFAULT;
+		});
+	return TRACE_SYSCALL_RETURN(result);
+}

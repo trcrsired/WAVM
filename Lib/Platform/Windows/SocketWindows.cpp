@@ -5,6 +5,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
+#include <iphlpapi.h>
 #undef min
 #undef max
 
@@ -981,5 +982,134 @@ VFS::Result Platform::pollFDs(PollFD* fds, Uptr numFDs, I64 timeoutNanos)
 	if(result == SOCKET_ERROR) { return asSocketVFSResult(WSAGetLastError()); }
 
 	for(Uptr i = 0; i < numFDs; ++i) { fds[i].ready = pollFds[i].revents != 0; }
+	return Result::success;
+}
+
+Result Platform::getInterfaceAddresses(std::vector<InterfaceAddress>& outAddresses)
+{
+	outAddresses.clear();
+
+	ensureWSAStartup();
+
+	// GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER
+	constexpr ULONG gaaFlags = 0x000eu;
+	constexpr ULONG errorBufferOverflow = 111;
+	constexpr ULONG errorNoData = 232;
+	constexpr U32 ifOperStatusUp = 1;
+	constexpr U32 ifTypeEthernet = 6;
+	constexpr U32 ifTypePpp = 23;
+	constexpr U32 ifTypeSoftwareLoopback = 24;
+	constexpr U32 ifTypeIeee80211 = 71;
+
+	ULONG bufferSize = 0;
+	ULONG result = GetAdaptersAddresses(AF_UNSPEC, gaaFlags, nullptr, nullptr, &bufferSize);
+	if(result == errorNoData) { return Result::success; }
+	if(result != errorBufferOverflow) { return Result::ioDeviceError; }
+
+	PIP_ADAPTER_ADDRESSES adapterAddresses = nullptr;
+	std::vector<U8> adapterBuffer;
+	for(Uptr attempt = 0; attempt < 4; ++attempt)
+	{
+		adapterBuffer.resize(bufferSize);
+		result = GetAdaptersAddresses(AF_UNSPEC,
+									  gaaFlags,
+									  nullptr,
+									  reinterpret_cast<PIP_ADAPTER_ADDRESSES>(adapterBuffer.data()),
+									  &bufferSize);
+		if(result == 0)
+		{
+			adapterAddresses = reinterpret_cast<PIP_ADAPTER_ADDRESSES>(adapterBuffer.data());
+			break;
+		}
+		if(result != errorBufferOverflow) { return Result::ioDeviceError; }
+	}
+	if(!adapterAddresses) { return Result::ioDeviceError; }
+
+	const auto getAdapterName = [](const IP_ADAPTER_ADDRESSES* adapter) -> std::string {
+		if(!adapter->FriendlyName)
+		{
+			return adapter->AdapterName ? adapter->AdapterName : std::string();
+		}
+		const int numBytes = WideCharToMultiByte(
+			CP_UTF8, 0, adapter->FriendlyName, -1, nullptr, 0, nullptr, nullptr);
+		if(numBytes <= 1) { return std::string(); }
+		std::string name(Uptr(numBytes), 0);
+		WideCharToMultiByte(
+			CP_UTF8, 0, adapter->FriendlyName, -1, name.data(), numBytes, nullptr, nullptr);
+		name.resize(Uptr(numBytes - 1));
+		return name;
+	};
+
+	for(const IP_ADAPTER_ADDRESSES* adapter = adapterAddresses; adapter; adapter = adapter->Next)
+	{
+		if(!adapter->FirstUnicastAddress) { continue; }
+		const std::string adapterName = getAdapterName(adapter);
+
+		for(const IP_ADAPTER_UNICAST_ADDRESS* unicast = adapter->FirstUnicastAddress; unicast;
+			unicast = unicast->Next)
+		{
+			const struct sockaddr* sockAddr = unicast->Address.lpSockaddr;
+			if(!sockAddr) { continue; }
+
+			InterfaceAddress interfaceAddress = {};
+			interfaceAddress.name = adapterName;
+			interfaceAddress.hasNetmask = false;
+			memset(interfaceAddress.ipBytes, 0, sizeof(interfaceAddress.ipBytes));
+			memset(interfaceAddress.netmaskBytes, 0, sizeof(interfaceAddress.netmaskBytes));
+
+			if(sockAddr->sa_family == AF_INET)
+			{
+				interfaceAddress.family = SocketAddress::Family::ipv4;
+				memcpy(
+					interfaceAddress.ipBytes, &((const struct sockaddr_in*)sockAddr)->sin_addr, 4);
+			}
+			else if(sockAddr->sa_family == AF_INET6)
+			{
+				interfaceAddress.family = SocketAddress::Family::ipv6;
+				memcpy(interfaceAddress.ipBytes,
+					   &((const struct sockaddr_in6*)sockAddr)->sin6_addr,
+					   16);
+			}
+			else
+			{
+				continue;
+			}
+
+			// GetAdaptersAddresses reports the mask as a prefix length, unlike POSIX's
+			// ifa_netmask sockaddr.
+			const U32 prefixLength = U32(unicast->OnLinkPrefixLength);
+			const U32 numAddressBits
+				= interfaceAddress.family == SocketAddress::Family::ipv4 ? 32 : 128;
+			if(prefixLength <= numAddressBits)
+			{
+				interfaceAddress.hasNetmask = true;
+				const U32 numFullBytes = prefixLength / 8;
+				const U32 numRemainingBits = prefixLength % 8;
+				memset(interfaceAddress.netmaskBytes, 0xff, numFullBytes);
+				if(numRemainingBits)
+				{
+					interfaceAddress.netmaskBytes[numFullBytes]
+						= U8(0xff << (8 - numRemainingBits));
+				}
+			}
+
+			// Translate the adapter's oper status and type to the POSIX IFF_* bits
+			// WASI exposes. IP_ADAPTER_ADDRESSES::Flags is not IFF_*: it holds
+			// IP_ADAPTER_* settings, so only its multicast bit is relevant here.
+			U32 flags = 0;
+			if(U32(adapter->OperStatus) == ifOperStatusUp) { flags |= 0x0001 | 0x0040; }
+			if(adapter->IfType == ifTypeSoftwareLoopback) { flags |= 0x0008; }
+			else if(adapter->IfType == ifTypePpp) { flags |= 0x0010; }
+			if(adapter->IfType == ifTypeEthernet || adapter->IfType == ifTypeIeee80211)
+			{
+				flags |= 0x0002;
+			}
+			if(!(adapter->Flags & IP_ADAPTER_NO_MULTICAST)) { flags |= 0x1000; }
+			interfaceAddress.flags = flags;
+
+			outAddresses.push_back(std::move(interfaceAddress));
+		}
+	}
+
 	return Result::success;
 }

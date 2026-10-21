@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include "WAVM/Inline/BasicTypes.h"
 #include "WAVM/Platform/Defines.h"
 #include "WAVM/VFS/VFS.h"
@@ -30,6 +31,25 @@ namespace WAVM { namespace Platform {
 										bool allowIPv6,
 										VFS::SocketAddress* outAddresses,
 										Uptr* inOutNumAddresses);
+
+	// One address assigned to a host network interface.
+	struct InterfaceAddress
+	{
+		std::string name;
+		VFS::SocketAddress::Family family;
+		U8 ipBytes[16];      // In network byte order; only the first 4 bytes are used for IPv4.
+		U8 netmaskBytes[16]; // In network byte order; all zero if !hasNetmask.
+		bool hasNetmask;
+		// POSIX IFF_* bits: IFF_UP=0x1, IFF_BROADCAST=0x2, IFF_LOOPBACK=0x8,
+		// IFF_POINTOPOINT=0x10, IFF_RUNNING=0x40, IFF_MULTICAST=0x1000.
+		U32 flags;
+	};
+
+	// Enumerates the host's network interfaces, one entry per interface address. POSIX uses
+	// getifaddrs(3); Windows has no such call, so GetAdaptersAddresses is flattened and its
+	// adapter/unicast records are translated to the same fields (prefix length to netmask,
+	// oper status/IfType to IFF_* bits).
+	WAVM_API VFS::Result getInterfaceAddresses(std::vector<InterfaceAddress>& outAddresses);
 
 	// A descriptor to wait on, with the operations pollFDs is waiting for.
 	struct PollFD

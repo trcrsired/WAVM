@@ -4,6 +4,8 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <ifaddrs.h>
+#include <net/if.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -891,5 +893,75 @@ VFS::Result Platform::pollFDs(PollFD* fds, Uptr numFDs, I64 timeoutNanos)
 	if(result < 0) { return asSocketVFSResult(errno); }
 
 	for(Uptr i = 0; i < numFDs; ++i) { fds[i].ready = pollFds[i].revents != 0; }
+	return Result::success;
+}
+
+Result Platform::getInterfaceAddresses(std::vector<InterfaceAddress>& outAddresses)
+{
+	outAddresses.clear();
+
+	struct ifaddrs* hostInterfaces = nullptr;
+	if(getifaddrs(&hostInterfaces) != 0) { return asSocketVFSResult(errno); }
+
+	for(const struct ifaddrs* hostInterface = hostInterfaces; hostInterface;
+		hostInterface = hostInterface->ifa_next)
+	{
+		if(!hostInterface->ifa_name || !hostInterface->ifa_addr) { continue; }
+
+		InterfaceAddress interfaceAddress = {};
+		interfaceAddress.name = hostInterface->ifa_name;
+		interfaceAddress.hasNetmask = false;
+		memset(interfaceAddress.ipBytes, 0, sizeof(interfaceAddress.ipBytes));
+		memset(interfaceAddress.netmaskBytes, 0, sizeof(interfaceAddress.netmaskBytes));
+
+		const auto copyAddress = [](const struct sockaddr* sockAddr, U8* outBytes) -> bool {
+			if(!sockAddr) { return false; }
+			if(sockAddr->sa_family == AF_INET)
+			{
+				memcpy(outBytes, &((const struct sockaddr_in*)sockAddr)->sin_addr, 4);
+				return true;
+			}
+			if(sockAddr->sa_family == AF_INET6)
+			{
+				memcpy(outBytes, &((const struct sockaddr_in6*)sockAddr)->sin6_addr, 16);
+				return true;
+			}
+			return false;
+		};
+
+		if(hostInterface->ifa_addr->sa_family == AF_INET)
+		{
+			interfaceAddress.family = SocketAddress::Family::ipv4;
+		}
+		else if(hostInterface->ifa_addr->sa_family == AF_INET6)
+		{
+			interfaceAddress.family = SocketAddress::Family::ipv6;
+		}
+		else
+		{
+			continue;
+		}
+		const bool copiedAddress = copyAddress(hostInterface->ifa_addr, interfaceAddress.ipBytes);
+		WAVM_ASSERT(copiedAddress);
+		(void)copiedAddress;
+
+		if(copyAddress(hostInterface->ifa_netmask, interfaceAddress.netmaskBytes))
+		{
+			interfaceAddress.hasNetmask = true;
+		}
+
+		// Translate the host's IFF_* bits to the POSIX values WASI exposes; they differ
+		// between hosts (IFF_MULTICAST is 0x8000 on macOS but 0x1000 on Linux).
+		if(hostInterface->ifa_flags & IFF_UP) { interfaceAddress.flags |= 0x0001; }
+		if(hostInterface->ifa_flags & IFF_BROADCAST) { interfaceAddress.flags |= 0x0002; }
+		if(hostInterface->ifa_flags & IFF_LOOPBACK) { interfaceAddress.flags |= 0x0008; }
+		if(hostInterface->ifa_flags & IFF_POINTOPOINT) { interfaceAddress.flags |= 0x0010; }
+		if(hostInterface->ifa_flags & IFF_RUNNING) { interfaceAddress.flags |= 0x0040; }
+		if(hostInterface->ifa_flags & IFF_MULTICAST) { interfaceAddress.flags |= 0x1000; }
+
+		outAddresses.push_back(std::move(interfaceAddress));
+	}
+
+	freeifaddrs(hostInterfaces);
 	return Result::success;
 }
