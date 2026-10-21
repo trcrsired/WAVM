@@ -493,6 +493,30 @@ static llvm::Value* getOffsetAndBoundedAddress(EmitFunctionContext& functionCont
 	// Software Tagging
 	if(!istagging && memtagBasePointerVariable)
 	{
+		// The tag shadow is only committed up to the memory's current size. Bounds-check the
+		// access before reading it: an out-of-bounds address has an uncommitted shadow byte, and
+		// faulting there would surface as an unhandled host SIGSEGV instead of a wasm OOB trap.
+		// The address includes the offset by this point, so the check covers the whole access.
+		llvm::Value* memoryNumBytes = getMemoryNumBytes(functionContext, memoryIndex);
+		llvm::Value* memoryNumBytesMinusNumBytes = irBuilder.CreateSub(memoryNumBytes, numBytes);
+		llvm::Value* numBytesWasGreaterThanMemoryNumBytes
+			= irBuilder.CreateICmpUGT(memoryNumBytesMinusNumBytes, memoryNumBytes);
+		functionContext.emitConditionalTrapIntrinsic(
+			irBuilder.CreateOr(numBytesWasGreaterThanMemoryNumBytes,
+							   irBuilder.CreateICmpUGT(address, memoryNumBytesMinusNumBytes)),
+			"memoryOutOfBoundsTrap",
+			FunctionType(TypeTuple{},
+						 TypeTuple{functionContext.moduleContext.iptrValueType,
+								   functionContext.moduleContext.iptrValueType,
+								   functionContext.moduleContext.iptrValueType,
+								   functionContext.moduleContext.iptrValueType},
+						 IR::CallingConvention::intrinsic),
+			{address,
+			 numBytes,
+			 memoryNumBytes,
+			 getMemoryIdFromOffset(irBuilder,
+								   functionContext.moduleContext.memoryOffsets[memoryIndex])});
+
 		if((fullcheck || knownNumBytes == 0) && knownNumBytes != 1)
 		{
 			if(1 < knownNumBytes && knownNumBytes <= 16u)
@@ -1386,6 +1410,30 @@ void EmitFunctionContext::memtag_untag(MemoryImm imm)
 	push(memaddress);
 }
 
+// A wasm local read is an LLVM load from the local's alloca, so a size the
+// stack-tagging pass made a wasm i32.const reaches this point as a load, not
+// as an llvm::Constant. Look through the load at the last store to the same
+// local within its basic block: a constant there identifies the constant-size
+// untagstore that ends an alloca's lifetime, as opposed to a computed heap
+// free size. Anything not provably constant stays on the zeroing path.
+static ::llvm::ConstantInt* getUntagStoreConstantSize(::llvm::Value* taggedbytes) noexcept
+{
+	if(auto* constant = ::llvm::dyn_cast<::llvm::ConstantInt>(taggedbytes)) { return constant; }
+	auto* load = ::llvm::dyn_cast<::llvm::LoadInst>(taggedbytes);
+	if(load == nullptr) { return nullptr; }
+	::llvm::Value* pointer = load->getPointerOperand();
+	::llvm::BasicBlock* block = load->getParent();
+	auto it = load->getIterator();
+	while(it != block->begin())
+	{
+		--it;
+		auto* store = ::llvm::dyn_cast<::llvm::StoreInst>(&*it);
+		if(store == nullptr || store->getPointerOperand() != pointer) { continue; }
+		return ::llvm::dyn_cast<::llvm::ConstantInt>(store->getValueOperand());
+	}
+	return nullptr;
+}
+
 void EmitFunctionContext::memtag_untagstore(MemoryImm imm)
 {
 	::llvm::Value* taggedbytes = pop();
@@ -1401,7 +1449,7 @@ void EmitFunctionContext::memtag_untagstore(MemoryImm imm)
 							taggedbytes,
 							llvm::ConstantInt::get(this->llvmContext.i8Type, 0));
 		}
-		else if(::llvm::isa<::llvm::Constant>(taggedbytes))
+		else if(getUntagStoreConstantSize(taggedbytes) != nullptr)
 		{
 			// The stack-tagging pass ends an alloca's lifetime with
 			// memtag.untagstore(0, alloca, constSize). The alloca address carries the stack

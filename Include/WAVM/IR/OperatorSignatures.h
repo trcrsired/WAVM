@@ -254,7 +254,10 @@ namespace WAVM { namespace IR {
 		{
 			const ValueType indexType
 				= asValueType(module_.memories.getType(imm.memoryIndex).indexType);
-			return OpSignature({}, {indexType, indexType, indexType});
+			/* the data segment offset and length stay i32 even for a 64-bit
+			   memory: only the destination address widens (bulk-memory +
+			   memory64) */
+			return OpSignature({}, {indexType, ValueType::i32, ValueType::i32});
 		}
 		inline OpSignature init(const Module& module_, const ElemSegmentAndTableImm& imm)
 		{
